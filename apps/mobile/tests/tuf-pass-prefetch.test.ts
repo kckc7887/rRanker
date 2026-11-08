@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InfiniteData } from '@tanstack/react-query';
-import type { TufPassPage } from '@/domain/tuf';
-import { prefetchTufPassPage } from '@/hooks/use-tuf';
-import { queryClient } from '@/state/query-client';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import type { TufPassPage } from '@rranker/game-adofai/domain/tuf';
+import { prefetchTufPassPage } from '@rranker/game-adofai/hooks/use-tuf';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
 const getPasses = vi.fn();
-vi.mock('@/providers/tuf-provider', () => ({ tufProvider: { getPasses: (...args: unknown[]) => getPasses(...args) } }));
-vi.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
-vi.mock('@/state/app-lifecycle', () => ({
+vi.mock('@rranker/provider-tuf/providers/tuf-provider', () => ({ tufProvider: { getPasses: (...args: unknown[]) => getPasses(...args) } }));
+vi.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
+vi.mock('@rranker/sdk/state/app-lifecycle', () => ({
   useAppLifecycle: () => ({ foregroundReady: true, foregroundGeneration: 1 }),
   getForegroundAbortSignal: () => new AbortController().signal,
 }));

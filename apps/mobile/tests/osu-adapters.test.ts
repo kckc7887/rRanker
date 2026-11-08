@@ -13,7 +13,7 @@ import {
   type OsuBeatmapsetSearchRaw,
   type OsuBestScoreRaw,
   type OsuUserResponseRaw,
-} from '@/domain/osu';
+} from '@rranker/game-osu/domain/osu';
 
 function rawUser(overrides: Record<string, unknown> = {}): OsuUserResponseRaw {
   return {

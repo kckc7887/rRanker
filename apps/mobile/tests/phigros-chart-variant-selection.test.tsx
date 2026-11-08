@@ -1,14 +1,14 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Text } from 'react-native';
-import { NotificationProvider } from '@/components/AppNotification';
-import { usePhigrosChartVariantSelection } from '@/features/phigros-chart-preview/use-phigros-chart-variant-selection';
+import { NotificationProvider } from '@rranker/sdk/components/AppNotification';
+import { usePhigrosChartVariantSelection } from '@rranker/tool-chart-json/features/phigros-chart-preview/use-phigros-chart-variant-selection';
 
 const mockLoad = jest.fn<(...args: unknown[]) => Promise<number[]>>();
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => ({ foregroundReady: true }) }));
-jest.mock('@/services/phigros-chart-preview-resources', () => ({
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => ({ foregroundReady: true }) }));
+jest.mock('@rranker/game-phigros/services/phigros-chart-preview-resources', () => ({
   loadPhigrosChartPreviewVariants: (...args: unknown[]) => mockLoad(...args),
 }));
 const target = { songId: 'Random.SobremSilentroom', levelIndex: 2 };

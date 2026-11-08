@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import LxnsOAuthCallbackScreen from '../app/oauth/lxns';
-import { createChunithmBoundAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
-import { SessionPersistenceError } from '@/domain/session-vault';
-import { ProviderError } from '@/providers/errors';
+import LxnsOAuthCallbackScreen from '@rranker/provider-lxns/pages/oauth';
+import { createChunithmBoundAccount } from '@rranker/game-chunithm/accounts';
+import { createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
+import { SessionPersistenceError } from '@rranker/sdk/domain/session-vault';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
 let mockParams: Record<string, string | undefined> = {};
 let mockFocused = true;
@@ -21,7 +22,7 @@ jest.mock('expo-router', () => ({
   },
 }));
 
-jest.mock('@/providers/lxns-oauth', () => ({
+jest.mock('@rranker/provider-lxns/providers/lxns-oauth', () => ({
   exchangeLxnsAuthorizationCode: (...args: unknown[]) => mockExchange(...args),
   requireLxnsOAuthState: (state: unknown) => {
     if (typeof state !== 'string' || !state.trim()) throw new Error('授权状态校验失败，请重新发起授权');
@@ -36,30 +37,30 @@ jest.mock('@/providers/lxns-oauth', () => ({
 }));
 
 const mockBindLxnsAccount = jest.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
-jest.mock('@/services/lxns-account-binding', () => ({
+jest.mock('@rranker/provider-lxns/services/lxns-account-binding', () => ({
   bindLxnsAccount: (...args: unknown[]) => mockBindLxnsAccount(...args),
 }));
 
-const mockSetSession = jest.fn((..._args: unknown[]): unknown => undefined);
+const mockBindAccounts = jest.fn((..._args: unknown[]): unknown => undefined);
 const mockRemoveBoundAccount = jest.fn();
 const mockInvalidateQueries = jest.fn();
 const mockTempRemove = jest.fn(async () => undefined);
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: Object.assign(
     () => undefined,
-    { getState: () => ({ setSession: mockSetSession, removeBoundAccount: mockRemoveBoundAccount }) },
+    { getState: () => ({ bindAccounts: mockBindAccounts, removeBoundAccount: mockRemoveBoundAccount }) },
   ),
 }));
 
-jest.mock('@/state/query-client', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: { invalidateQueries: (...args: unknown[]) => mockInvalidateQueries(...args) },
 }));
 
-jest.mock('@/storage/chunithm-temp-account-store', () => ({
+jest.mock('@rranker/provider-chunithm-temp/storage/chunithm-temp-account-store', () => ({
   ChunithmTempAccountStore: jest.fn(() => ({ remove: () => mockTempRemove() })),
 }));
 
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#fff',
     surface: '#fff',
@@ -98,7 +99,7 @@ beforeEach(() => {
   mockExchange.mockReset();
   mockNotify.mockClear();
   mockBindLxnsAccount.mockReset();
-  mockSetSession.mockReset();
+  mockBindAccounts.mockReset();
   mockRemoveBoundAccount.mockClear();
   mockInvalidateQueries.mockClear();
   mockTempRemove.mockClear();
@@ -115,7 +116,7 @@ describe('LXNS OAuth 回调页', () => {
       : '无法保存本机账号信息，请重试；若仍失败，请查看诊断。';
     expect(screen.getByText(copy)).toBeTruthy();
     expect(screen.queryByText(/private native/u)).toBeNull();
-    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockBindAccounts).not.toHaveBeenCalled();
     expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'success' }));
   });
 
@@ -142,7 +143,8 @@ describe('LXNS OAuth 回调页', () => {
     expect(mockBindLxnsAccount).toHaveBeenCalledWith({
       gameId: 'maimai', session: mockSession, signal: expect.any(AbortSignal), assertCurrent: expect.any(Function),
     });
-    expect(mockSetSession).toHaveBeenCalledTimes(1);
+    expect(mockBindAccounts).toHaveBeenCalledWith({ accounts: [mockAccount], session: mockSession,
+      credentialId: 'lxns:credential', activeAccountId: mockAccount.id });
     expect(mockNotify).toHaveBeenCalledWith({
       status: 'success',
       gameId: 'maimai',
@@ -155,7 +157,7 @@ describe('LXNS OAuth 回调页', () => {
   ] as const)('%s 回调页%s后忽略绑定迟到结果及全部页面动作', async (gameId, exit) => {
     const binding = deferred<unknown>();
     mockParams = { code: 'auth-code', state: 'expected-state', gameId };
-    const { readPendingLxnsOAuth } = jest.requireMock('@/providers/lxns-oauth') as { readPendingLxnsOAuth: ReturnType<typeof jest.fn> };
+    const { readPendingLxnsOAuth } = jest.requireMock('@rranker/provider-lxns/providers/lxns-oauth') as { readPendingLxnsOAuth: ReturnType<typeof jest.fn> };
     readPendingLxnsOAuth.mockResolvedValueOnce({ verifier: 'verifier', state: 'expected-state', gameId });
     mockExchange.mockResolvedValue(mockSession);
     mockBindLxnsAccount.mockReturnValue(binding.promise);
@@ -172,7 +174,7 @@ describe('LXNS OAuth 回调页', () => {
       }),
       credentialId: 'lxns:credential', session: mockSession,
     }));
-    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockBindAccounts).not.toHaveBeenCalled();
     expect(mockRemoveBoundAccount).not.toHaveBeenCalled();
     expect(mockTempRemove).not.toHaveBeenCalled();
     expect(mockInvalidateQueries).not.toHaveBeenCalled();
@@ -182,16 +184,16 @@ describe('LXNS OAuth 回调页', () => {
   it('激活已开始后退出阻止中二临时账号清理及成功提示', async () => {
     const activation = deferred<void>();
     mockParams = { code: 'auth-code', state: 'expected-state', gameId: 'chunithm' };
-    const { readPendingLxnsOAuth } = jest.requireMock('@/providers/lxns-oauth') as { readPendingLxnsOAuth: ReturnType<typeof jest.fn> };
+    const { readPendingLxnsOAuth } = jest.requireMock('@rranker/provider-lxns/providers/lxns-oauth') as { readPendingLxnsOAuth: ReturnType<typeof jest.fn> };
     readPendingLxnsOAuth.mockResolvedValueOnce({ verifier: 'verifier', state: 'expected-state', gameId: 'chunithm' });
     mockExchange.mockResolvedValue(mockSession);
     mockBindLxnsAccount.mockResolvedValue({
       account: createChunithmBoundAccount({ displayName: '中二玩家', rating: 16, playerId: '12345' }),
       credentialId: 'lxns:credential', session: mockSession,
     });
-    mockSetSession.mockReturnValue(activation.promise);
+    mockBindAccounts.mockReturnValue(activation.promise);
     const rendered = await render(<LxnsOAuthCallbackScreen />);
-    await waitFor(() => expect(mockSetSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockBindAccounts).toHaveBeenCalledTimes(1));
     await rendered.unmount();
     await act(async () => activation.resolve());
     expect(mockRemoveBoundAccount).not.toHaveBeenCalled();
@@ -216,7 +218,7 @@ describe('LXNS OAuth 回调页', () => {
 
   it('缺少进行中的授权信息时提示重新发起', async () => {
     mockParams = { code: 'auth-code', state: 'whatever' };
-    const { readPendingLxnsOAuth } = jest.requireMock('@/providers/lxns-oauth') as {
+    const { readPendingLxnsOAuth } = jest.requireMock('@rranker/provider-lxns/providers/lxns-oauth') as {
       readPendingLxnsOAuth: ReturnType<typeof jest.fn>;
     };
     readPendingLxnsOAuth.mockResolvedValueOnce(null);

@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildRizlineRecords, selectRizlineBest } from '@/domain/rizline';
-import { buildMaxedRizlineSnapshot } from '@/providers/maxed-rizline-test-provider';
-import { customRizlineRecords, rizlineAvatarCrop, defaultRizlineImageFilters, rizlineImagePages, validRizlineImageFilters } from '@/features/rizline-best-image/rizline-best-image';
-import { buildRizlineBestImageHtml, buildRizlineCardBackground } from '@/features/rizline-best-image/build-rizline-best-image-html';
+import { buildRizlineRecords, selectRizlineBest } from '@rranker/game-rizline/domain/rizline';
+import { buildMaxedRizlineSnapshot } from '@rranker/provider-rizline-test/providers/maxed-rizline-test-provider';
+import { customRizlineRecords, rizlineAvatarCrop, defaultRizlineImageFilters, rizlineImagePages, validRizlineImageFilters } from '@rranker/tool-rizline/features/rizline-best-image/rizline-best-image';
+import { buildRizlineBestImageHtml, buildRizlineCardBackground } from '@rranker/tool-rizline/features/rizline-best-image/build-rizline-best-image-html';
 import sharp from 'sharp';
-import Storage from '@/storage/key-value-storage';
-import { rizlineImagePreferencesStore, DEFAULT_RIZLINE_IMAGE_PREFERENCES } from '@/features/rizline-best-image/rizline-best-image-preferences';
+import Storage from '@rranker/sdk/storage/key-value-storage';
+import { rizlineImagePreferencesStore, DEFAULT_RIZLINE_IMAGE_PREFERENCES } from '@rranker/tool-rizline/features/rizline-best-image/rizline-best-image-preferences';
 import { rizlineCatalog, rizlineChart, rizlineSong } from './fixtures/rizline';
 
 function data() {

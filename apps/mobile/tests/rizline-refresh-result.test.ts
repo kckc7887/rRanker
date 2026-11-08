@@ -1,24 +1,27 @@
+import type { SourceClientContext } from '@rranker/sdk/credentials';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { commitCredential } from '@rranker/sdk/services/session-credential-service';
+import { captureBoundAccountWrites } from '@rranker/sdk/services/account-write-scope';
+import type { RizlineSession } from '@rranker/provider-rizline-official/credential';
 import { DatabaseSync } from 'node:sqlite';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { SqliteSnapshotRepository } from '@rranker/sdk/storage/sqlite-snapshot-repository';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadRizlineCached, refreshRizlineSnapshot } from '@/services/rizline-service';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import { ProviderError } from '@/providers/errors';
-import type { RizlineSession } from '@/providers/contracts';
+import { loadRizlineCached, refreshRizlineSnapshot } from '@rranker/provider-rizline-official/services/rizline-service';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+
 import {
   refreshNeedsLogin,
-} from '@/domain/refresh-result';
+} from '@rranker/sdk/domain/refresh-result';
 import { rizlineSave } from './fixtures/rizline';
 
 const mocks = vi.hoisted(() => ({
   getSave: vi.fn(),
   loginWithPassword: vi.fn(),
-  rotate: vi.fn(),
   isExpired: vi.fn((_token?: string) => false),
   hasPassword: vi.fn(async (_id?: string) => false),
   readPassword: vi.fn(async (_id?: string) => null as string | null),
   deletePassword: vi.fn(async (_id?: string) => undefined),
-  sessionsByAccountId: {} as Record<string, RizlineSession>,
 }));
 const database = new DatabaseSync(':memory:');
 const repository = new SqliteSnapshotRepository();
@@ -34,15 +37,12 @@ vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
 }) }));
 afterAll(() => database.close());
 
-vi.mock('@/providers/rizline-provider', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/providers/rizline-provider')>()), RizlineProvider: class {
+vi.mock('@rranker/provider-rizline-official/providers/rizline-provider', async (importOriginal) => ({ ...(await importOriginal<typeof import('@rranker/provider-rizline-official/providers/rizline-provider')>()), RizlineProvider: class {
   getSave = mocks.getSave;
   loginWithPassword = mocks.loginWithPassword;
 }, isRizlineTokenExpired: (token: string) => mocks.isExpired(token) }));
-vi.mock('@/state/session-store', () => ({
-  applyRizlineSessionRotation: mocks.rotate,
-  useSession: { getState: () => ({ sessionsByAccountId: mocks.sessionsByAccountId }) },
-}));
-vi.mock('@/storage/rizline-password-store', () => ({
+vi.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: class { async updateCredentialSession() { return 'applied'; } } }));
+vi.mock('@rranker/provider-rizline-official/storage/rizline-password-store', () => ({
   hasRizlinePassword: (id: string) => mocks.hasPassword(id),
   readRizlinePassword: (id: string) => mocks.readPassword(id),
   deleteRizlinePassword: (id: string) => mocks.deletePassword(id),
@@ -54,14 +54,25 @@ const session: RizlineSession = {
 const account = 'rizline:official:user-a';
 const signal = () => new AbortController().signal;
 
+function sourceContext(id: string, credential: RizlineSession): SourceClientContext {
+  const credentialId = `credential:${id}`;
+  if (!useAccountStore.getState().boundAccounts.some(account => account.id === id)) {
+    useAccountStore.getState().bindAccounts({ accounts: [{ id, gameId: 'rizline', providerId: 'rizline-official',
+      displayName: 'Player', scoreDisplay: '0', scoreLabel: '', providerTitle: '测试来源' }], credentialId, session: credential, activeAccountId: id });
+  }
+  const assertCurrent = captureBoundAccountWrites(id);
+  return { account: useAccountStore.getState().boundAccounts.find(account => account.id === id)!,
+    get credential() { return useAccountStore.getState().credentialsById[credentialId] ?? null; }, assertCurrent,
+    commitCredential: (next, expected) => commitCredential({ credentialId, providerId: 'rizline-official', next, expected, assertCurrent }) };
+}
+
 beforeEach(async () => {
   invalidateResourceWrites('rizline');
   await repository.initialize();
   await repository.clearResources((await repository.listResourceSizes()).map(item => item.key));
-  mocks.sessionsByAccountId = {};
+  useAccountStore.getState().finishRestore(null);
   mocks.getSave.mockReset();
   mocks.loginWithPassword.mockReset();
-  mocks.rotate.mockReset();
   mocks.isExpired.mockReset();
   mocks.hasPassword.mockReset();
   mocks.readPassword.mockReset();
@@ -69,12 +80,11 @@ beforeEach(async () => {
   mocks.isExpired.mockReturnValue(false);
   mocks.hasPassword.mockResolvedValue(false);
   mocks.readPassword.mockResolvedValue(null);
-  mocks.rotate.mockResolvedValue(undefined);
 });
 
 describe('Rizline refresh results', () => {
   it('reports a completed refresh with the original provider and a new fetch time', async () => {
-    const result = await refreshRizlineSnapshot(account, session, signal());
+    const result = await refreshRizlineSnapshot(sourceContext(account, session), signal());
 
     expect(result.status).toBe('success');
 
@@ -88,12 +98,12 @@ describe('Rizline refresh results', () => {
   });
 
   it('keeps the old snapshot and its fetch time without calling it a success', async () => {
-    await refreshRizlineSnapshot(account, session, signal());
+    await refreshRizlineSnapshot(sourceContext(account, session), signal());
     const cached = await loadRizlineCached(account);
     const cachedFetchedAt = cached!.source.updatedAt;
     mocks.getSave.mockRejectedValue(new Error('offline'));
 
-    const result = await refreshRizlineSnapshot(account, session, signal());
+    const result = await refreshRizlineSnapshot(sourceContext(account, session), signal());
 
     expect(result.status).toBe('failed');
 
@@ -111,7 +121,7 @@ describe('Rizline refresh results', () => {
   it('distinguishes an expired login from a network failure by error code', async () => {
     mocks.getSave.mockRejectedValue(new ProviderError('authentication', '会话已过期', false));
 
-    const expired = await refreshRizlineSnapshot(account, session, signal());
+    const expired = await refreshRizlineSnapshot(sourceContext(account, session), signal());
 
     expect(expired.status).toBe('failed');
     expect(expired.value).toBeNull();
@@ -121,7 +131,7 @@ describe('Rizline refresh results', () => {
 
     mocks.getSave.mockReset();
     mocks.getSave.mockRejectedValue(new ProviderError('network', '网络连接失败', true));
-    const offline = await refreshRizlineSnapshot(account, session, signal());
+    const offline = await refreshRizlineSnapshot(sourceContext(account, session), signal());
 
     expect(refreshNeedsLogin(offline)).toBe(false);
 
@@ -131,7 +141,7 @@ describe('Rizline refresh results', () => {
     const controller = new AbortController();
     controller.abort(new Error('同步已取消'));
 
-    const result = await refreshRizlineSnapshot(account, session, controller.signal);
+    const result = await refreshRizlineSnapshot(sourceContext(account, session), controller.signal);
 
     expect(result.status).toBe('cancelled');
     expect(result.value).toBeNull();

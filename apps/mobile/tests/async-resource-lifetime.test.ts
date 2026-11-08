@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AbortController as NativeAbortController } from 'abort-controller';
-import { captureResourceWrites, createInflightGuard, invalidateResourceWrites, subscribeResourceWrites } from '@/services/snapshot-cache-utils';
-import { loadItemsBounded } from '@/services/offset-pagination';
-import { cacheFirstLoad } from '@/services/cache-first';
+import { captureResourceWrites, createInflightGuard, invalidateResourceWrites, subscribeResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { loadItemsBounded } from '@rranker/sdk/services/offset-pagination';
+import { cacheFirstLoad } from '@rranker/sdk/services/cache-first';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

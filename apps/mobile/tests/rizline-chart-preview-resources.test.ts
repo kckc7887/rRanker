@@ -4,23 +4,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rizlineCatalog, rizlineCatalogAssetFiles, rizlineChart, rizlineSong } from './fixtures/rizline';
 import {
   resolveRizlineChartPreviewBundle,
-} from '@/domain/rizline-chart-preview';
-import { loadRizlineChartPreviewResources } from '@/services/rizline-chart-preview-resources';
-import { rizlineResources } from '@/services/rizline-resources';
-import { applyRizlineChartPreviewConfigToHtml } from '@/features/rizline-chart-preview/rizline-chart-preview-inject';
+} from '@rranker/game-rizline/domain/rizline-chart-preview';
+import { loadRizlineChartPreviewResources } from '@rranker/game-rizline/services/rizline-chart-preview-resources';
+import { rizlineResources } from '@rranker/game-rizline/services/rizline-resources';
+import { applyRizlineChartPreviewConfigToHtml } from '@rranker/chart-json/features/rizline-chart-preview/rizline-chart-preview-inject';
 import {
   normalizeRizlineChartPreviewSettings,
   parseRizlineChartPreviewTarget,
-} from '@/features/rizline-chart-preview/configuration';
+} from '@rranker/chart-json/features/rizline-chart-preview/configuration';
 import {
-  openRizlineChartPreview,
-  RIZLINE_CHART_PREVIEW_DETAIL_ROUTE,
-  RIZLINE_CHART_PREVIEW_NAVIGATION_CHECK_DELAY_MS,
-} from '@/features/rizline-chart-preview/chart-preview-open';
-import { chartPreviewNativeScreenOptions } from '@/features/chart-preview-shared/chart-preview-native-screen-options';
-import type { RizlineRelease } from '@/services/rizline-resources';
+  openPluginPage, gamePageHref, PLUGIN_PAGE_NAVIGATION_CHECK_DELAY_MS,
+} from '@rranker/sdk';
+import { chartPreviewNativeScreenOptions } from '@rranker/sdk/features/chart-preview-shared/chart-preview-native-screen-options';
+import type { RizlineRelease } from '@rranker/game-rizline/services/rizline-resources';
 
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
+vi.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
 
 const nativeFiles = vi.hoisted(() => new Map<string, Uint8Array>());
 const nativeHash = vi.hoisted(() => ({ beforeHash: undefined as (() => Promise<void>) | undefined }));
@@ -181,14 +179,14 @@ describe('Rizline chart preview navigation and fullscreen orientation', () => {
     vi.useFakeTimers();
     const push = vi.fn();
     const onFail = vi.fn();
-    const cancel = openRizlineChartPreview({ songId: 'Song.A.0', levelIndex: 2, title: 'Song IN' }, {
-      push, topRouteName: () => RIZLINE_CHART_PREVIEW_DETAIL_ROUTE, onFail,
+    const cancel = openPluginPage(gamePageHref('rizline', 'chart-preview', { songId: 'Song.A.0', levelIndex: '2', title: 'Song IN' }), {
+      push, topRouteName: () => 'detail', onFail,
     });
     expect(push).toHaveBeenCalledWith({
-      pathname: '/songs/rizline-chart-preview',
-      params: { songId: 'Song.A.0', levelIndex: '2', title: 'Song IN' },
+      pathname: '/plugins/[pluginId]/[pageId]',
+      params: { pluginId: 'tool.chart-json', pageId: 'chart-preview', gameId: 'rizline', songId: 'Song.A.0', levelIndex: '2', title: 'Song IN' },
     });
-    vi.advanceTimersByTime(RIZLINE_CHART_PREVIEW_NAVIGATION_CHECK_DELAY_MS);
+    vi.advanceTimersByTime(PLUGIN_PAGE_NAVIGATION_CHECK_DELAY_MS);
     expect(onFail).toHaveBeenCalledWith('页面跳转未生效，请重试');
     cancel();
     vi.useRealTimers();

@@ -2,8 +2,8 @@ import {
   defaultPhigrosRandomChartsPreferences,
   parsePhigrosRandomChartsPreferences,
   PhigrosRandomChartsPreferencesStore,
-} from '@/features/toolbox/phigros-random-charts-preferences';
-import { createPhigrosRandomChartsFilterStore } from '@/state/phigros-random-charts-filter';
+} from '@rranker/tool-phigros/features/phigros-random-charts-preferences';
+import { createPhigrosRandomChartsFilterStore } from '@rranker/tool-phigros/state/phigros-random-charts-filter';
 
 class MemoryStore {
   values = new Map<string, string>();

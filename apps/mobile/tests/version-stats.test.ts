@@ -1,5 +1,5 @@
-import { calculateVersionStats } from '@/domain/version-stats';
-import { fixtureCatalog, fixtureRecords } from '@/fixtures/sanitized';
+import { calculateVersionStats } from '@rranker/game-maimai/domain/version-stats';
+import { fixtureCatalog, fixtureRecords } from './fixtures/sanitized';
 
 describe('version statistics', () => {
   it('returns null average when no score exists', () => {

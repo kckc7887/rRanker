@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { createMaimaiBoundAccount } from '@/domain/bound-account';
-import { switchBoundAccount } from '@/services/switch-bound-account';
-import { SecureSessionStore } from '@/storage/secure-session-store';
+import { createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
+import { switchBoundAccount } from '@rranker/sdk/services/switch-bound-account';
+import { SecureSessionStore } from '@rranker/sdk/storage/secure-session-store';
 
 const mocks = vi.hoisted(() => {
   const index = new Map<string, string>();
@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
     },
   };
 });
-vi.mock('@/storage/key-value-storage', () => ({ default: mocks.storage }));
+vi.mock('@rranker/sdk/storage/key-value-storage', () => ({ default: mocks.storage }));
 vi.mock('expo-secure-store', () => ({
   getItemAsync: async (key: string) => mocks.secrets.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => { mocks.secrets.set(key, value); },
@@ -25,8 +25,8 @@ vi.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
 }));
 vi.mock('expo-router', () => ({ router: { canDismiss: () => false, navigate: vi.fn() } }));
-vi.mock('@/state/session-store', () => ({ useSession: { getState: () => mocks.state } }));
-vi.mock('@/services/runtime-diagnostics-recorder', () => ({ recordRuntimeError: vi.fn() }));
+vi.mock('@rranker/sdk/state/session-store', () => ({ useSession: { getState: () => mocks.state } }));
+vi.mock('@rranker/sdk/services/runtime-diagnostics-recorder', () => ({ recordRuntimeError: vi.fn() }));
 
 beforeEach(() => {
   mocks.index.clear(); mocks.secrets.clear(); mocks.failNextWrite = false;

@@ -1,15 +1,15 @@
+import { gamePageHref, stagePluginPage } from '@rranker/sdk';
 import { runInNewContext } from 'node:vm';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { BackHandler } from 'react-native';
 import JSZip from 'jszip';
-import PhigrosChartPreviewScreen from '../app/songs/phigros-chart-preview';
-import { stageChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
+import PhigrosChartPreviewScreen from '@rranker/tool-chart-json/pages/chart-preview';
 
 const mockInjectJavaScript = jest.fn();
 const mockShowAction = jest.fn(() => 1);
 const mockDismiss = jest.fn();
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({
   showActionNotification: mockShowAction, dismissNotification: mockDismiss,
 }) }));
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
@@ -25,12 +25,7 @@ const mockLoadPhigrosBundle = jest.fn(async (...args: unknown[]) => ({
 }));
 let latestScreenOptions: Record<string, unknown> | undefined;
 let hardwareBackHandler: (() => boolean | null | undefined) | undefined;
-let mockRouteParams: Record<string, string> = {
-  game: 'phigros',
-  songId: 'DistortedFate.Sakuzyo',
-  levelIndex: '3',
-  title: 'Distorted Fate AT',
-};
+let mockRouteParams: Record<string, string> = { gameId: 'phigros', songId: 'DistortedFate.Sakuzyo', levelIndex: String('3'), title: 'Distorted Fate AT' };
 
 jest.mock('expo-router', () => ({
   Stack: {
@@ -62,7 +57,7 @@ jest.mock('expo-sqlite/kv-store', () => ({
   },
 }));
 
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     accent: '#246BFD',
     background: '#ffffff',
@@ -72,7 +67,7 @@ jest.mock('@/theme/app-theme', () => ({
   }),
 }));
 
-jest.mock('@/features/phigros-chart-preview/prepare-phigros-chart-preview-webview', () => ({
+jest.mock('@rranker/tool-chart-json/features/phigros-chart-preview/prepare-phigros-chart-preview-webview', () => ({
   phigrosChartPreviewAllowsFileAccess: () => true,
   preparePhigrosChartPreviewWebViewSource: (...args: unknown[]) => {
     mockPrepare(args[0], args[1]);
@@ -96,12 +91,12 @@ jest.mock('@/features/phigros-chart-preview/prepare-phigros-chart-preview-webvie
   downloadPhiraChartPreviewZip: () => Promise.resolve(mockZipBuffer),
 }));
 
-jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
+jest.mock('@rranker/sdk/features/chart-preview-shared/chart-preview-assets', () => ({
   createChartPreviewSessionDirectory: () => ({ uri: 'file:///phigros-chart-preview/session/' }),
   disposeChartPreviewSessionDirectory: jest.fn(),
 }));
 
-jest.mock('@/services/phigros-chart-preview-resources', () => ({
+jest.mock('@rranker/game-phigros/services/phigros-chart-preview-resources', () => ({
   loadPhigrosChartPreviewVariants: async () => [0],
   loadPhigrosChartPreviewResources: async (...args: unknown[]) => ({
     bundle: await mockLoadPhigrosBundle(args[0], args[1]),
@@ -109,7 +104,7 @@ jest.mock('@/services/phigros-chart-preview-resources', () => ({
   }),
 }));
 
-jest.mock('@/domain/phigros-chart-preview', () => ({
+jest.mock('@rranker/game-phigros/domain/phigros-chart-preview', () => ({
   phigrosChartPreviewLevelLabel: () => 'AT',
 }));
 
@@ -120,7 +115,7 @@ const mockGetChart = jest.fn(async (...args: unknown[]) => ({
   file: 'https://phira.example/chart.zip',
 }));
 let mockZipBuffer: ArrayBuffer = new Uint8Array([1, 2, 3]).buffer;
-jest.mock('@/providers/phira-provider', () => ({
+jest.mock('@rranker/provider-phira-community/providers/phira-provider', () => ({
   phiraProvider: {
     getChart: (...args: unknown[]) => mockGetChart(...args),
     downloadChart: () => Promise.resolve(mockZipBuffer),
@@ -150,12 +145,7 @@ describe('PhigrosChartPreviewScreen', () => {
   beforeEach(() => {
     latestScreenOptions = undefined;
     hardwareBackHandler = undefined;
-    mockRouteParams = {
-      game: 'phigros',
-      songId: 'DistortedFate.Sakuzyo',
-      levelIndex: '3',
-      title: 'Distorted Fate AT',
-    };
+    mockRouteParams = { gameId: 'phigros', songId: 'DistortedFate.Sakuzyo', levelIndex: String('3'), title: 'Distorted Fate AT' };
     mockInjectJavaScript.mockClear();
     mockSaveSettings.mockClear();
     mockPrepare.mockClear();
@@ -202,9 +192,7 @@ describe('PhigrosChartPreviewScreen', () => {
 
   it('从短令牌完整接收 Phigros 问题歌曲，不依赖原始查询参数', async () => {
     const songId = '祈-我ら神祖と共に歩む者なり-.光吉猛修VS穴山大輔VSKaiVS水野健治VS大国奏音';
-    const href = stageChartPreviewNavigation({
-      game: 'phigros', songId, levelIndex: 3, title: '祈-我ら神祖と共に歩む者なり- AT',
-    });
+    const href = stagePluginPage(gamePageHref('phigros', 'chart-preview')!, { game: 'phigros', songId: songId, levelIndex: 3, title: '祈-我ら神祖と共に歩む者なり- AT' });
     mockRouteParams = { requestId: href.params.requestId };
 
     await render(<PhigrosChartPreviewScreen />);
@@ -218,7 +206,7 @@ describe('PhigrosChartPreviewScreen', () => {
 
   it('phira 参数经 ZIP 解包后注入谱面文本与本地音乐 URI', async () => {
     mockZipBuffer = await buildPhiraZip();
-    mockRouteParams = { game: 'phira', chartId: '38294', title: '测试谱面' };
+    mockRouteParams = { gameId: 'phira', chartId: '38294', title: '测试谱面' };
     await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
 
@@ -234,7 +222,7 @@ describe('PhigrosChartPreviewScreen', () => {
   it('Phira 元数据等待包含在共享准备期限内，超时取消后可以重新加载', async () => {
     mockZipBuffer = await buildPhiraZip();
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
-    mockRouteParams = { game: 'phira', chartId: '38294' };
+    mockRouteParams = { gameId: 'phira', chartId: '38294' };
     let metadataSignal: AbortSignal | undefined;
     mockGetChart.mockImplementationOnce((...args: unknown[]) => {
       metadataSignal = args[1] as AbortSignal;
@@ -267,7 +255,7 @@ describe('PhigrosChartPreviewScreen', () => {
   });
 
   it('离开 Phira 元数据等待页会取消请求，迟到结果不能开始准备播放器', async () => {
-    mockRouteParams = { game: 'phira', chartId: '38294' };
+    mockRouteParams = { gameId: 'phira', chartId: '38294' };
     let metadataSignal: AbortSignal | undefined;
     let finishMetadata: ((value: Awaited<ReturnType<typeof mockGetChart>>) => void) | undefined;
     mockGetChart.mockImplementationOnce((...args: unknown[]) => {
@@ -296,7 +284,7 @@ describe('PhigrosChartPreviewScreen', () => {
       uploader: 1, tags: [], rating: null, ratingCount: 0,
       created: null, updated: null, chartUpdated: null,
     };
-    const href = stageChartPreviewNavigation({ game: 'phira', chart });
+    const href = stagePluginPage(gamePageHref('phira', 'chart-preview')!, { game: 'phira', chart });
     mockRouteParams = { requestId: href.params.requestId };
 
     await render(<PhigrosChartPreviewScreen />);
@@ -317,7 +305,7 @@ describe('PhigrosChartPreviewScreen', () => {
 
   it('phira RPE 谱面：文本资源注入、其余资源落盘 rpe/{chartId}/', async () => {
     mockZipBuffer = await buildPhiraRpeZip();
-    mockRouteParams = { game: 'phira', chartId: '38294', title: '测试 RPE' };
+    mockRouteParams = { gameId: 'phira', chartId: '38294', title: '测试 RPE' };
     await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { findArchiveEntry, listOsbSources, normalizeArchivePath, resolveArchivePath } from '../../src/features/osu-chart-preview/webview-player/osu-text';
+import { findArchiveEntry, listOsbSources, normalizeArchivePath, resolveArchivePath } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/osu-text';
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 

@@ -1,24 +1,25 @@
 import { crc32 } from 'node:zlib';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
-import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
-import { buildPhiraChartPreviewInput, RPE_CHART_TEXT_LIMIT } from '@/features/phira-chart-preview/chart-preview-input';
-import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
+import { getDataSource, setDisabledPlugins } from '@rranker/sdk/registry';
+import { buildPhigrosChartPreviewInput } from '@rranker/tool-chart-json/features/phigros-chart-preview/chart-preview-input';
+import { buildPhiraChartPreviewInput, RPE_CHART_TEXT_LIMIT } from '@rranker/tool-chart-json/features/phira-chart-preview/chart-preview-input';
+import { loadPhigrosChartPreviewResources } from '@rranker/game-phigros/services/phigros-chart-preview-resources';
 
-vi.mock('@/services/phigros-chart-preview-resources', () => ({
+vi.mock('@rranker/game-phigros/services/phigros-chart-preview-resources', () => ({
   loadPhigrosChartPreviewResources: vi.fn(),
 }));
 
-vi.mock('@/providers/phira-provider', () => ({
-  phiraProvider: {
+vi.mock('@rranker/sdk/registry', async () => {
+  const actual = await vi.importActual<typeof import('@rranker/sdk/registry')>('@rranker/sdk/registry');
+  return { ...actual, resolveGameResources: (gameId: string) => actual.getGameResourceSource(gameId) ? {
     getChart: async () => ({
-      id: 38294,
-      name: '测试谱面',
-      illustration: null,
-      file: 'https://phira.example/chart.zip',
+      id: 38294, name: '测试谱面', illustration: null, file: 'https://phira.example/chart.zip',
     }),
-  },
-}));
+  } : undefined };
+});
+
+afterEach(() => setDisabledPlugins([]));
 
 const loadResources = vi.mocked(loadPhigrosChartPreviewResources);
 
@@ -91,6 +92,15 @@ describe('chart preview input resource injection', () => {
     expect(prepared.config.previewDifficulty).toMatchObject({ label: 'AT', value: '16.4', identity: '里谱 1' });
     expect(prepared.config.illustrationUrl).toBe('data:image/png;base64,BAU=');
     expect(prepared.musicDataBase64).toBe(Buffer.from([1, 2, 3]).toString('base64'));
+  });
+
+  it('rejects a Phira resource lookup when the source is disabled before downloading', async () => {
+    setDisabledPlugins([getDataSource('phira-community')!.id]);
+    const downloadChart = vi.fn(async () => new ArrayBuffer(0));
+    await expect(buildPhiraChartPreviewInput({ chartId: 38294 }, {}, new AbortController().signal, {
+      downloadChart, stageMusic: vi.fn(), stageRpeBundle: vi.fn(),
+    })).rejects.toThrow('谱面来源暂不可用');
+    expect(downloadChart).not.toHaveBeenCalled();
   });
 
   it('prepares a downloaded Phira chart and stages its music', async () => {

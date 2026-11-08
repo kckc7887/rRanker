@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BestImageStylePreferencesStore,
   parseBestImageStylePreferences,
-} from '@/features/best-image/best-image-style-preferences';
+} from '@rranker/tool-maimai/features/best-image/best-image-style-preferences';
 
 class MemoryStore {
   values = new Map<string, string>();

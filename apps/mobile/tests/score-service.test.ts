@@ -1,10 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
-import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/sanitized';
+import { fixtureCatalog, fixturePlayer, fixtureRecords } from './fixtures/sanitized';
 import { FixtureCatalogProvider, FixtureProvider } from './fixture-provider';
-let ProviderError: typeof import('@/providers/errors')['ProviderError'];
-let ScoreService: typeof import('@/services/score-service')['ScoreService'];
-let buildScoreSnapshot: typeof import('@/services/score-service')['buildScoreSnapshot'];
-let repository: InstanceType<typeof import('@/storage/sqlite-snapshot-repository')['SqliteSnapshotRepository']>;
+let ProviderError: typeof import('@rranker/sdk/providers/errors')['ProviderError'];
+let ScoreService: typeof import('@rranker/game-maimai/services/score-service')['ScoreService'];
+let buildScoreSnapshot: typeof import('@rranker/game-maimai/services/score-service')['buildScoreSnapshot'];
+let repository: InstanceType<typeof import('@rranker/game-maimai/storage/score-repository')['SqliteSnapshotRepository']>;
 let database: DatabaseSync;
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
   execAsync: async (sql: string) => database.exec(sql),
@@ -13,10 +13,10 @@ vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
 }) }));
 beforeEach(async () => {
   database = new DatabaseSync(':memory:'); vi.resetModules();
-  ({ ProviderError } = await import('@/providers/errors'));
-  ({ ScoreService, buildScoreSnapshot } = await import('@/services/score-service'));
-  const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
-  repository = new SqliteSnapshotRepository();
+  ({ ProviderError } = await import('@rranker/sdk/providers/errors'));
+  ({ ScoreService, buildScoreSnapshot } = await import('@rranker/game-maimai/services/score-service'));
+  const { ScoreRepository } = await import('@rranker/game-maimai/storage/score-repository');
+  repository = new ScoreRepository();
 });
 afterEach(() => database.close());
 

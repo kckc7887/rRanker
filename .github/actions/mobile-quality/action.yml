@@ -9,6 +9,7 @@ runs:
         cache: npm
         cache-dependency-path: package-lock.json
     - name: Install dependencies
+      id: install
       shell: bash
       working-directory: .
       run: npm ci --no-audit --no-fund
@@ -17,21 +18,55 @@ runs:
       working-directory: apps/mobile
       run: npm run lint
     - name: Typecheck
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       shell: bash
       working-directory: apps/mobile
       run: npm run typecheck
-    - name: Unit and UI tests
+    - name: External plugin packages
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      shell: bash
+      working-directory: .
+      run: npm run check:packages
+    - name: Unit tests
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       shell: bash
       working-directory: apps/mobile
-      run: npm test
+      run: npm run test:unit
+    - name: UI tests
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      shell: bash
+      working-directory: apps/mobile
+      run: npm run test:ui
     - name: Generated player consistency
+      id: generated
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       shell: bash
       working-directory: apps/mobile
       run: npm run check:generated
     - name: CI script behavior tests
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       shell: bash
       working-directory: .
       run: |
         node --test .github/scripts/*.test.mjs
         python3 -B .github/scripts/verify-ios-archive.test.py
         python3 -B .github/scripts/android_signing.test.py
+    - name: Generate player artifacts
+      if: ${{ !cancelled() && steps.generated.outcome == 'failure' }}
+      shell: bash
+      working-directory: apps/mobile
+      run: |
+        npm run build:chart-preview
+        npm run build:phigros-chart-preview
+        npm run build:osu-chart-preview
+        npm run build:rizline-chart-preview
+    - name: Upload player artifacts
+      if: ${{ !cancelled() && steps.generated.outcome == 'failure' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: player-assets-${{ github.sha }}
+        path: |
+          plugins/shared/chart-simai/src/assets
+          plugins/shared/chart-json/src/assets
+          plugins/shared/chart-osu/src/assets
+        if-no-files-found: error

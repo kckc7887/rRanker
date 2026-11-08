@@ -2,8 +2,8 @@ import {
   ChunithmRandomChartsPreferencesStore,
   defaultChunithmRandomChartsPreferences,
   parseChunithmRandomChartsPreferences,
-} from '@/features/toolbox/chunithm-random-charts-preferences';
-import { createChunithmRandomChartsFilterStore } from '@/state/chunithm-random-charts-filter';
+} from '@rranker/tool-chunithm/features/chunithm-random-charts-preferences';
+import { createChunithmRandomChartsFilterStore } from '@rranker/tool-chunithm/state/chunithm-random-charts-filter';
 
 class MemoryStore {
   values = new Map<string, string>();

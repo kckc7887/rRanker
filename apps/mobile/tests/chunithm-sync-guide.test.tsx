@@ -7,7 +7,7 @@ import {
   CHUNITHM_PROXY_PORT,
   CHUNITHM_PROXY_SERVER,
   ChunithmSyncGuideSheet,
-} from '@/components/chunithm/ChunithmSyncGuideSheet';
+} from '@rranker/tool-chunithm/components/ChunithmSyncGuideSheet';
 
 const mockSetStringAsync = jest.fn(async (_value: string) => undefined);
 const mockShowNotification = jest.fn();
@@ -19,7 +19,7 @@ jest.mock('expo-clipboard', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
-jest.mock('@/components/AppModal', () => ({
+jest.mock('@rranker/sdk/components/AppModal', () => ({
   AppModal: ({
     visible,
     children,
@@ -37,14 +37,14 @@ jest.mock('@/components/AppModal', () => ({
     ) : null;
   },
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification }),
 }));
-jest.mock('@/domain/chunithm-maintenance', () => ({
+jest.mock('@rranker/game-chunithm/domain/chunithm-maintenance', () => ({
   CHUNITHM_MAINTENANCE_MESSAGE: '维护窗口说明',
   isChunithmMaintenanceWindow: () => mockMaintenance,
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     accent: '#246BFD',
     background: '#F7F8FA',

@@ -1,12 +1,12 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { RizlineFilterBar } from '@/components/rizline/RizlineFilterBar';
-import { useRizlineCatalogFilter } from '@/state/rizline-catalog-filter';
-import { createAppTheme } from '@/theme/theme-tokens';
+import { RizlineFilterBar } from '@rranker/game-rizline/components/RizlineFilterBar';
+import { useRizlineCatalogFilter } from '@rranker/game-rizline/state/rizline-catalog-filter';
+import { createAppTheme } from '@rranker/sdk/theme/theme-tokens';
 
 let mockTheme = createAppTheme('light', '#246BFD');
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
 jest.mock('react-native-gesture-handler', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };

@@ -1,4 +1,5 @@
-import { buildChartPreviewInjectedJavaScript } from '@/features/simai-chart-preview/chart-preview-inject';
+import { setDisabledPlugins } from '@rranker/sdk';
+import { buildChartPreviewInjectedJavaScript } from '@rranker/chart-simai/features/simai-chart-preview/chart-preview-inject';
 import { runInNewContext } from 'node:vm';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { BackHandler } from 'react-native';
@@ -8,15 +9,15 @@ import {
   type ChartPreviewScreenShellProps,
   type ChartPreviewShellRequest,
   type ChartPreviewShellSource,
-} from '@/features/chart-preview-shared/chart-preview-screen-shell';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
-import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
-import { ProviderError } from '@/providers/errors';
-import type { ActionNotificationInput } from '@/components/AppNotification';
+} from '@rranker/sdk/features/chart-preview-shared/chart-preview-screen-shell';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
+import { installRuntimeLogRecorder } from '@rranker/sdk/services/runtime-diagnostics-recorder';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import type { ActionNotificationInput } from '@rranker/sdk/components/AppNotification';
 
 const mockShowSettingsNotification = jest.fn<(input: ActionNotificationInput) => number>(() => 1);
 const mockDismissSettingsNotification = jest.fn();
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({
   showActionNotification: mockShowSettingsNotification, dismissNotification: mockDismissSettingsNotification,
 }) }));
 
@@ -25,7 +26,7 @@ let mockLifecycle: AppLifecycleSnapshot = {
   foregroundGeneration: 1, memoryWarningGeneration: 0,
 };
 
-jest.mock('@/state/app-lifecycle', () => ({
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
   useAppLifecycle: () => mockLifecycle,
 }));
 
@@ -71,7 +72,7 @@ jest.mock('expo-sqlite/kv-store', () => ({
   },
 }));
 
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     dark: true,
     statusBar: 'light',
@@ -92,7 +93,7 @@ jest.mock('expo-status-bar', () => {
   };
 });
 
-type MaimaiPayload = import('@/features/simai-chart-preview/chart-preview-inject').ChartPreviewInjectConfig;
+type MaimaiPayload = import('@rranker/chart-simai/features/simai-chart-preview/chart-preview-inject').ChartPreviewInjectConfig;
 
 const maimaiSettingsKey = 'maimai-chart-preview-settings';
 const maimaiTestID = 'maimai-chart-preview-webview';
@@ -113,6 +114,7 @@ async function renderMaimaiShell(request: ChartPreviewShellRequest<MaimaiPayload
 function MaimaiShell({ request, options }: { request: ChartPreviewShellRequest<MaimaiPayload>; options?: MaimaiShellOptions }) {
   return (
     <ChartPreviewScreenShell<MaimaiPayload>
+      pluginId="tool.simai" gameId="maimai"
       request={request}
       settingsKey={maimaiSettingsKey}
       testID={maimaiTestID}
@@ -201,6 +203,25 @@ describe('ChartPreviewScreenShell 交互', () => {
     expect(operations().some((fields) => fields.phase === 'load-error')).toBe(false);
     expect(operations().some((fields) => fields.phase === 'terminated')).toBe(true);
     expect(JSON.stringify(operations())).not.toContain('secret');
+  });
+
+  it('停用工具立即取消准备并释放迟到结果', async () => {
+    let resolve!: (source: ChartPreviewShellSource) => void;
+    const pending: { signal?: AbortSignal } = {};
+    const dispose = jest.fn<() => void>();
+    await renderMaimaiShell({ kind: 'ready', payload: { chartId: 834, difficulty: 4 },
+      prepare: signal => { pending.signal = signal; return new Promise(done => { resolve = done; }); },
+    });
+    try {
+      await waitFor(() => expect(pending.signal).toBeDefined());
+      await act(() => setDisabledPlugins(['tool.simai']));
+      expect(pending.signal?.aborted).toBe(true);
+      await act(() => resolve({ ...maimaiSource, dispose }));
+      expect(dispose).toHaveBeenCalled();
+      expect(screen.queryByTestId(maimaiTestID)).toBeNull();
+    } finally {
+      await act(() => setDisabledPlugins([]));
+    }
   });
 
   it('后台取消只记录一次，迟到的准备结果不会记录成功', async () => {

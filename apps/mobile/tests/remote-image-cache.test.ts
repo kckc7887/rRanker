@@ -107,10 +107,10 @@ vi.mock('expo-image-manipulator', () => ({
   ImageManipulator: { manipulate: mocks.manipulate },
 }));
 
-let cache: typeof import('@/services/remote-image-cache');
+let cache: typeof import('@rranker/sdk/services/remote-image-cache');
 async function reloadCache() {
   vi.resetModules();
-  cache = await import('@/services/remote-image-cache');
+  cache = await import('@rranker/sdk/services/remote-image-cache');
 }
 
 describe('remote image cache', () => {

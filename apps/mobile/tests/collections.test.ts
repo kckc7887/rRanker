@@ -1,5 +1,5 @@
-import { collectionsForSong, isSongExclusiveCollection } from '@/domain/collections';
-import type { CollectionItem } from '@/domain/models';
+import { collectionsForSong, isSongExclusiveCollection } from '@rranker/game-maimai/domain/collections';
+import type { CollectionItem } from '@rranker/game-maimai/domain/models';
 
 function item(
   partial: Partial<CollectionItem> & Pick<CollectionItem, 'id' | 'kind' | 'name' | 'requirements'>,

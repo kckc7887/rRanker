@@ -2,12 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { afterEach, jest } from '@jest/globals';
-import { normalizeOsuBeatmapsetDetail, type OsuBeatmapsetLookupRaw, type OsuBestScore, type OsuBestScoreRaw } from '@/domain/osu';
-import { useOsuBeatmapsetUserScores } from '@/hooks/use-osu-known-scores';
-import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
-import { queryClient as publishedQueryClient } from '@/state/query-client';
-import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
-import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
+import { normalizeOsuBeatmapsetDetail, type OsuBeatmapsetLookupRaw, type OsuBestScore, type OsuBestScoreRaw } from '@rranker/game-osu/domain/osu';
+import { useOsuBeatmapsetUserScores } from '@rranker/game-osu/hooks/use-osu-known-scores';
+import { useOsuBeatmapsetDetail } from '@rranker/game-osu/hooks/use-osu-beatmapset-detail';
+import { queryClient as publishedQueryClient } from '@rranker/sdk/state/query-client';
+import { useOsuBeatmapsetsByIds } from '@rranker/game-osu/hooks/use-osu-beatmapsets-by-ids';
+import { useOsuCatalogSearch } from '@rranker/game-osu/hooks/use-osu-catalog';
 
 const mockGetBeatmapset = jest.fn<(id: string, signal: AbortSignal) => Promise<OsuBeatmapsetLookupRaw>>();
 const mockGetUserScore = jest.fn<(user: number, beatmap: number, game: string, signal: AbortSignal) => Promise<OsuBestScoreRaw | null>>();
@@ -17,7 +17,8 @@ const mockPublicSearch = jest.fn(async (params: { gameId: Parameters<typeof norm
   songs: [normalizeOsuBeatmapsetDetail(rawBeatmapset(3720 + params.page), params.gameId)],
   nextPage: params.page === 0 ? 1 : undefined,
 }));
-jest.mock('@/providers/osu-public-catalog-provider', () => ({ OsuPublicCatalogProvider: class {
+const mockSourceClients = new Map<string, unknown>();
+jest.mock('@rranker/provider-osu/providers/osu-public-catalog-provider', () => ({ OsuPublicCatalogProvider: class {
   getBeatmapset(id: string, gameId: Parameters<typeof normalizeOsuBeatmapsetDetail>[1]) { return mockGetPublicBeatmapset(id, gameId); }
   searchBeatmapsets(params: { gameId: Parameters<typeof normalizeOsuBeatmapsetDetail>[1]; page: number; q?: string }) { return mockPublicSearch(params); }
 } }));
@@ -25,29 +26,45 @@ const mockMergeKnownScores = jest.fn(async (_game: string, _user: number, scores
   items: Object.fromEntries(scores.map(score => [String(score.beatmap.id), score])),
   source: { kind: 'osu', label: 'osu.ppy.sh', updatedAt: '2026-09-30T00:00:00Z', isStale: false },
 }));
-jest.mock('@/services/osu-cache', () => ({ OsuCache: class {
+jest.mock('@rranker/provider-osu/services/osu-cache', () => ({ OsuCache: class {
   mergeKnownScores(game: string, user: number, scores: readonly OsuBestScore[]) { return mockMergeKnownScores(game, user, scores); }
   loadKnownScores() { return Promise.resolve(null); }
 } }));
 let mockProviderId: string | null = 'osu';
-let mockSession: Record<string, unknown> | null = { mode: 'osu-oauth' };
+let mockSession: Record<string, unknown> | null = { mode: 'osu-oauth', accessToken: 'test', refreshToken: 'test', expiresAt: Number.MAX_SAFE_INTEGER, persistable: true };
 let mockTabActive = true;
 
-jest.mock('@/providers/osu-score-provider', () => ({
+jest.mock('@rranker/provider-osu/providers/osu-score-provider', () => ({
   OsuScoreProvider: class {
     getBeatmapset(id: string, signal: AbortSignal) { return mockGetBeatmapset(id, signal); }
     getUserBeatmapScore(user: number, beatmap: number, game: string, signal: AbortSignal) { return mockGetUserScore(user, beatmap, game, signal); }
   },
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   applyOsuTokenRotation: jest.fn(),
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
+    get sourceClient() { return jest.requireMock<typeof import('@rranker/sdk/state/session-provider-resolver')>('@rranker/sdk/state/session-provider-resolver').resolveAccountClient('test'); },
     session: mockSession,
     activeProviderId: mockProviderId,
     activeAccountId: 'osu-standard:osu:2',
   }),
 }));
-jest.mock('@/components/CachedTabScreen', () => ({
+jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
+  resolveAccountClient: () => {
+    const key = mockProviderId + ':' + JSON.stringify(mockSession);
+    if (mockSourceClients.has(key)) return mockSourceClients.get(key);
+    const value = (() => {
+    if (!mockProviderId) return undefined;
+    const context = { account: { id: 'osu-standard:osu:2', gameId: 'osu-standard', providerId: mockProviderId, displayName: 'peppy' }, credential: mockSession, assertCurrent() {}, commitCredential: async () => 'applied' } as import('@rranker/sdk/credentials').SourceClientContext;
+    return mockProviderId === 'osu-test'
+      ? jest.requireActual<typeof import('@rranker/provider-osu-test/client')>('@rranker/provider-osu-test/client').createClient(context)
+      : jest.requireActual<typeof import('@rranker/provider-osu/client')>('@rranker/provider-osu/client').createClient(context);
+  })();
+    mockSourceClients.set(key, value);
+    return value;
+  },
+}));
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
   useCachedTabActive: () => mockTabActive,
 }));
 
@@ -80,7 +97,7 @@ describe('useOsuBeatmapsetsByIds', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockProviderId = 'osu';
-    mockSession = { mode: 'osu-oauth' };
+    mockSession = { mode: 'osu-oauth', accessToken: 'test', refreshToken: 'test', expiresAt: Number.MAX_SAFE_INTEGER, persistable: true };
     mockTabActive = true;
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
     mockGetBeatmapset.mockImplementation(async (id) => rawBeatmapset(Number(id)));
@@ -191,7 +208,7 @@ describe('useOsuBeatmapsetsByIds', () => {
 
   it('复用单曲详情 query key 与 60 秒新鲜缓存', async () => {
     queryClient.setQueryData(
-      ['osu-beatmapset-detail', 'osu-standard', 2, '3720'],
+      ['osu-beatmapset-detail', 'osu-standard', 'osu-standard:osu:2', '3720'],
       {
         beatmapSetId: 3720,
         title: '详情页缓存',
@@ -248,7 +265,7 @@ function scoreSong() {
 describe('osu detail score batch', () => {
   let client: QueryClient;
   beforeEach(() => {
-    jest.clearAllMocks(); mockProviderId = 'osu'; mockSession = { mode: 'osu-oauth' };
+    jest.clearAllMocks(); mockProviderId = 'osu'; mockSession = { mode: 'osu-oauth', accessToken: 'test', refreshToken: 'test', expiresAt: Number.MAX_SAFE_INTEGER, persistable: true };
     mockTabActive = true;
     client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   });

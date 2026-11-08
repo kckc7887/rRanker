@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createPreferencesWriteCoordinator } from '@/services/preferences-write-coordinator';
+import { createPreferencesWriteCoordinator } from '@rranker/sdk/services/preferences-write-coordinator';
 
 const disposals: (() => void)[] = [];
 afterEach(() => { disposals.splice(0).forEach((dispose) => dispose()); vi.useRealTimers(); });

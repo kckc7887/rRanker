@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeActiveWheelPopup, setupWheelPopup } from '@/features/chart-preview-shared/webview-player/wheel';
+import { closeActiveWheelPopup, setupWheelPopup } from '@rranker/sdk/features/chart-preview-shared/webview-player/wheel';
 
 let frameId = 0;
 const frames = new Map<number, FrameRequestCallback>();

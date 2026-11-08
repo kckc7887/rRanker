@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { defaultRizlineFilters, filterRizlineSongs, matchesRizlineChart, rizlinePackOptions } from '@/domain/rizline-filters';
-import { presentRizlineChart, presentRizlineScore, presentRizlineSong } from '@/features/game-content/adapters/rizline';
-import { defaultRizlineRandomChartsPreferences, parseRizlineRandomChartsPreferences, RizlineRandomChartsPreferencesStore } from '@/features/toolbox/rizline-random-charts-preferences';
+import { defaultRizlineFilters, filterRizlineSongs, matchesRizlineChart, rizlinePackOptions } from '@rranker/game-rizline/domain/rizline-filters';
+import { presentRizlineChart, presentRizlineScore, presentRizlineSong } from '@rranker/game-rizline/presentation';
+import { defaultRizlineRandomChartsPreferences, parseRizlineRandomChartsPreferences, RizlineRandomChartsPreferencesStore } from '@rranker/tool-rizline/features/rizline-random-charts-preferences';
 import { rizlineChart, rizlineRecord, rizlineSong } from './rizline-ui-fixtures';
 
 describe('Rizline catalog and presentation', () => {

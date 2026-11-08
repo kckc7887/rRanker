@@ -3,13 +3,13 @@ import {
   dxRatingChartHasAllTags,
   dxRatingTagsForChart,
   type DxRatingChartTagsSnapshot,
-} from '@/domain/dxrating-chart-tags';
-import type { Chart, Song } from '@/domain/models';
+} from '@rranker/game-maimai/domain/dxrating-chart-tags';
+import type { Chart, Song } from '@rranker/game-maimai/domain/models';
 import {
   DxRatingChartTagsProvider,
   mapDxRatingChartTags,
-} from '@/providers/dxrating-chart-tags-provider';
-import { ProviderError } from '@/providers/errors';
+} from '@rranker/game-maimai/providers/dxrating-chart-tags-provider';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
 const responsePayload = {
   tagGroups: [

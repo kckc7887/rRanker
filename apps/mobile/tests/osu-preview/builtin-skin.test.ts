@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import { createBuiltinSkin, disposeBuiltinSkins } from '../../src/features/osu-chart-preview/webview-player/builtin-skin';
-import { computeModDifficulty, parseBeatmap } from '../../src/features/osu-chart-preview/webview-player/engine';
-import { buildAutoReplay } from '../../src/features/osu-chart-preview/webview-player/autoplay';
-import { buildManiaLayout } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/mania/Playfield';
-import { maniaRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
-import type { RenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine/renderer/Renderer';
+import { createBuiltinSkin, disposeBuiltinSkins } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/builtin-skin';
+import { computeModDifficulty, parseBeatmap } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine';
+import { buildAutoReplay } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/autoplay';
+import { buildManiaLayout } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/mania/Playfield';
+import { maniaRuleset } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
+import type { RenderOptions } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/renderer/Renderer';
 import { fixtureOsu } from './fixtures';
 import {
   DEFAULT_MANIA_SKIN, parseManiaSkinVariant,
-} from '../../src/features/osu-chart-preview/webview-player/mania-skin';
+} from '@rranker/chart-osu/features/osu-chart-preview/webview-player/mania-skin';
 
 type Matrix = [number, number, number, number, number, number];
 type Circle = { x: number; y: number; rx: number; ry: number };

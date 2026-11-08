@@ -1,10 +1,10 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Image } from 'react-native';
-import { RizlineBestImageScreen } from '@/screens/RizlineBestImageScreen';
+import { RizlineBestImageScreen } from '@rranker/tool-rizline/screens/RizlineBestImageScreen';
 import { rizlineCatalog, rizlineSave } from './fixtures/rizline';
-import { buildRizlineRecords, selectRizlineBest } from '@/domain/rizline';
-import { DEFAULT_RIZLINE_IMAGE_PREFERENCES as mockDefaults } from '@/features/rizline-best-image/rizline-best-image-preferences';
+import { buildRizlineRecords, selectRizlineBest } from '@rranker/game-rizline/domain/rizline';
+import { DEFAULT_RIZLINE_IMAGE_PREFERENCES as mockDefaults } from '@rranker/tool-rizline/features/rizline-best-image/rizline-best-image-preferences';
 const mockFiles = new Map<string, string>();
 const mockShowNotification = jest.fn();
 const mockCrop = jest.fn();
@@ -17,14 +17,14 @@ const mockBest = selectRizlineBest(mockRecords);
 let mockAccount = 'rizline:one';
 const mockPersist = jest.fn(async (_id: string, _value: unknown) => undefined);
 const mockData = { payload: { kind: 'rizline', player: mockSave, records: mockRecords, best: mockBest, source: { label: '测试来源' } } };
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ activeAccountId: mockAccount, data: mockData }) }));
-jest.mock('@/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => ({ data: { snapshot: mockCatalog } }) }));
-jest.mock('@/features/rizline-best-image/rizline-best-image-preferences', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({ activeAccountId: mockAccount, data: mockData }) }));
+jest.mock('@rranker/game-rizline/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => ({ data: { snapshot: mockCatalog } }) }));
+jest.mock('@rranker/tool-rizline/features/rizline-best-image/rizline-best-image-preferences', () => ({
   DEFAULT_RIZLINE_IMAGE_PREFERENCES: { avatar: { mode: 'current' }, namecard: { mode: 'current' }, signature1: { mode: 'current' }, signature2: { mode: 'current' }, background: { mode: 'current' } },
   rizlineImagePreferencesStore: { load: async () => mockDefaults, save: (id: string, value: unknown) => mockPersist(id, value) },
 }));
-jest.mock('@/features/best-image/load-best-image-session', () => {
-  const actual = jest.requireActual<typeof import('@/features/best-image/load-best-image-session')>('@/features/best-image/load-best-image-session');
+jest.mock('@rranker/sdk/features/best-image/load-best-image-session', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/features/best-image/load-best-image-session')>('@rranker/sdk/features/best-image/load-best-image-session');
   const load = async (_session: unknown, url: string | null) => { if (url) mockFiles.set(url, 'image'); return url; };
   return { ...actual, loadRemoteImageFile: load, loadImageFiles: async (session: unknown, ids: string[], url: (id: string) => string | null) => Object.fromEntries(await Promise.all(ids.map(async id => [id, await load(session, url(id))]))) };
 });
@@ -33,14 +33,14 @@ jest.mock('expo-image-manipulator', () => ({ SaveFormat: { PNG: 'png' }, ImageMa
     mockFiles.set('file:///crop.png', 'cropped image'); return { uri: 'file:///crop.png' };
   } }),
 }) } }));
-jest.mock('@/features/rizline-best-image/rizline-ui-cache', () => ({ prepareRizlineUi: async () => {
+jest.mock('@rranker/tool-rizline/features/rizline-best-image/rizline-ui-cache', () => ({ prepareRizlineUi: async () => {
   const files = ['card/IN.svg', 'card/mask.svg', 'artwork/clear-mask.svg', 'artwork/soft-mask.svg', 'artwork/glow-mask.svg', 'header/base.svg', 'header/mask.svg', 'header/avatar-mask.svg', 'header/avatar-frame.svg', 'header/RKS.svg'];
   for (const file of files) mockFiles.set(`file:///ui/${file}`, '<svg xmlns="http://www.w3.org/2000/svg"/>');
   return { directory: { uri: 'file:///ui' }, files, fullReady: Promise.resolve() };
 } }));
-jest.mock('@/components/AppNotification', () => {
+jest.mock('@rranker/sdk/components/AppNotification', () => {
   const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
-  return { ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+  return { ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 
 jest.mock('expo-asset', () => {
@@ -62,14 +62,14 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
-jest.mock('@/features/best-image/best-image-export', () => ({
-  ...jest.requireActual<typeof import('@/features/best-image/best-image-export')>('@/features/best-image/best-image-export'),
+jest.mock('@rranker/sdk/features/best-image/best-image-export', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/features/best-image/best-image-export')>('@rranker/sdk/features/best-image/best-image-export'),
   deleteBestImageCapture: jest.fn(async () => undefined),
   requestBestImageExportPermission: jest.fn(async () => undefined),
   saveBestImageCapture: jest.fn(async () => undefined),
 }));
 
-jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => {
+jest.mock('@rranker/sdk/features/best-image/prepare-best-image-webview-sources', () => {
   let batch = 0;
   return {
     prepareBestImageWebViewSources: async (htmlPages: readonly string[]) => {
@@ -166,7 +166,7 @@ it('resolves current resource aliases and keeps random choices while changing re
   await fireEvent.press(screen.getByText('名片背景'));
   expect(screen.getByLabelText('使用玩家当前名片背景').props.accessibilityState.selected).toBe(true);
   await fireEvent.changeText(screen.getByLabelText('搜索名片背景'), 'HiRes');
-  expect(screen.getByText('Song')).toBeTruthy();
+  await screen.findByText('Song');
   await fireEvent.press(screen.getByLabelText('随机名片背景'));
   await waitFor(() => expect(mockPersist).toHaveBeenCalledWith('rizline:one', expect.objectContaining({ namecard: { mode: 'random', id: 'illustration.Song.A.0' } })));
   mockPersist.mockClear();

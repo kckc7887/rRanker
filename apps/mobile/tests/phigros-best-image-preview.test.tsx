@@ -2,15 +2,15 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { AppState, PixelRatio, Platform, type AppStateStatus } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
-import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
+import { PhigrosBestImageScreen } from '@rranker/tool-phigros/screens/PhigrosBestImageScreen';
+import { installRuntimeLogRecorder } from '@rranker/sdk/services/runtime-diagnostics-recorder';
+import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
 
 const mockShowNotification = jest.fn();
 
-jest.mock('@/components/AppNotification', () => {
+jest.mock('@rranker/sdk/components/AppNotification', () => {
   const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
-  return { ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+  return { ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 jest.mock('expo-asset', () => {
   const actual = jest.requireActual<typeof import('expo-asset')>('expo-asset');
@@ -26,8 +26,8 @@ jest.mock('react-native-webview', () => {
   return { WebView: (props: Record<string, unknown>) => React.createElement(ReactNative.View, props) };
 });
 jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn(async () => 'file:///capture.png') }));
-jest.mock('@/features/best-image/best-image-export', () => {
-  const actual = jest.requireActual<typeof import('@/features/best-image/best-image-export')>('@/features/best-image/best-image-export');
+jest.mock('@rranker/sdk/features/best-image/best-image-export', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/features/best-image/best-image-export')>('@rranker/sdk/features/best-image/best-image-export');
   return {
     ...actual,
     requestBestImageExportPermission: jest.fn(async () => undefined),
@@ -35,7 +35,7 @@ jest.mock('@/features/best-image/best-image-export', () => {
     deleteBestImageCapture: jest.fn(async () => undefined),
   };
 });
-jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => {
+jest.mock('@rranker/sdk/features/best-image/prepare-best-image-webview-sources', () => {
   let batch = 0;
   return {
     prepareBestImageWebViewSources: async (htmlPages: string[]) => {
@@ -44,12 +44,12 @@ jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => {
     },
   };
 });
-jest.mock('@/services/phigros-avatar-resolver', () => ({
+jest.mock('@rranker/game-phigros/services/phigros-avatar-resolver', () => ({
   loadPhigrosAvatarCatalog: jest.fn(async () => ['avatar.test']),
 }));
-jest.mock('@/features/best-image/load-best-image-session', () => {
-  const actual = jest.requireActual<typeof import('@/features/best-image/load-best-image-session')>(
-    '@/features/best-image/load-best-image-session',
+jest.mock('@rranker/sdk/features/best-image/load-best-image-session', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/features/best-image/load-best-image-session')>(
+    '@rranker/sdk/features/best-image/load-best-image-session',
   );
   return {
     ...actual,
@@ -57,11 +57,11 @@ jest.mock('@/features/best-image/load-best-image-session', () => {
     loadRemoteImageFile: jest.fn(async () => 'file:///session/style'),
   };
 });
-jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/load-phigros-acc-averages', () => ({
   loadPhigrosAccAverages: jest.fn(async () => ({})),
   phigrosAccAverageKey: (record: { songId: string; levelIndex: number }) => `${record.songId}:${record.levelIndex}`,
 }));
-jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache', () => ({
   PHIGROS_FONT_MANIFEST: [
     { name: 'phi', cssFileName: 'phi.ttf', core: true },
     { name: 'Aldrich-Regular', cssFileName: 'Aldrich-Regular.ttf', core: true },
@@ -69,11 +69,11 @@ jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
   ],
   preparePhigrosFonts: jest.fn(),
 }));
-jest.mock('@/features/phigros-best-image/phigros-ui-cache', () => ({
-  ...jest.requireActual<typeof import('@/features/phigros-best-image/phigros-ui-cache')>('@/features/phigros-best-image/phigros-ui-cache'),
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache', () => ({
+  ...jest.requireActual<typeof import('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache')>('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache'),
   preparePhigrosUi: jest.fn(async () => ({ directory: { uri: 'file:///ui/' }, fullReady: Promise.resolve(), files: [] })),
 }));
-jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
   loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
     css: '@font-face{font-family:"PHI";src:url("./font/phi.ttf")} .song{width:360px}.Rating img{width:100%}',
     dataIconUrl: 'file:///session/data', fallbackBackgroundUrl: 'file:///session/background', fallbackAvatarUrl: 'file:///session/avatar',
@@ -82,13 +82,13 @@ jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets'
     allowingReadAccessToUrl: 'file:///reference/',
   })),
 }));
-jest.mock('@/features/phigros-best-image/phigros-best-image-preferences', () => ({
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-best-image-preferences', () => ({
   phigrosBestImagePreferencesStore: {
     load: jest.fn(async () => ({ version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0 })),
     save: jest.fn(async () => undefined),
   },
 }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: (() => {
     const result = { data: {
       provider: {
@@ -103,7 +103,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
     return () => result;
   })(),
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: (() => {
     const result = {
     activeAccountId: 'phigros:test',
@@ -139,7 +139,7 @@ describe('Phigros 生成图片页', () => {
     const gameData = jest.requireMock<{ useGameData: () => {
       activeAccountId: string;
       data: { providerId: string; payload: { source: { label: string } } };
-    } }>('@/hooks/use-game-data');
+    } }>('@rranker/sdk/hooks/use-game-data');
     const current = gameData.useGameData();
     jest.spyOn(gameData, 'useGameData').mockReturnValue({
       ...current, activeAccountId: accountId,
@@ -158,7 +158,7 @@ describe('Phigros 生成图片页', () => {
     expect(JSON.stringify(ready)).not.toContain('secret');
   });
   beforeEach(() => {
-    const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
+    const { preparePhigrosFonts } = jest.requireMock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     preparePhigrosFonts.mockReset().mockImplementation(async (...args: unknown[]) => {
       const onProgress = args[0] as ((value: Record<string, unknown>) => void) | undefined;
       const options = args[1] as { neededNames?: string[] } | undefined;
@@ -172,8 +172,8 @@ describe('Phigros 生成图片页', () => {
   });
 
   it('恢复应用风格时不请求均值，并把切换结果保存到当前账号', async () => {
-    const { phigrosBestImagePreferencesStore: prefs } = jest.requireMock<typeof import('@/features/phigros-best-image/phigros-best-image-preferences')>('@/features/phigros-best-image/phigros-best-image-preferences');
-    const { loadPhigrosAccAverages } = jest.requireMock('@/features/phigros-best-image/load-phigros-acc-averages') as { loadPhigrosAccAverages: jest.Mock };
+    const { phigrosBestImagePreferencesStore: prefs } = jest.requireMock<typeof import('@rranker/tool-phigros/features/phigros-best-image/phigros-best-image-preferences')>('@rranker/tool-phigros/features/phigros-best-image/phigros-best-image-preferences');
+    const { loadPhigrosAccAverages } = jest.requireMock('@rranker/tool-phigros/features/phigros-best-image/load-phigros-acc-averages') as { loadPhigrosAccAverages: jest.Mock };
     loadPhigrosAccAverages.mockClear();
     jest.mocked(prefs.load).mockResolvedValueOnce({ version: 2, ratingStyle: 'app', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0 });
     const screen = await render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><PhigrosBestImageScreen /></SafeAreaProvider>);
@@ -187,9 +187,9 @@ describe('Phigros 生成图片页', () => {
   });
 
   it('快速切换样式后忽略迟到的下载，切换账号恢复各自选择', async () => {
-    const { preparePhigrosUi } = jest.requireMock('@/features/phigros-best-image/phigros-ui-cache') as { preparePhigrosUi: jest.Mock };
-    const { phigrosBestImagePreferencesStore: prefs } = jest.requireMock<typeof import('@/features/phigros-best-image/phigros-best-image-preferences')>('@/features/phigros-best-image/phigros-best-image-preferences');
-    const gameData = jest.requireMock<typeof import('@/hooks/use-game-data')>('@/hooks/use-game-data');
+    const { preparePhigrosUi } = jest.requireMock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache') as { preparePhigrosUi: jest.Mock };
+    const { phigrosBestImagePreferencesStore: prefs } = jest.requireMock<typeof import('@rranker/tool-phigros/features/phigros-best-image/phigros-best-image-preferences')>('@rranker/tool-phigros/features/phigros-best-image/phigros-best-image-preferences');
+    const gameData = jest.requireMock<typeof import('@rranker/sdk/hooks/use-game-data')>('@rranker/sdk/hooks/use-game-data');
     const current = gameData.useGameData();
     const dataSpy = jest.spyOn(gameData, 'useGameData').mockReturnValue(current);
     const element = <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><PhigrosBestImageScreen /></SafeAreaProvider>;
@@ -222,7 +222,7 @@ describe('Phigros 生成图片页', () => {
       if (event === 'change') change = listener as typeof change;
       return { remove: jest.fn() };
     }) as typeof AppState.addEventListener);
-    const { loadImageFiles } = jest.requireMock('@/features/best-image/load-best-image-session') as { loadImageFiles: jest.Mock };
+    const { loadImageFiles } = jest.requireMock('@rranker/sdk/features/best-image/load-best-image-session') as { loadImageFiles: jest.Mock };
     let complete!: (value: Record<string, string>) => void;
     let signal: AbortSignal | undefined;
     loadImageFiles.mockImplementationOnce((...args: unknown[]) => {
@@ -241,7 +241,7 @@ describe('Phigros 生成图片页', () => {
   });
 
   it('waits for all needed drawing resources before showing the preview and enabling export', async () => {
-    const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
+    const { preparePhigrosFonts } = jest.requireMock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     let finish!: () => void;
     preparePhigrosFonts.mockImplementationOnce(async (...args: unknown[]) => {
       const options = args[1] as { neededNames?: string[] } | undefined;
@@ -271,7 +271,7 @@ describe('Phigros 生成图片页', () => {
   });
 
   it('automatically recovers a failed drawing resource download before showing the preview', async () => {
-    const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
+    const { preparePhigrosFonts } = jest.requireMock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     preparePhigrosFonts.mockImplementationOnce(async () => ({
       directory: { uri: 'file:///reference/' },
       fullReady: Promise.reject(new Error('扩展字体准备失败：network down')),
@@ -289,7 +289,7 @@ describe('Phigros 生成图片页', () => {
 
   it('updates preview dimensions and exports the measured image', async () => {
     const { captureRef } = jest.requireMock('react-native-view-shot') as { captureRef: jest.Mock };
-    const { requestBestImageExportPermission } = jest.requireMock('@/features/best-image/best-image-export') as { requestBestImageExportPermission: jest.Mock };
+    const { requestBestImageExportPermission } = jest.requireMock('@rranker/sdk/features/best-image/best-image-export') as { requestBestImageExportPermission: jest.Mock };
     captureRef.mockClear();
     requestBestImageExportPermission.mockClear();
     const screen = await render(<SafeAreaProvider initialMetrics={{

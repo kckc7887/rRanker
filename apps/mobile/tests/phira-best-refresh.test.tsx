@@ -2,17 +2,17 @@ import { act, cleanup, fireEvent, render, renderHook, waitFor } from '@testing-l
 import { jest } from '@jest/globals';
 import { QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { NotificationProvider } from '@/components/AppNotification';
-import { PhiraRecordsScreen } from '@/screens/PhiraScreens';
-import { phiraProvider } from '@/providers/phira-provider';
-import { phiraBestCacheKey, PhiraChartSchema, PhiraRecordSchema, PhiraUserSchema, PhiraUserStatsSchema, type PhiraBestSnapshot, type PhiraQueriedBest } from '@/domain/phira';
-import { useRefreshAllPhiraBests, usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraNotes, usePhiraUploader } from '@/hooks/use-phira';
-import { CachedContentActivityScope } from '@/components/CachedTabScreen';
+import { NotificationProvider } from '@rranker/sdk/components/AppNotification';
+import { PhiraRecordsScreen } from '@rranker/game-phira/screens/PhiraScreens';
+import { phiraProvider } from '@rranker/provider-phira-community/providers/phira-provider';
+import { phiraBestCacheKey, PhiraChartSchema, PhiraRecordSchema, PhiraUserSchema, PhiraUserStatsSchema, type PhiraBestSnapshot, type PhiraQueriedBest } from '@rranker/game-phira/domain/phira';
+import { useRefreshAllPhiraBests, usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraNotes, usePhiraUploader } from '@rranker/game-phira/hooks/use-phira';
+import { CachedContentActivityScope } from '@rranker/sdk/components/CachedTabScreen';
 import { Text } from 'react-native';
-import { queryClient } from '@/state/query-client';
-import { abortForegroundWork, beginForegroundWork } from '@/state/app-lifecycle-core';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { abortForegroundWork, beginForegroundWork } from '@rranker/sdk/state/app-lifecycle-core';
 
-jest.mock('@/storage/sqlite-snapshot-repository', () => {
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => {
   const state = { values: new Map<string, unknown>(), failReads: false, failWrites: false };
   class MemorySnapshotRepository {
     async getResource<T>(key: string) {
@@ -37,7 +37,7 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: { push: jest.fn(), back: jest.fn() },
-  useNavigation: () => ({ getState: () => ({ index: 0, routes: [{ name: 'songs/[songId]' }] }) }),
+  useNavigation: () => ({ getState: () => ({ index: 0, routes: [{ name: 'detail' }] }) }),
   useFocusEffect: () => undefined,
 }));
 jest.mock('expo-image', () => ({ Image: (props: object) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props} />; } }));
@@ -57,32 +57,32 @@ jest.mock('react-native-gesture-handler', () => {
     ScrollView: RN.ScrollView,
   };
 });
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: false, background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', input: '#F1F3F5',
   border: '#DDD', text: '#111', textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', danger: '#B42318',
   onAccent: '#FFF',
 }) }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: object) => unknown) => selector({ activeAccountId: 'phira:community:323528' }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
-  data: [], tagPresets: [], isUpdating: false, songKey: (id: string) => `song:${id}`,
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({
+  data: [], tagPresets: [], isUpdating: false, key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
   setTagPresets: jest.fn(), setTags: jest.fn(), setSongFavorite: jest.fn(),
 }) }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({
   data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }) }));
-jest.mock('@/features/phira-chart-download/chart-package-download', () => ({
+jest.mock('@rranker/tool-chart-json/features/phira-chart-download/chart-package-download', () => ({
   downloadPhiraChartPackage: jest.fn(),
 }));
-jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+jest.mock('@rranker/sdk/features/chart-download-shared/use-chart-package-download', () => ({
   useChartPackageDownload: () => ({ isRunning: false, start: jest.fn() }),
 }));
-jest.mock('@/components/TagEditor', () => ({ TagEditor: () => null }));
-jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
-jest.mock('@/components/phira/PhiraScoreVisuals', () => ({
-  ...jest.requireActual<typeof import('@/components/phira/PhiraScoreVisuals')>('@/components/phira/PhiraScoreVisuals'),
+jest.mock('@rranker/sdk/components/TagEditor', () => ({ TagEditor: () => null }));
+jest.mock('@rranker/sdk/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
+jest.mock('@rranker/game-phira/components/PhiraScoreVisuals', () => ({
+  ...jest.requireActual<typeof import('@rranker/game-phira/components/PhiraScoreVisuals')>('@rranker/game-phira/components/PhiraScoreVisuals'),
   PhiraScoreValue: ({ score }: { score: number }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{score}</RN.Text>; },
   PhiraRateBadge: () => null,
   resolvePhiraRate: () => 'v',
@@ -91,7 +91,7 @@ jest.mock('@/components/phira/PhiraScoreVisuals', () => ({
 
 const PLAYER_ID = 323528;
 type MemoryState = { values: Map<string, unknown>; failReads: boolean; failWrites: boolean };
-const memory = () => (jest.requireMock('@/storage/sqlite-snapshot-repository') as { __memory: MemoryState }).__memory;
+const memory = () => (jest.requireMock('@rranker/sdk/storage/sqlite-snapshot-repository') as { __memory: MemoryState }).__memory;
 
 const chart = (id: number) => PhiraChartSchema.parse({
   id, name: `Chart ${id}`, level: 'AT Lv.16', difficulty: 15.2, uploader: 9,

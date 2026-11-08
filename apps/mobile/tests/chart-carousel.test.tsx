@@ -2,17 +2,17 @@ import { type ReactNode } from 'react';
 import { Button, Text, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { ChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
-import { TagEditor } from '@/components/TagEditor';
-import { useCachedTabActive } from '@/components/CachedTabScreen';
-import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
+import { ChartCarousel, type ChartCarouselItemState } from '@rranker/sdk/components/game-content/ChartCarousel';
+import { TagEditor } from '@rranker/sdk/components/TagEditor';
+import { useCachedTabActive } from '@rranker/sdk/components/CachedTabScreen';
+import { useChartPackageDownload } from '@rranker/sdk/features/chart-download-shared/use-chart-package-download';
 
 const mockNotifications = {
   dismissNotification: jest.fn(), showActionNotification: jest.fn(() => 1),
   showNotification: jest.fn(), updateNotification: jest.fn(),
 };
 let mockNativeOffset = 0;
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => mockNotifications,
   useNotificationModalRequestClose: () => () => false,
   NotificationOutlet: () => null,
@@ -154,7 +154,7 @@ describe('ChartCarousel window', () => {
     const pending = new Map<string, { signal: AbortSignal; finish: (saved: boolean) => void }>();
     function DownloadCard({ item, state }: { item: string; state: ChartCarouselItemState }) {
       const active = useCachedTabActive();
-      const download = useChartPackageDownload({ successMessage: 'saved' });
+      const download = useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: 'saved' });
       return <View testID={item}>
         <Text>{`${item}:${active ? 'active' : 'paused'}`}</Text>
         <Button title={`下载 ${item}`} disabled={download.isRunning} onPress={() => {

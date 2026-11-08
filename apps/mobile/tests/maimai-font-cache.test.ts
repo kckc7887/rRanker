@@ -7,7 +7,7 @@ import {
   MAIMAI_FONT_MANIFEST,
   type MaimaiFontManifestEntry,
   type MaimaiFontProgress,
-} from '@/features/best-image/maimai-font-cache';
+} from '@rranker/tool-maimai/features/best-image/maimai-font-cache';
 
 const mockFontFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
@@ -221,7 +221,7 @@ describe('maimai remote font cache', () => {
   });
 });
 
-vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
+vi.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', async () => {
   const { File } = await import('expo-file-system');
   return { downloadChartResource: (directory: import('expo-file-system').Directory, name: string, url: string) => File.downloadFileAsync(url, new File(directory, name)) };
 });

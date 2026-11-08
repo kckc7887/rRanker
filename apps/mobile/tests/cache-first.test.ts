@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { DataSource } from '@/domain/models';
-import { cacheFirstLoad, cacheFirstLoadWithBackground, isCacheFallback, staleCached } from '@/services/cache-first';
-import { ProviderError } from '@/providers/errors';
-import { loadAliasedCatalog } from '@/services/aliased-catalog-query';
-import { createInflightGuard } from '@/services/snapshot-cache-utils';
-import { fixtureSource } from '@/fixtures/sanitized';
+import type { DataSource } from '@rranker/sdk/data';
+import { cacheFirstLoad, cacheFirstLoadWithBackground, isCacheFallback, staleCached } from '@rranker/sdk/services/cache-first';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { loadAliasedCatalog } from '@rranker/sdk/services/aliased-catalog-query';
+import { createInflightGuard } from '@rranker/sdk/services/snapshot-cache-utils';
+import { fixtureSource } from './fixtures/sanitized';
 import { QueryClient } from '@tanstack/react-query';
-import { publishEntityValue } from '@/services/game-data-query';
+import { publishEntityValue } from '@rranker/sdk/services/game-data-query';
 
 type Sourced = { source: DataSource };
 const freshSource: DataSource = { ...fixtureSource, isStale: false };

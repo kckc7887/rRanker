@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ScoreRecord } from '@/domain/models';
+import type { ScoreRecord } from '@rranker/game-phigros/domain/models';
 import {
   loadPhigrosAccAverages,
   phigrosAccAverageKey,
-} from '@/features/phigros-best-image/load-phigros-acc-averages';
+} from '@rranker/tool-phigros/features/phigros-best-image/load-phigros-acc-averages';
 
 function record(songId: string, achievements: number): ScoreRecord {
   return {

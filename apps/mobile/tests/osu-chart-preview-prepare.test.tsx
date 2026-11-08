@@ -2,9 +2,9 @@ import { jest } from '@jest/globals';
 import JSZip from 'jszip';
 import { TextDecoder, TextEncoder } from 'node:util';
 import { AbortController as NativeAbortController } from 'abort-controller';
-import { prepareOsuChartPreviewWebViewSource } from '@/features/osu-chart-preview/prepare-osu-chart-preview-webview';
-import type { OsuChartPreviewConfig } from '@/features/osu-chart-preview/configuration';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import { prepareOsuChartPreviewWebViewSource } from '@rranker/tool-osu/features/osu-chart-preview/prepare-osu-chart-preview-webview';
+import type { OsuChartPreviewConfig } from '@rranker/chart-osu/features/osu-chart-preview/configuration';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
 const mockFiles = new Map<string, string | Uint8Array>();
 const mockDirectories = new Set<string>();
@@ -17,8 +17,8 @@ let mockSequence = 0;
 let mockBarrier = async (_phase: string) => {};
 let mockAfterWrite = (_uri: string) => {};
 
-jest.mock('../assets/osu-chart-preview/player.bundle', () => 1);
-jest.mock('../assets/osu-chart-preview/index.html', () => 2);
+jest.mock('@rranker/chart-osu/assets/osu-chart-preview/player.bundle', () => 1);
+jest.mock('@rranker/chart-osu/assets/osu-chart-preview/index.html', () => 2);
 jest.mock('expo-file-system', () => {
   const uri = (base: string | { uri: string }, parts: string[]) =>
     `${(typeof base === 'string' ? base : base.uri).replace(/\/+$/u, '')}/${parts.join('/')}`;
@@ -63,7 +63,7 @@ jest.mock('expo-file-system/legacy', () => ({
     mockAfterWrite(uri);
   },
 }));
-jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
+jest.mock('@rranker/sdk/features/chart-preview-shared/chart-preview-assets', () => ({
   createChartPreviewSessionDirectory: (name: string) => {
     const { Directory } = jest.requireMock<typeof import('expo-file-system')>('expo-file-system');
     const directory = new Directory('file:///cache', `${name}-session-${++mockSequence}`);
@@ -85,7 +85,7 @@ jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
     return '<!--OSU_CHART_PREVIEW_CONFIG--><script src="./audio-data.js"></script><script src="./player.js"></script>';
   },
 }));
-jest.mock('@/features/chart-download-shared/chart-download-shared', () => ({
+jest.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', () => ({
   throwIfChartDownloadCancelled: (signal?: AbortSignal) => {
     if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   },

@@ -1,4 +1,4 @@
-import { DivingFishProvider } from '@/providers/diving-fish-provider';
+import { DivingFishProvider } from '@rranker/provider-diving-fish/providers/diving-fish-provider';
 
 function requestInit(request: ReturnType<typeof vi.fn>, index = -1) {
   const call = request.mock.calls.at(index)!;

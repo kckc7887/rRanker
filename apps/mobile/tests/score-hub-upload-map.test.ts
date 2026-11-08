@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogSnapshot } from '@/domain/models';
+import type { CatalogSnapshot } from '@rranker/game-maimai/domain/models';
 import {
   buildMusicTitleMap,
   convertHubScoresToDivingFishRecords,
@@ -10,13 +10,9 @@ import {
   mapHubFsToCanonical,
   mapHubTypeToDivingFish,
   parseHubAchievement,
-} from '@/services/score-hub-sync-map';
-import { resolveUploadTargets } from '@/services/upload-maimai-from-friend-code';
-import {
-  createLocalMaimaiAccount,
-  createMaxedMaimaiTestAccount,
-  createMaimaiBoundAccount,
-} from '@/domain/bound-account';
+} from '@rranker/tool-maimai/services/score-hub-sync-map';
+import { resolveUploadTargets } from '@rranker/tool-maimai/services/upload-maimai-from-friend-code';
+import { createLocalMaimaiAccount, createMaxedMaimaiTestAccount, createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
 
 describe('score-hub-sync-map', () => {
   it('parses percent achievement strings', () => {

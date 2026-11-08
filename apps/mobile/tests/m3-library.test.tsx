@@ -1,20 +1,26 @@
+import type { Credential } from '@rranker/sdk/credentials';
 import { cleanup, act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Linking, Platform } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
-import SongDetailScreen from '../app/songs/[songId]';
+import SongDetailScreen from '../app/detail';
 import UserLibraryScreen from '../app/library';
 import { OverviewScreen } from '../app/(tabs)/(overview)';
-import type { BoundAccount } from '@/domain/bound-account';
-import type { ProviderSession } from '@/providers/contracts';
-import type { UserLibraryItem } from '@/domain/user-library';
-import { useCatalogFilter } from '@/state/catalog-filter';
+import type { BoundAccount } from '@rranker/sdk/account';
+
+import { createUserDataBackup, type UserDataBackup, type RestoreMode, type UserLibraryItem } from '@rranker/sdk/domain/user-library';
+import { useCatalogFilter } from '@rranker/game-maimai/state/catalog-filter';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
 const mockReplace = jest.fn();
 const mockShowNotification = jest.fn();
+const mockShowActions = jest.fn<(value: { title: string; actions: { label: string; onPress?: () => Promise<void> | void }[] }) => void>();
+const mockCreateBackup = jest.fn(async (_gameId: string) => createUserDataBackup('maimai', [], '2026-10-26T00:00:00Z', ['练习']));
+const mockRestoreBackup = jest.fn(async (_gameId: string, _backup: UserDataBackup, _mode: RestoreMode, _signal?: AbortSignal) => []);
+const mockPickBackup = jest.fn<(gameId: string) => Promise<UserDataBackup | null>>(async () => null);
+const mockShareBackup = jest.fn(async (_backup: UserDataBackup) => undefined);
 const mockSetFavorite = jest.fn(async () => []);
 const mockSetPractice = jest.fn(async () => []);
 const mockSetTags = jest.fn(async () => []);
@@ -23,9 +29,9 @@ const mockCancelQueries = jest.fn<(input: unknown) => Promise<undefined>>(async 
 const mockUpdateBoundAccountScore = jest.fn();
 const mockRefreshDivingFishAccounts = jest.fn<(input: unknown) => Promise<unknown>>();
 const mockSessionState: {
-  session: ProviderSession | null;
-  sessionsByAccountId: Record<string, ProviderSession | undefined>;
-  activeGameId: 'maimai';
+  session: Credential | null;
+  sessionsByAccountId: Record<string, Credential | undefined>;
+  activeGameId: string;
   activeProviderId: 'diving-fish';
   activeAccountId: string;
   boundAccounts: BoundAccount[];
@@ -46,10 +52,11 @@ const mockSessionState: {
   setActiveGameId: jest.fn(),
 };
 const timestamp = '2026-07-13T00:00:00.000Z';
+const mockSessionListeners = new Set<(state: typeof mockSessionState) => void>();
 let mockItems: UserLibraryItem[] = [
-  { key: 'song:maimai:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: ['喜欢'], createdAt: timestamp, updatedAt: timestamp },
-  { key: 'chart:maimai:1:DX:3', gameId: 'maimai', kind: 'chart', songId: '1', type: 'DX', levelIndex: 3, practice: true, tags: ['耐力'], createdAt: timestamp, updatedAt: timestamp },
-  { key: 'song:maimai:999', gameId: 'maimai', kind: 'song', songId: '999', favorite: true, tags: [], createdAt: timestamp, updatedAt: timestamp },
+  { key: JSON.stringify(['maimai', 'song', '1']), gameId: 'maimai', kind: 'song', id: '1', target: { songId: '1' }, favorite: true, tags: ['喜欢'], createdAt: timestamp, updatedAt: timestamp },
+  { key: JSON.stringify(['maimai', 'chart', JSON.stringify(['1', 'DX', 3])]), gameId: 'maimai', kind: 'chart', id: JSON.stringify(['1', 'DX', 3]), target: { songId: '1', levelIndex: '3', chartType: 'DX' }, practice: true, tags: ['耐力'], createdAt: timestamp, updatedAt: timestamp },
+  { key: JSON.stringify(['maimai', 'song', '999']), gameId: 'maimai', kind: 'song', id: '999', target: { songId: '999' }, favorite: true, tags: [], createdAt: timestamp, updatedAt: timestamp },
 ];
 
 jest.mock('expo-sqlite/kv-store', () => ({
@@ -62,9 +69,9 @@ jest.mock('expo-sqlite/kv-store', () => ({
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   NotificationOutlet: () => null,
-  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
+  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: mockShowActions }),
   useNotificationModalRequestClose: () => () => false,
 }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -77,7 +84,7 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('expo-router', () => ({
-  Stack: { Screen: () => null },
+  Stack: { Screen: ({ options }: { options?: { headerRight?: () => React.ReactNode } }) => options?.headerRight?.() ?? null },
   router: {
     push: (...args: unknown[]) => mockPush(...args),
     replace: (...args: unknown[]) => mockReplace(...args),
@@ -88,29 +95,27 @@ jest.mock('expo-router', () => ({
   }),
   useLocalSearchParams: () => ({ songId: '1', gameId: 'maimai' }),
 }));
-jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
+jest.mock('@rranker/game-maimai/hooks/use-collections', () => ({ useCollections: () => ({
   data: { items: [], source: { kind: 'fixture', label: 'fixture', updatedAt: new Date(0).toISOString(), isStale: false } },
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }) }));
-jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
-jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
-jest.mock('@/hooks/use-user-library', () => {
-  const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
-  return { useUserLibrary: () => ({
+jest.mock('@rranker/game-maimai/components/CollectionImage', () => ({ CollectionImage: () => null }));
+jest.mock('@rranker/game-maimai/components/SongCover', () => ({ SongCover: () => null }));
+jest.mock('@rranker/sdk/hooks/use-user-library', () => {
+    return { useUserLibrary: () => ({
     data: mockItems, isLoading: false, isError: false, error: null, refetch: jest.fn(), isUpdating: false,
     setSongFavorite: mockSetFavorite, setChartPractice: mockSetPractice, setTags: mockSetTags,
-    songKey: (songId: string | number) => songLibraryKey('maimai', songId),
-    chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('maimai', songId, type, levelIndex),
+    key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
     tagPresets: ['爆发', '交互'],
-    setTagPresets: jest.fn(),
+    setTagPresets: jest.fn(), createBackup: mockCreateBackup, restoreBackup: mockRestoreBackup,
   }) };
 });
-jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({
-  data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog,
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({
+  data: jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized').fixtureCatalog,
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }),
 useMaimaiSongDetail: (songId: string) => {
-  const catalog = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog;
+  const catalog = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized').fixtureCatalog;
   return {
     data: catalog.songs.find((song) => song.id === songId),
     isLoading: false,
@@ -119,15 +124,15 @@ useMaimaiSongDetail: (songId: string) => {
     refetch: jest.fn(),
   };
 } }));
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
   data: undefined, isLoading: false, isError: false, error: null,
 }) }));
-jest.mock('@/hooks/use-maimai-dxtag', () => ({ useMaimaiDxTagScores: () => null }));
-jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
-jest.mock('@/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-chunithm-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-maimai-dxtag', () => ({ useMaimaiDxTagScores: () => null }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-maimai/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: undefined,
     isLoading: false,
@@ -136,7 +141,7 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({
     data: { snapshot: { songs: [] }, provider: null },
     isLoading: false,
@@ -145,20 +150,20 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-phira', () => ({
+jest.mock('@rranker/game-phira/hooks/use-phira', () => ({
   usePhiraChartsByIds: () => ({ data: [], isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
-  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
+  const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
   return { data: { player: fixtures.fixturePlayer, records: fixtures.fixtureRecords, source: fixtures.fixtureSource,
     catalogSource: fixtures.fixtureSource, best50: { player: fixtures.fixturePlayer, currentVersion: fixtures.fixtureCatalog.currentVersion,
       b35: [], b15: [], unmatchedRecordCount: 0, rating: 0, generatedAt: timestamp, source: fixtures.fixtureSource } },
     isLoading: false, isError: false, isDataStale: false, error: null, refetch: () => mockRefetchScore() };
 } }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
-  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
-  const { getGameProfile } = jest.requireActual<typeof import('../src/domain/game-profile')>('../src/domain/game-profile');
-  const { maimaiPayloadFromSnapshot } = jest.requireActual<typeof import('../src/domain/game-data')>('../src/domain/game-data');
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => {
+  const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
+  const { getGameProfile } = jest.requireActual<typeof import('@rranker/sdk/domain/game-profile')>('@rranker/sdk/domain/game-profile');
+  const { maimaiPayloadFromSnapshot } = jest.requireActual<typeof import('@rranker/game-maimai/domain/game-data')>('@rranker/game-maimai/domain/game-data');
   const profile = getGameProfile('maimai');
   const snapshot = {
     player: fixtures.fixturePlayer,
@@ -193,17 +198,17 @@ jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
     refetch: () => mockRefetchScore(),
   };
 } }));
-jest.mock('@/state/query-client', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: {
     cancelQueries: (input: unknown) => mockCancelQueries(input),
     invalidateQueries: jest.fn(),
     removeQueries: jest.fn(),
   },
 }));
-jest.mock('@/services/refresh-diving-fish-accounts', () => ({
+jest.mock('@rranker/tool-maimai/services/refresh-diving-fish-accounts', () => ({
   refreshDivingFishAccounts: (input: unknown) => mockRefreshDivingFishAccounts(input),
 }));
-jest.mock('@/state/game-picker-ui', () => ({
+jest.mock('@rranker/sdk/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: {
     expandedGameId: 'maimai';
     setExpandedGameId: () => void;
@@ -214,9 +219,15 @@ jest.mock('@/state/game-picker-ui', () => ({
     toggleExpandedGameId: jest.fn(),
   }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
-  useSession: (selector: (state: typeof mockSessionState) => unknown) => selector(mockSessionState),
+  useSession: Object.assign((selector: (state: typeof mockSessionState) => unknown) => selector(mockSessionState), {
+    getState: () => mockSessionState,
+    subscribe: (listener: (state: typeof mockSessionState) => void) => {
+      mockSessionListeners.add(listener);
+      return () => { mockSessionListeners.delete(listener); };
+    },
+  }),
 }));
 
 describe('M3A personal library screens', () => {
@@ -224,14 +235,90 @@ describe('M3A personal library screens', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    mockPickBackup.mockReset().mockResolvedValue(null);
+    mockRestoreBackup.mockReset().mockResolvedValue([]);
     useCatalogFilter.getState().reset();
     mockRefetchScore.mockResolvedValue(undefined);
     Object.assign(mockSessionState, {
+      activeGameId: 'maimai',
       session: null,
       sessionsByAccountId: {},
       activeAccountId: 'maimai:local',
       boundAccounts: [],
     });
+  });
+
+  async function chooseAction(label: string) {
+    const options = mockShowActions.mock.calls.at(-1)?.[0];
+    const action = options?.actions.find(item => item.label === label);
+    expect(action).toBeDefined();
+    await act(async () => { await action?.onPress?.(); });
+  }
+
+  it('exports the current game from the library header menu', async () => {
+    const screen = await render(<UserLibraryScreen />);
+    await fireEvent.press(screen.getByTestId('library-menu'));
+    await chooseAction('导出');
+    expect(mockCreateBackup).toHaveBeenCalledWith('maimai');
+    expect(mockShareBackup).toHaveBeenCalledWith(expect.objectContaining({ gameId: 'maimai', tagPresets: ['练习'] }));
+  });
+
+  it.each(['merge', 'replace'] as const)('imports the current game with %s selected', async mode => {
+    const backup = createUserDataBackup('maimai', [], timestamp, ['导入预设']);
+    mockPickBackup.mockResolvedValueOnce(backup);
+    const screen = await render(<UserLibraryScreen />);
+    await fireEvent.press(screen.getByTestId('library-menu'));
+    await chooseAction('导入');
+    expect(mockPickBackup).toHaveBeenCalledWith('maimai');
+    await chooseAction(mode === 'merge' ? '合并' : '替换');
+    expect(mockRestoreBackup).toHaveBeenCalledWith('maimai', backup, mode, expect.any(AbortSignal));
+    expect(mockShowNotification).toHaveBeenCalledWith({ title: '当前游戏个人曲库已导入', variant: 'success' });
+  });
+
+  it('keeps the current game unchanged when file selection is cancelled', async () => {
+    const screen = await render(<UserLibraryScreen />);
+    await fireEvent.press(screen.getByTestId('library-menu'));
+    await chooseAction('导入');
+    expect(mockRestoreBackup).not.toHaveBeenCalled();
+  });
+
+  it('cancels an uncommitted import when the active game changes', async () => {
+    const backup = createUserDataBackup('maimai', [], timestamp);
+    mockPickBackup.mockResolvedValueOnce(backup);
+    let importedSignal: AbortSignal | undefined;
+    let finish!: () => void;
+    mockRestoreBackup.mockImplementationOnce((_game, _backup, _mode, signal) => {
+      importedSignal = signal;
+      return new Promise(resolve => { finish = () => resolve([]); });
+    });
+    const screen = await render(<UserLibraryScreen />);
+    await fireEvent.press(screen.getByTestId('library-menu'));
+    await chooseAction('导入');
+    const restore = mockShowActions.mock.calls.at(-1)?.[0].actions.find(action => action.label === '合并');
+    let pending: Promise<void> | void;
+    await act(async () => { pending = restore?.onPress?.(); });
+    expect(importedSignal?.aborted).toBe(false);
+    await act(async () => {
+      mockSessionState.activeGameId = 'phigros';
+      mockSessionListeners.forEach(listener => listener(mockSessionState));
+      expect(importedSignal?.aborted).toBe(true);
+      finish();
+      await pending;
+    });
+    expect(mockShowNotification).not.toHaveBeenCalledWith(expect.objectContaining({ variant: 'success' }));
+  });
+
+  it('reports an import failure and allows another attempt from the menu', async () => {
+    const backup = createUserDataBackup('maimai', [], timestamp);
+    mockPickBackup.mockResolvedValue(backup);
+    mockRestoreBackup.mockRejectedValueOnce(new Error('保存失败'));
+    const screen = await render(<UserLibraryScreen />);
+    await fireEvent.press(screen.getByTestId('library-menu'));
+    await chooseAction('导入'); await chooseAction('合并');
+    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '个人曲库操作失败', variant: 'error' }));
+    await fireEvent.press(screen.getByTestId('library-menu'));
+    await chooseAction('导入'); await chooseAction('合并');
+    expect(mockShowNotification).toHaveBeenLastCalledWith({ title: '当前游戏个人曲库已导入', variant: 'success' });
   });
 
   it('keeps five tabs and exposes the personal library from overview', async () => {
@@ -269,12 +356,12 @@ describe('M3A personal library screens', () => {
   });
 
   it('uses the active Import-Token session for a user-triggered water-fish sync', async () => {
-    const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+    const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
     const account: BoundAccount = {
       id: 'maimai:diving-fish:android-user', gameId: 'maimai', providerId: 'diving-fish',
       displayName: 'Android 玩家', scoreLabel: 'DX Rating', scoreDisplay: '15000', providerTitle: '水鱼查分器',
     };
-    const session: ProviderSession = { mode: 'import-token', value: 'android-token', persistable: true };
+    const session: Credential = { mode: 'import-token', value: 'android-token', persistable: true };
     Object.assign(mockSessionState, {
       session,
       sessionsByAccountId: {},
@@ -345,7 +432,7 @@ describe('M3A personal library screens', () => {
     await fireEvent.press(screen.getByText('练习'));
     await fireEvent.press(screen.getByText(/练习谱面/));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '1', chartType: 'DX', levelIndex: '3', gameId: 'maimai' },
     });
   });
@@ -368,7 +455,7 @@ describe('M3A personal library screens', () => {
   it('toggles a song favorite from search without opening the row', async () => {
     const screen = await render(<SearchScreen />);
     await fireEvent.press(await screen.findByLabelText('取消收藏 正常曲目 A'));
-    expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
+    expect(mockSetFavorite).toHaveBeenCalledWith({ gameId: 'maimai', kind: 'song', id: '1', target: { songId: '1' } }, false);
     expect(mockPush).not.toHaveBeenCalled();
   });
 
@@ -381,9 +468,9 @@ describe('M3A personal library screens', () => {
       await fireEvent.press(screen.getByLabelText('返回'));
       expect(mockBack).toHaveBeenCalledTimes(1);
       await fireEvent.press(await screen.findByLabelText('取消收藏 正常曲目 A'));
-      expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
+      expect(mockSetFavorite).toHaveBeenCalledWith({ gameId: 'maimai', kind: 'song', id: '1', target: { songId: '1' } }, false);
       await fireEvent.press(screen.getByText('已加入练习清单'));
-      expect(mockSetPractice).toHaveBeenCalledWith('1', 'DX', 3, false);
+      expect(mockSetPractice).toHaveBeenCalledWith({ gameId: 'maimai', kind: 'chart', id: JSON.stringify(['1', 'DX', 3]), target: { songId: '1', levelIndex: '3', chartType: 'DX' } }, false);
       await fireEvent.press(screen.getByText('搜索Ｂ站视频'));
       expect(openUrl).toHaveBeenCalledWith(
         `bilibili://search?keyword=${encodeURIComponent('正常曲目 A MASTER 谱面确认')}`,
@@ -397,7 +484,7 @@ describe('M3A personal library screens', () => {
       ));
       await fireEvent.press(screen.getByLabelText('删除标签 耐力'));
       expect(mockSetTags).toHaveBeenCalledWith(
-        { kind: 'chart', songId: '1', type: 'DX', levelIndex: 3 },
+        { gameId: 'maimai', kind: 'chart', id: JSON.stringify(['1', 'DX', 3]), target: { songId: '1', levelIndex: '3', chartType: 'DX' } },
         [],
       );
       const inputs = screen.getAllByLabelText('新标签');
@@ -405,20 +492,22 @@ describe('M3A personal library screens', () => {
       const addButtons = screen.getAllByLabelText('添加标签');
       await fireEvent.press(addButtons[0]);
       expect(mockSetTags).toHaveBeenCalledWith(
-        { kind: 'chart', songId: '1', type: 'DX', levelIndex: 3 },
+        { gameId: 'maimai', kind: 'chart', id: JSON.stringify(['1', 'DX', 3]), target: { songId: '1', levelIndex: '3', chartType: 'DX' } },
         ['耐力', '谱面标签'],
       );
       await fireEvent.changeText(inputs[inputs.length - 1], '新标签');
       await fireEvent.press(addButtons[addButtons.length - 1]);
-      expect(mockSetTags).toHaveBeenCalledWith({ kind: 'song', songId: '1' }, ['喜欢', '新标签']);
+      expect(mockSetTags).toHaveBeenCalledWith({ gameId: 'maimai', kind: 'song', id: '1', target: { songId: '1' } }, ['喜欢', '新标签']);
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
     }
   });
 });
 
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
   useStackScreenReady: () => true,
 }));
+
+jest.mock('@/services/user-data-file-service', () => ({ pickUserDataBackup: (gameId: string) => mockPickBackup(gameId), shareUserDataBackup: (backup: UserDataBackup) => mockShareBackup(backup) }));

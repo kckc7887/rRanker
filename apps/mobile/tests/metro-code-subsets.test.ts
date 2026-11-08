@@ -33,7 +33,7 @@ describe('Metro dependency subsets', () => {
     const previous = vi.fn(resolveFile), resolver = metroResolver(previous);
     const context = { originModulePath: path.join(zodRoot, 'v4/classic/external.js'), resolveRequest: resolveFile };
     for (const extension of ['js', 'cjs']) {
-      expect(resolver(context, `../locales/index.${extension}`, platform).filePath).toBe(path.resolve('src/utils/zod-locales.ts'));
+      expect(resolver(context, `../locales/index.${extension}`, platform).filePath).toBe(nodeRequire.resolve('@rranker/sdk/utils/zod-locales'));
     }
     expect(resolver(context, '../locales/en.js', platform).filePath).toBe(path.join(zodRoot, 'v4/locales/en.js'));
     expect(resolver(context, '../core/index.js', platform).filePath).toBe(path.join(zodRoot, 'v4/core/index.js'));

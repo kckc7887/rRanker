@@ -2,9 +2,9 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/re
 import { jest } from '@jest/globals';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import ToolsScreen from '../app/tools/index';
-import { createRizlineBoundAccount } from '@/domain/bound-account';
-import { rizlinePayloadFromSnapshot } from '@/domain/game-data';
-import { getGameProfile } from '@/domain/game-profile';
+import { createRizlineBoundAccount } from '@rranker/game-rizline/accounts';
+import { rizlinePayloadFromSnapshot } from '@rranker/game-rizline/domain/game-data';
+import { getGameProfile } from '@rranker/sdk/domain/game-profile';
 import { rizlineCatalog, rizlineChart, rizlineSave } from './fixtures/rizline';
 
 const mockAccount = createRizlineBoundAccount({ userId: 'user-a', username: 'Rizline 玩家', totalRks: 136.123456 });
@@ -26,36 +26,36 @@ function createBundle(unknown = false, requiresLogin = false) {
 }
 
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: (...args: unknown[]) => mockPush(...args) } }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }) }));
-jest.mock('@/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: () => null }));
-jest.mock('@/components/UploadDataSheet', () => ({ UploadDataSheet: () => null }));
-jest.mock('@/components/maimai/MaimaiUploadTabs', () => ({ MaimaiUploadTabs: () => null }));
-jest.mock('@/components/maimai/MaimaiSyncGuideSheet', () => ({ MaimaiSyncGuideContent: () => null }));
-jest.mock('@/components/chunithm/ChunithmSyncGuideSheet', () => ({ ChunithmSyncGuideSheet: () => null }));
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
-jest.mock('@/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ data: mockBundle, isLoading: false, isError: false, error: null, refetch: mockRefetch, profile: mockBundle.profile }) }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ data: [], isError: false }) }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: undefined, error: null, refetch: jest.fn(async () => ({ data: undefined })) }) }));
-jest.mock('@/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => ({ data: undefined, isLoading: false, isError: false }) }));
-jest.mock('@/services/rizline-catalog-query', () => ({ refreshRizlineCatalog: () => mockRefreshCatalog() }));
-jest.mock('@/state/session-store', () => ({ applyLxnsTokenRotation: jest.fn(), useSession: (selector: (state: object) => unknown) => selector({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }) }));
+jest.mock('@rranker/sdk/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: () => null }));
+jest.mock('@rranker/tool-maimai/components/UploadDataSheet', () => ({ UploadDataSheet: () => null }));
+jest.mock('@rranker/game-maimai/components/MaimaiUploadTabs', () => ({ MaimaiUploadTabs: () => null }));
+jest.mock('@rranker/tool-maimai/components/MaimaiSyncGuideSheet', () => ({ MaimaiSyncGuideContent: () => null }));
+jest.mock('@rranker/tool-chunithm/components/ChunithmSyncGuideSheet', () => ({ ChunithmSyncGuideSheet: () => null }));
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-maimai/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({ data: mockBundle, isLoading: false, isError: false, error: null, refetch: mockRefetch, profile: mockBundle.profile }) }));
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({ data: [], isError: false }) }));
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: undefined, error: null, refetch: jest.fn(async () => ({ data: undefined })) }) }));
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => ({ data: undefined, isLoading: false, isError: false }) }));
+jest.mock('@rranker/game-rizline/services/rizline-catalog-query', () => ({ refreshRizlineCatalog: () => mockRefreshCatalog() }));
+jest.mock('@rranker/sdk/state/session-store', () => ({ applyLxnsTokenRotation: jest.fn(), useSession: (selector: (state: object) => unknown) => selector({
   boundAccounts: [mockAccount], activeGameId: 'rizline', activeAccountId: mockAccount.id, session: null, sessionsByAccountId: {}, updateBoundAccountScore: jest.fn(),
 }) }));
-jest.mock('@/state/toolbox-pins', () => ({ useToolboxPins: (selector: (state: object) => unknown) => selector({
-  pinnedToolIdsByGame: { rizline: [] }, pinnedPlateIdsByGame: { rizline: [] }, pinnedCollectionIdsByGame: { rizline: [] }, hydrate: jest.fn(async () => undefined),
+jest.mock('@rranker/sdk/state/toolbox-pins', () => ({ useToolboxPins: (selector: (state: object) => unknown) => selector({
+  pinsByGame: { rizline: [] },   hydrate: jest.fn(async () => undefined),
 }) }));
-jest.mock('@/state/game-picker-ui', () => ({ useGamePickerUi: (selector: (state: object) => unknown) => selector({ expandedGameId: 'rizline', setExpandedGameId: jest.fn(), toggleExpandedGameId: jest.fn() }) }));
-jest.mock('@/state/query-client', () => ({ queryClient: { cancelQueries: jest.fn(async () => undefined), invalidateQueries: jest.fn(async () => undefined), getQueryData: () => mockBundle } }));
-jest.mock('@/services/invalidate-account-data', () => ({ invalidateAccountDataQueries: jest.fn(async () => undefined) }));
-jest.mock('@/services/switch-bound-account', () => ({ switchBoundAccount: jest.fn() }));
-jest.mock('@/services/refresh-diving-fish-accounts', () => ({ refreshDivingFishAccounts: jest.fn() }));
-jest.mock('@/domain/maimai-maintenance', () => ({ MAIMAI_MAINTENANCE_MESSAGE: '维护', isMaimaiMaintenanceWindow: () => false }));
-jest.mock('@/domain/chunithm-maintenance', () => ({ CHUNITHM_MAINTENANCE_MESSAGE: '维护', isChunithmMaintenanceWindow: () => false }));
+jest.mock('@rranker/sdk/state/game-picker-ui', () => ({ useGamePickerUi: (selector: (state: object) => unknown) => selector({ expandedGameId: 'rizline', setExpandedGameId: jest.fn(), toggleExpandedGameId: jest.fn() }) }));
+jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: { cancelQueries: jest.fn(async () => undefined), invalidateQueries: jest.fn(async () => undefined), getQueryData: () => mockBundle } }));
+jest.mock('@rranker/sdk/services/invalidate-account-data', () => ({ invalidateAccountDataQueries: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/services/switch-bound-account', () => ({ switchBoundAccount: jest.fn() }));
+jest.mock('@rranker/tool-maimai/services/refresh-diving-fish-accounts', () => ({ refreshDivingFishAccounts: jest.fn() }));
+jest.mock('@rranker/game-maimai/domain/maimai-maintenance', () => ({ MAIMAI_MAINTENANCE_MESSAGE: '维护', isMaimaiMaintenanceWindow: () => false }));
+jest.mock('@rranker/game-chunithm/domain/chunithm-maintenance', () => ({ CHUNITHM_MAINTENANCE_MESSAGE: '维护', isChunithmMaintenanceWindow: () => false }));
 
 describe('Rizline overview', () => {
   beforeEach(() => { jest.clearAllMocks(); mockBundle = createBundle(); mockSyncOrder = []; });
@@ -95,10 +95,10 @@ describe('Rizline overview', () => {
   it('offers both registered tools through the shared toolbox screen', async () => {
     const screen = await render(<ToolsScreen />);
     await fireEvent.press(screen.getByText('随机歌曲'));
-    expect(mockPush).toHaveBeenLastCalledWith('/tools/random-charts');
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.rizline', pageId: 'random-charts', gameId: 'rizline' } });
     expect(screen.queryByText('我的曲库')).toBeNull();
     await fireEvent.press(screen.getByText('音游地图'));
-    expect(mockPush).toHaveBeenLastCalledWith('/tools/arcade-finder');
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.arcade-finder', pageId: 'arcade-finder', gameId: 'rizline' } });
   });
 
   it('keeps the official total visible with missing contribution values and an expired-login message', async () => {

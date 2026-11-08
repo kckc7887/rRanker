@@ -1,4 +1,4 @@
-import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
+import { LxnsScoreProvider } from '@rranker/provider-lxns/providers/lxns-score-provider';
 
 describe('LXNS player presentation', () => {
   afterEach(() => vi.unstubAllGlobals());

@@ -1,18 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import { applyRizlineCatalog, ensureRizlineCatalog, refreshRizlineCatalog } from '@/services/rizline-catalog-query';
-import { rizlinePayloadFromSnapshot, type GameDataBundle } from '@/domain/game-data';
-import { getGameProfile } from '@/domain/game-profile';
-import { gameDataQueryKey } from '@/services/game-data-query';
-import { rizlineResources } from '@/services/rizline-resources';
-import { queryClient } from '@/state/query-client';
+import { applyRizlineCatalog, ensureRizlineCatalog, refreshRizlineCatalog, RIZLINE_CATALOG_QUERY_KEY } from '@rranker/game-rizline/services/rizline-catalog-query';
+import { rizlinePayloadFromSnapshot } from '@rranker/game-rizline/domain/game-data';
+import { type GameDataBundle } from '@rranker/sdk/data';
+import { getGameProfile } from '@rranker/sdk/domain/game-profile';
+import { gameDataQueryKey } from '@rranker/sdk/services/game-data-query';
+import { rizlineResources } from '@rranker/game-rizline/services/rizline-resources';
+import { queryClient } from '@rranker/sdk/state/query-client';
 import { rizlineCatalog, rizlineSave, rizlineSong, rizlineChart } from './fixtures/rizline';
-import { buildMaxedRizlineSnapshot } from '@/providers/maxed-rizline-test-provider';
-import type { RizlineCatalogData } from '@/domain/rizline';
+import { buildMaxedRizlineSnapshot } from '@rranker/provider-rizline-test/providers/maxed-rizline-test-provider';
+import type { RizlineCatalogData } from '@rranker/game-rizline/domain/rizline';
 
-vi.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
-vi.mock('@/state/query-client', () => ({ queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) }));
-vi.mock('@/services/rizline-resources', () => ({ rizlineResources: { load: vi.fn(), loadFresh: vi.fn() } }));
+vi.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
+vi.mock('@rranker/sdk/state/query-client', () => ({ queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) }));
+vi.mock('@rranker/game-rizline/services/rizline-resources', () => ({ rizlineResources: { load: vi.fn(), loadFresh: vi.fn() } }));
 
 const source = { kind: 'rizline' as const, label: 'Rizline 曲库', updatedAt: '2026-09-13', isStale: false };
 const key = gameDataQueryKey('rizline:u1', 'rizline', 'rizline-official', 'rizline');
@@ -51,6 +52,32 @@ describe('Rizline catalog and account query coordination', () => {
     expect(payload.best.hasUnknownCandidates).toBe(false);
     expect(payload.player.totalRks).toBe(snapshot.save.totalRks);
     expect(payload.snapshot).toEqual(snapshot);
+  });
+  it('cancels catalog work and keeps cached data when a refresh is stopped', async () => {
+    const cached = { snapshot: rizlineCatalog(), source };
+    queryClient.setQueryData(RIZLINE_CATALOG_QUERY_KEY, cached);
+    const entered = Promise.withResolvers<AbortSignal>();
+    const response = Promise.withResolvers<RizlineCatalogData>();
+    vi.mocked(rizlineResources.loadFresh).mockImplementation(signal => {
+      entered.resolve(signal!);
+      return response.promise;
+    });
+    const controller = new AbortController();
+    const refresh = refreshRizlineCatalog(queryClient, controller.signal);
+    const failed = expect(refresh).rejects.toThrow();
+    const requestSignal = await entered.promise;
+    controller.abort(new Error('取消刷新'));
+    expect(requestSignal.aborted).toBe(true);
+    await failed;
+    response.resolve({ snapshot: { ...cached.snapshot, songs: [] }, source });
+    await response.promise;
+    expect(queryClient.getQueryData(RIZLINE_CATALOG_QUERY_KEY)).toEqual(cached);
+  });
+  it('does not request a catalog for an already cancelled refresh', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('取消刷新'));
+    await expect(refreshRizlineCatalog(queryClient, controller.signal)).rejects.toThrow('取消刷新');
+    expect(rizlineResources.loadFresh).not.toHaveBeenCalled();
   });
   it('retains valid account data after a failed catalog update', async () => {
     const bundle: GameDataBundle = { gameId: 'rizline', providerId: 'rizline-official', profile: getGameProfile('rizline'),

@@ -1,5 +1,5 @@
-import { bindCabinetByQr, fetchMe, fetchScoreHubStatistics } from '@/services/score-hub-client';
-import { parseCabinetScoreJob } from '@/services/score-hub-cabinet';
+import { bindCabinetByQr, fetchMe, fetchScoreHubStatistics } from '@rranker/tool-maimai/services/score-hub-client';
+import { parseCabinetScoreJob } from '@rranker/tool-maimai/services/score-hub-cabinet';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 

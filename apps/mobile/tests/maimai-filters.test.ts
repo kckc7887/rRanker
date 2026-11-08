@@ -1,13 +1,6 @@
-import {
-  matchesAchievementRange,
-  matchesAchievementStatus,
-  matchesConstantRange,
-  matchesMultiAchievementFilter,
-  matchesSoloAchievementFilter,
-  normalizeMaimaiFs,
-  parseAchievementBound,
-  parseConstantBound,
-} from '@/domain/maimai-filters';
+import { matchesAchievementRange, matchesConstantRange, parseAchievementBound, parseConstantBound } from '@rranker/sdk/domain/range-filters';
+import { matchesAchievementStatus, matchesMultiAchievementFilter, matchesSoloAchievementFilter } from '@rranker/game-maimai/domain/maimai-filters';
+import { normalizeSimaiFs } from '@rranker/sdk/domain/simai-score';
 
 describe('maimai constant filters', () => {
   it('parses non-negative finite bounds and ignores empty or invalid input', () => {
@@ -52,10 +45,10 @@ describe('maimai achievement filters', () => {
 
 describe('maimai achievement status filters', () => {
   it('normalizes FDX aliases and drops Sync Play', () => {
-    expect(normalizeMaimaiFs('SYNC')).toBeNull();
-    expect(normalizeMaimaiFs(' sync ')).toBeNull();
-    expect(normalizeMaimaiFs('fdx')).toBe('fsd');
-    expect(normalizeMaimaiFs('fdxp')).toBe('fsdp');
+    expect(normalizeSimaiFs('SYNC')).toBeNull();
+    expect(normalizeSimaiFs(' sync ')).toBeNull();
+    expect(normalizeSimaiFs('fdx')).toBe('fsd');
+    expect(normalizeSimaiFs('fdxp')).toBe('fsdp');
   });
 
   it('matches FS as the lowest fs tier without treating its rank as falsy', () => {

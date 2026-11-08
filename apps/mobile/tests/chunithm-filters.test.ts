@@ -4,8 +4,8 @@ import {
   matchesChunithmConstantRange,
   matchesChunithmRankRange,
   parseChunithmConstantBound,
-} from '@/domain/chunithm-filters';
-import type { ChunithmRank } from '@/domain/chunithm-score-presentation';
+} from '@rranker/game-chunithm/domain/chunithm-filters';
+import type { ChunithmRank } from '@rranker/game-chunithm/domain/chunithm-score-presentation';
 
 describe('chunithm constant filters', () => {
   it('parses non-negative finite bounds and ignores empty or invalid input', () => {

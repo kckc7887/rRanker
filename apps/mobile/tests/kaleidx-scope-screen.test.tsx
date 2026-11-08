@@ -1,6 +1,6 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import KaleidxScopeToolScreen from '../app/tools/kaleidx-scope';
+import KaleidxScopeToolScreen from '@rranker/tool-maimai/pages/kaleidx-scope';
 
 const mockRouterPush = jest.fn();
 const mockToggleSong = jest.fn(async () => undefined);
@@ -22,24 +22,24 @@ jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: { push: (...args: unknown[]) => mockRouterPush(...args) },
 }));
-jest.mock('@/components/SongCover', () => {
+jest.mock('@rranker/game-maimai/components/SongCover', () => {
   const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
   return { SongCover: ({ songId }: { songId: string }) => <Text>{`封面 ${songId}`}</Text> };
 });
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: { activeAccountId: string }) => unknown) => selector({ activeAccountId: 'maimai:local:test' }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({
     data: { songs: mockCatalogSongs },
     isLoading: false,
     isError: false,
   }),
 }));
-jest.mock('@/state/kaleidx-scope-progress', () => ({
+jest.mock('@rranker/tool-maimai/state/kaleidx-scope-progress', () => ({
   selectKaleidxGateProgress: (state: { byAccount: Record<string, Record<string, unknown>> }, accountId: string, gateId: string) => state.byAccount[accountId]?.[gateId] ?? {
     completedSongIds: [], soloSongIds: [], multiSongIds: [], keyObtained: false, gateCleared: false,
   },
@@ -100,7 +100,7 @@ describe('KALEIDX◈SCOPE tool screen', () => {
       ['プリズム△▽リズム', '1736', 'SD'], ['Believe the Rainbow', '835', 'DX'], ['AFTER PANDORA', '1819', 'SD'],
     ]) {
       await fireEvent.press(screen.getByLabelText(`查看歌曲 ${title}`));
-      expect(mockRouterPush).toHaveBeenLastCalledWith({ pathname: '/songs/[songId]', params: { songId, chartType, gameId: 'maimai' } });
+      expect(mockRouterPush).toHaveBeenLastCalledWith({ pathname: '/detail', params: { songId, chartType, gameId: 'maimai' } });
     }
   });
 
@@ -189,7 +189,7 @@ describe('KALEIDX◈SCOPE tool screen', () => {
     expect(mockToggleSong).toHaveBeenCalledWith('maimai:local:test', 'blue', '11009', undefined);
 
     await fireEvent.press(screen.getByLabelText('查看歌曲 果ての空、僕らが見た光。'));
-    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '1740', gameId: 'maimai' } });
+    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: '1740', gameId: 'maimai' } });
     expect(screen.queryByLabelText('查看歌曲 STEREOSCAPE')).toBeNull();
   });
 });

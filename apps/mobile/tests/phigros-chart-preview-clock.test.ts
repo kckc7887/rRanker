@@ -4,7 +4,7 @@ import {
   audioContextTime,
   musicPosition,
   outputTime,
-} from '@/features/chart-preview-shared/webview-player/playbackClock';
+} from '@rranker/sdk/features/chart-preview-shared/webview-player/playbackClock';
 
 describe('共享播放时钟', () => {
   it('静止时返回 setOffset 保存的位置', () => {

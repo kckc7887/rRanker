@@ -5,7 +5,7 @@ import {
   searchNearcadeShops,
   parseGameTitlesResponse,
   parseShopDetailResponse,
-} from '@/services/nearcade-client';
+} from '@rranker/tool-arcade-finder/services/nearcade-client';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 

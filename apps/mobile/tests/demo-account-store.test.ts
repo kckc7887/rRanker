@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { MUSEDASH_TEST_ACCOUNT_ID } from '@/domain/bound-account';
-import { DemoAccountStore } from '@/storage/demo-account-store';
-import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store';
-import { PhigrosDemoAccountStore } from '@/storage/phigros-demo-account-store';
-import { MuseDashDemoAccountStore } from '@/storage/musedash-demo-account-store';
-import { createSerializedKeyValueStorage } from '@/storage/key-value-storage';
+import { MUSEDASH_TEST_ACCOUNT_ID } from '@rranker/game-musedash/accounts';
+import { DemoAccountStore } from '@rranker/provider-maimai-test/storage/demo-account-store';
+import { ChunithmDemoAccountStore } from '@rranker/provider-chunithm-test/storage/chunithm-demo-account-store';
+import { PhigrosDemoAccountStore } from '@rranker/provider-phigros-test/storage/phigros-demo-account-store';
+import { MuseDashDemoAccountStore } from '@rranker/provider-musedash-test/storage/musedash-demo-account-store';
+import { createSerializedKeyValueStorage } from '@rranker/sdk/storage/key-value-storage';
 class MemoryStore {
   values = new Map<string, string>();
   async getItem(key: string) { return this.values.get(key) ?? null; }

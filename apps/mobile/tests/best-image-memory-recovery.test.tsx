@@ -5,16 +5,16 @@ import { ScrollView } from 'react-native';
 import {
   BestImageScreenShell,
   bestImageScreenSharedStyles,
-} from '@/features/best-image/best-image-screen-shell';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
-import { useBestImagePreview } from '@/features/best-image/use-best-image-preview';
+} from '@rranker/sdk/features/best-image/best-image-screen-shell';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
+import { useBestImagePreview } from '@rranker/sdk/features/best-image/use-best-image-preview';
 
 let mockLifecycle: AppLifecycleSnapshot = {
   appState: 'active', phase: 'foreground-ready', foregroundReady: true,
   foregroundGeneration: 1, memoryWarningGeneration: 0,
 };
 
-jest.mock('@/state/app-lifecycle', () => ({
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
   useAppLifecycle: () => mockLifecycle,
 }));
 

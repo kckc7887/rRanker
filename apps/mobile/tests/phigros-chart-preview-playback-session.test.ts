@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PhigrosPlaybackSession,
   type PhigrosPlaybackSettings,
-} from '@/features/phigros-chart-preview/webview-player/playback';
+} from '@rranker/chart-json/features/phigros-chart-preview/webview-player/playback';
 
 const MUSIC_DURATION_SECONDS = 30;
 

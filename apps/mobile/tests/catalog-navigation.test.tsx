@@ -7,7 +7,7 @@ const mockStack = jest.fn((_props: unknown) => null);
 const mockIcons: unknown[] = [];
 
 jest.mock('@expo/vector-icons/Ionicons', () => ({ __esModule: true, default: () => null }));
-jest.mock('@/components/MainTabStack', () => ({ MainTabStack: (props: unknown) => mockStack(props) }));
+jest.mock('@rranker/sdk/components/MainTabStack', () => ({ MainTabStack: (props: unknown) => mockStack(props) }));
 jest.mock('expo-router/unstable-native-tabs', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');

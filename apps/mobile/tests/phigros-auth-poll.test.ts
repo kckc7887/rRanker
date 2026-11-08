@@ -1,5 +1,5 @@
-import { pollForToken } from '@/providers/phigros-auth';
-import { ProviderError } from '@/providers/errors';
+import { pollForToken } from '@rranker/provider-phi-taptap/providers/phigros-auth';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
 vi.mock('expo/fetch', () => ({ fetch: (...args: Parameters<typeof fetch>) => fetch(...args) }));
 

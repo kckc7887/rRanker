@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { ScoreRecord } from '@/domain/models';
-import {
-  presentChunithmScore,
-  presentMaimaiScore,
-  presentPhigrosScore,
-} from '@/features/game-content/adapters';
+import type { ScoreRecord } from '@rranker/game-maimai/domain/models';
+import { presentChunithmScore } from '@rranker/game-chunithm/presentation';
+import { presentMaimaiScore } from '@rranker/game-maimai/presentation';
+import { presentPhigrosScore } from '@rranker/game-phigros/presentation';
 
 const maimaiRecord: ScoreRecord = {
   songId: '1',

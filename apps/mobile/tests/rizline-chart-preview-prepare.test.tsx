@@ -1,6 +1,6 @@
 import { runInNewContext } from 'node:vm';
 import { jest } from '@jest/globals';
-import { prepareRizlineChartPreviewWebViewSource } from '@/features/rizline-chart-preview/prepare-rizline-chart-preview-webview';
+import { prepareRizlineChartPreviewWebViewSource } from '@rranker/tool-chart-json/features/rizline-chart-preview/prepare-rizline-chart-preview-webview';
 
 const mockFiles = new Map<string, string | Uint8Array>();
 const mockDirectories = new Set<string>();
@@ -12,11 +12,11 @@ const mockChartJson = JSON.stringify(mockChart);
 let mockChartBytes = Uint8Array.from(Buffer.from(mockChartJson));
 const mockMusicBytes = new Uint8Array([4, 5, 6, 7]);
 
-jest.mock('../assets/rizline-chart-preview/player.bundle', () => 1);
-jest.mock('../assets/phigros-chart-preview/index.html', () => 3);
-jest.mock('../assets/phigros-chart-preview/player.bundle', () => 4);
-jest.mock('../assets/phigros-chart-preview/rpe.bundle', () => 5);
-jest.mock('../assets/rizline-chart-preview/index.html', () => 2);
+jest.mock('@rranker/chart-json/assets/rizline-chart-preview/player.bundle', () => 1);
+jest.mock('@rranker/chart-json/assets/phigros-chart-preview/index.html', () => 3);
+jest.mock('@rranker/chart-json/assets/phigros-chart-preview/player.bundle', () => 4);
+jest.mock('@rranker/chart-json/assets/phigros-chart-preview/rpe.bundle', () => 5);
+jest.mock('@rranker/chart-json/assets/rizline-chart-preview/index.html', () => 2);
 jest.mock('expo-file-system', () => {
   const uri = (base: string | { uri: string }, parts: string[]) =>
     `${(typeof base === 'string' ? base : base.uri).replace(/\/+$/u, '')}/${parts.join('/')}`;
@@ -52,7 +52,7 @@ jest.mock('expo-file-system', () => {
   }
   return { Directory, File };
 });
-jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
+jest.mock('@rranker/sdk/features/chart-preview-shared/chart-preview-assets', () => ({
   chartPreviewStageDirectory: jest.fn(),
   createChartPreviewSessionDirectory: (name: string) => {
     const { Directory } = jest.requireMock<typeof import('expo-file-system')>('expo-file-system');
@@ -71,7 +71,7 @@ jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
   },
   readAssetText: async () => '<!--RIZLINE_CHART_PREVIEW_CONFIG--><!--PLAYER_SCRIPT-->',
 }));
-jest.mock('@/features/chart-download-shared/chart-download-shared', () => ({
+jest.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', () => ({
   downloadChartResource: async (directory: never, fileName: string, url: string) => {
     mockDownloaded.push(url);
     const { File } = jest.requireMock<typeof import('expo-file-system')>('expo-file-system');
@@ -81,7 +81,7 @@ jest.mock('@/features/chart-download-shared/chart-download-shared', () => ({
     return file;
   },
 }));
-jest.mock('@/services/rizline-chart-preview-resources', () => ({
+jest.mock('@rranker/game-rizline/services/rizline-chart-preview-resources', () => ({
   loadRizlineChartPreviewResources: async (
     target: { songId: string; levelIndex: number; title?: string },
     _signal: AbortSignal,
@@ -116,7 +116,7 @@ const mockPlan = jest.fn(async (plan: PreviewPlan) => ({
   allowingReadAccessToURL: plan.directory?.uri,
   dispose: jest.fn(),
 }));
-jest.mock('@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan', () => ({
+jest.mock('@rranker/sdk/features/chart-preview-shared/prepare-chart-preview-webview-from-plan', () => ({
   prepareChartPreviewWebviewFromPlan: (plan: { buildHtml: (template: string) => string; directory?: { uri: string } }) => mockPlan(plan),
 }));
 

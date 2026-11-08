@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
-import { countPbcNotes, countPecNotes, countPgrNotes, countPhiraChartZip, countRpeNotes } from '@/services/phira-chart-notes';
+import { countPbcNotes, countPecNotes, countPgrNotes, countPhiraChartZip, countRpeNotes } from '@rranker/provider-phira-community/services/phira-chart-notes';
 
 describe('Phira chart note readers', () => {
   it('counts RPE notes, excludes fake and counts Hold once', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PhiraAccountStore } from '@/storage/phira-account-store';
+import { PhiraAccountStore } from '@rranker/provider-phira-community/storage/phira-account-store';
 class MemoryStore {
   value: string | null = null;
   async getItem() { return this.value; }

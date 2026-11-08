@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { downloadSave, exchangeSessionToken, getGameSave, getPlayerName, pickLatestGameSave, requestDeviceCode } from '@/providers/phigros-auth';
-import { Base64, HmacSHA1, MD5 } from '@/utils/crypto-subset';
+import { downloadSave, exchangeSessionToken, getGameSave, getPlayerName, pickLatestGameSave, requestDeviceCode } from '@rranker/provider-phi-taptap/providers/phigros-auth';
+import { Base64, HmacSHA1, MD5 } from '@rranker/sdk/utils/crypto-subset';
 
 vi.mock('expo/fetch', () => ({ fetch: (...args: Parameters<typeof fetch>) => fetch(...args) }));
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });

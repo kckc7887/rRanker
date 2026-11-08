@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetSession, loadRemoteImageFile, prepareBestImageCardBackground } from '@/features/best-image/load-best-image-session';
-import { loadBestImageJackets } from '@/features/best-image/load-best-image-jackets';
-import { acquireRemoteImageOriginal, clearCompressedRemoteImageCache, clearGameRemoteImageCache, pruneRemoteImageCache } from '@/services/remote-image-cache';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetSession, loadRemoteImageFile, prepareBestImageCardBackground } from '@rranker/sdk/features/best-image/load-best-image-session';
+import { loadBestImageJackets } from '@rranker/tool-maimai/features/best-image/load-best-image-jackets';
+import { acquireRemoteImageOriginal, clearCompressedRemoteImageCache, clearGameRemoteImageCache, pruneRemoteImageCache } from '@rranker/sdk/services/remote-image-cache';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
 const mocks = vi.hoisted(() => ({ files: new Map<string, string>(), directories: new Set<string>(), download: vi.fn(), copy: vi.fn(), write: vi.fn() }));
 vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));

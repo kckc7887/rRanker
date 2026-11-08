@@ -1,5 +1,5 @@
-import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
-import { createSerializedKeyValueStorage } from '@/storage/key-value-storage';
+import { ChunithmTempAccountStore } from '@rranker/provider-chunithm-temp/storage/chunithm-temp-account-store';
+import { createSerializedKeyValueStorage } from '@rranker/sdk/storage/key-value-storage';
 class MemoryStore {
   values = new Map<string, string>();
   async getItem(key: string) { return this.values.get(key) ?? null; }

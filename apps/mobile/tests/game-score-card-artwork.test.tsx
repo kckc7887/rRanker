@@ -2,12 +2,12 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Text } from 'react-native';
 import { router } from 'expo-router';
-import { AppThemeProvider } from '@/theme/app-theme';
+import { AppThemeProvider } from '@rranker/sdk/theme/app-theme';
 import {
   GameScoreCard,
   ScoreCardArtworkScope,
-} from '@/components/game-content/GameScoreCard';
-import { useThemeStore } from '@/state/theme-store';
+} from '@rranker/sdk/components/game-content/GameScoreCard';
+import { useThemeStore } from '@rranker/sdk/state/theme-store';
 import { legacyFileSystem } from './remote-image-native-mock';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
@@ -23,7 +23,7 @@ jest.mock('expo-image', () => {
 const presentation = {
   key: 'score',
   gameId: 'maimai' as const,
-  route: { songId: 'song', params: { gameId: 'maimai' as const } },
+  route: { gameId: 'maimai' as const, params: { songId: 'song' } },
   title: 'Test Song',
   accessibilityLabel: '成绩 Test Song',
   primaryMetric: { key: 'score', label: 'Score', text: '100' },

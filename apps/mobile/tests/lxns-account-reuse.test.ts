@@ -1,8 +1,6 @@
-import {
-  createChunithmBoundAccount,
-  createMaimaiBoundAccount,
-} from '@/domain/bound-account';
-import { reusableLxnsAccounts } from '@/domain/lxns-account-reuse';
+import { createChunithmBoundAccount } from '@rranker/game-chunithm/accounts';
+import { createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
+import { reusableLxnsAccounts } from '@rranker/provider-lxns/domain/lxns-account-reuse';
 
 const oauth = {
   mode: 'lxns-oauth',

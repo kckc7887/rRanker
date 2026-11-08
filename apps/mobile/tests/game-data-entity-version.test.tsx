@@ -1,34 +1,36 @@
+import type { Credential } from '@rranker/sdk/credentials';
 import { jest } from '@jest/globals';
 import { QueryClient } from '@tanstack/react-query';
-import { loadGameDataBundle, type GameDataLoaderContext } from '@/services/game-data-loaders';
-import { tufPlayerQueryOptions, tufPlayerEntityKey } from '@/services/tuf-query';
-import { museDashPlayerQueryOptions } from '@/services/muse-dash-query';
-import { phiraPlayerQueryOptions, phiraPlayerEntityKey } from '@/services/phira-query';
-import { gameDataCatalogQueries } from '@/services/game-data-loader-queries';
-import { gameDataQueryKey, registerGameDataBackground, refreshGameDataBundle } from '@/services/game-data-query';
-import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
-import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
-import { ChunithmCatalogProvider, mapChunithmCatalog } from '@/providers/chunithm-catalog-provider';
-import { emptyChunithmBests } from '@/domain/chunithm-personal';
-import { ProviderError } from '@/providers/errors';
-import { getGameProfile } from '@/domain/game-profile';
-import type { GameId, ProviderId } from '@/domain/game-bind-options';
-import type { TufPlayer } from '@/domain/tuf';
-import type { MuseDashPlayer } from '@/domain/muse-dash';
-import { PhiraUserSchema, PhiraUserStatsSchema, PhiraChartSchema, PhiraRecordSchema } from '@/domain/phira';
-import { tufProvider } from '@/providers/tuf-provider';
-import { museDashProvider } from '@/providers/muse-dash-provider';
-import { phiraProvider } from '@/providers/phira-provider';
-import { createCatalogTestAccount, createMaxedMaimaiTestAccount, type CatalogTestGameId } from '@/domain/bound-account';
-import { applyRizlineCatalog, RIZLINE_CATALOG_QUERY_KEY } from '@/services/rizline-catalog-query';
-import { fixtureCatalog, fixturePlayer, fixtureSource } from '@/fixtures/sanitized';
-import { rizlineCatalog, rizlineChart } from './fixtures/rizline';
-import { buildScoreSnapshot } from '@/services/score-service';
-import { createSessionProviders } from '@/services/session-providers';
-import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { loadGameDataBundle } from '@rranker/sdk/services/game-data-loaders';
+import type { GameDataLoaderContext } from '@rranker/sdk/data-load';
 
-jest.mock('@/storage/sqlite-snapshot-repository', () => {
+import { tufPlayerQueryOptions, tufPlayerEntityKey } from '@rranker/provider-tuf/services/tuf-query';
+import { museDashPlayerQueryOptions } from '@rranker/provider-musedash-moe/services/muse-dash-query';
+import { phiraPlayerQueryOptions, phiraPlayerEntityKey } from '@rranker/provider-phira-community/services/phira-query';
+import { gameDataQueryKey, registerGameDataBackground, refreshGameDataBundle } from '@rranker/sdk/services/game-data-query';
+import { ChunithmPersonalService } from '@rranker/provider-lxns/services/chunithm-personal-service';
+import { ChunithmCatalogProvider, mapChunithmCatalog } from '@rranker/provider-lxns/providers/chunithm-catalog-provider';
+import { emptyChunithmBests } from '@rranker/game-chunithm/domain/chunithm-personal';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { getGameProfile } from '@rranker/sdk/domain/game-profile';
+import type { GameId, ProviderId } from '@rranker/sdk/domain/game-bind-options';
+import type { TufPlayer } from '@rranker/game-adofai/domain/tuf';
+import type { MuseDashPlayer } from '@rranker/game-musedash/domain/muse-dash';
+import { PhiraUserSchema, PhiraUserStatsSchema, PhiraChartSchema, PhiraRecordSchema } from '@rranker/game-phira/domain/phira';
+import { tufProvider } from '@rranker/provider-tuf/providers/tuf-provider';
+import { museDashProvider } from '@rranker/provider-musedash-moe/providers/muse-dash-provider';
+import { phiraProvider } from '@rranker/provider-phira-community/providers/phira-provider';
+import { createCatalogTestAccount, type CatalogTestGameId } from './plugins';
+import { createMaxedMaimaiTestAccount } from '@rranker/game-maimai/accounts';
+import { applyRizlineCatalog, RIZLINE_CATALOG_QUERY_KEY } from '@rranker/game-rizline/services/rizline-catalog-query';
+import { fixtureCatalog, fixturePlayer, fixtureSource } from './fixtures/sanitized';
+import { rizlineCatalog, rizlineChart } from './fixtures/rizline';
+import { buildScoreSnapshot } from '@rranker/game-maimai/services/score-service';
+import { getDataSource } from '@rranker/sdk/registry';
+import { LxnsCatalogProvider } from '@rranker/provider-lxns/providers/lxns-catalog-provider';
+import { ScoreRepository } from '@rranker/game-maimai/storage/score-repository';
+
+jest.mock('@rranker/game-maimai/storage/score-repository', () => {
   class MemorySnapshotRepository {
     async getResource() { return null; }
     async saveResource() { return undefined; }
@@ -38,7 +40,7 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
     async clearResources() { return undefined; }
     async listResourceSizes() { return []; }
   }
-  return { SqliteSnapshotRepository: MemorySnapshotRepository };
+  return { ScoreRepository: MemorySnapshotRepository };
 });
 
 const tufPlayer = { id: 25, name: '公开玩家', rankedScore: 1824.52 } as unknown as TufPlayer;
@@ -47,7 +49,7 @@ const PLAYER_ID = 323528;
 const chart = (id: number) => PhiraChartSchema.parse({ id, name: `Chart ${id}`, level: 'AT Lv.16', difficulty: 15.2, uploader: 9 });
 const record = (id: number, chartId: number) => PhiraRecordSchema.parse({ id, chart: chartId, score: 900_000, accuracy: 0.99, best: true });
 
-function context(input: { gameId: GameId; providerId: ProviderId; accountId: string; client: QueryClient }): GameDataLoaderContext {
+function context(input: { gameId: GameId; providerId: ProviderId; accountId: string; client: QueryClient }): GameDataLoaderContext<unknown, Credential | null> {
   const queryKey = gameDataQueryKey(input.accountId, input.gameId, input.providerId, null);
   backgroundKeys.push(queryKey);
   return {
@@ -55,10 +57,10 @@ function context(input: { gameId: GameId; providerId: ProviderId; accountId: str
     activeProviderId: input.providerId,
     activeAccountId: input.accountId,
     session: null,
-    protocolScoreProvider: null,
-    catalogQueries: gameDataCatalogQueries(input.client),
-    scoreProvider: {} as GameDataLoaderContext['scoreProvider'],
-    catalogProvider: {} as GameDataLoaderContext['catalogProvider'],
+    get client() { return getDataSource(input.providerId)?.createClient?.({
+      account: this.activeAccount!, credential: this.session, assertCurrent: this.assertCurrent, commitCredential: async () => 'applied',
+    }); },
+    queryClient: input.client,
     activeAccount: {
       id: input.accountId, gameId: input.gameId, providerId: input.providerId,
       displayName: '玩家', scoreLabel: 'Rating', scoreDisplay: '—', providerTitle: '查分器',
@@ -96,12 +98,11 @@ it('舞萌示例从曲库生成成绩并保留已有的持久化内容', async (
   const account = createMaxedMaimaiTestAccount();
   const input = context({ gameId: 'maimai', providerId: 'maimai-test', accountId: account.id, client });
   input.activeAccount = account;
-  Object.assign(input, createSessionProviders(account, null));
   let stored = buildScoreSnapshot({
     ...fixturePlayer, source: { ...fixtureSource, kind: 'generated', label: '示例查分器（全谱面满成绩）' },
   }, [], fixtureCatalog);
-  jest.spyOn(SqliteSnapshotRepository.prototype, 'getLatest').mockImplementation(async () => stored);
-  jest.spyOn(SqliteSnapshotRepository.prototype, 'save').mockImplementation(async (_accountId, snapshot) => { stored = snapshot; });
+  jest.spyOn(ScoreRepository.prototype, 'getLatest').mockImplementation(async () => stored);
+  jest.spyOn(ScoreRepository.prototype, 'save').mockImplementation(async (_accountId, snapshot) => { stored = snapshot; });
   jest.spyOn(LxnsCatalogProvider.prototype, 'getDetailedCatalog').mockResolvedValue(fixtureCatalog);
 
   const { bundle } = await loadGameDataBundle(input);
@@ -111,7 +112,7 @@ it('舞萌示例从曲库生成成绩并保留已有的持久化内容', async (
   });
   if (bundle.payload.kind !== 'maimai') throw new Error('舞萌载荷缺失');
   expect(bundle.payload.records.length).toBeGreaterThan(0);
-  expect(await new SqliteSnapshotRepository().getLatest(account.id)).toMatchObject({
+  expect(await new ScoreRepository().getLatest(account.id)).toMatchObject({
     records: [], player: { source: { label: '示例查分器（全谱面满成绩）' } },
   });
 });
@@ -203,7 +204,6 @@ it('中二分项认证失败经过加载器和主动刷新仍保留具体项与�
   });
   const input = context({ gameId: 'chunithm', providerId: 'lxns', accountId, client });
   input.session = { mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 1000, persistable: true };
-  input.protocolScoreProvider = new ChunithmScoreProvider(input.session);
   input.hasSessionData = true;
   const loaded = await loadGameDataBundle(input);
   registerGameDataBackground(input.queryKey, loaded.background);
@@ -225,7 +225,6 @@ it('中二没有可用快照的认证失败保持authentication而不是no_data'
   });
   const input = context({ gameId: 'chunithm', providerId: 'lxns', accountId, client });
   input.session = { mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 1000, persistable: true };
-  input.protocolScoreProvider = new ChunithmScoreProvider(input.session);
   input.hasSessionData = true;
   const result = await refreshGameDataBundle({ client,
     params: { accountId, gameId: 'chunithm', providerId: 'lxns', mode: null },
@@ -240,7 +239,7 @@ it('中二没有可用快照的认证失败保持authentication而不是no_data'
 it('中二示例加载按上游新曲集合展示 N20 和玩家 Rating', async () => {
   const client = createClient();
   const input = context({ gameId: 'chunithm', providerId: 'chunithm-test', accountId: 'chunithm:test', client });
-  input.catalogQueries.chunithm = async () => mapChunithmCatalog({
+  jest.spyOn(ChunithmCatalogProvider.prototype, 'getCatalog').mockResolvedValue(mapChunithmCatalog({
     versions: [
       { id: 18, version: 23000, title: 'CHUNITHM VERSE' },
       { id: 19, version: 24000, title: 'CHUNITHM X-VERSE' },
@@ -253,7 +252,7 @@ it('中二示例加载按上游新曲集合展示 N20 和玩家 Rating', async (
       { id: 2, title: '新曲', version: 24001,
         difficulties: [{ difficulty: 3, level: '15', level_value: 15, version: 24001 }] },
     ],
-  });
+  }));
   jest.spyOn(ChunithmCatalogProvider.prototype, 'getNewVersionTitles')
     .mockResolvedValue(['CHUNITHM X-VERSE', 'CHUNITHM X-VERSE-X']);
 
@@ -271,9 +270,9 @@ it('中二示例加载按上游新曲集合展示 N20 和玩家 Rating', async (
 it('中二新曲版本读取失败时沿用加载失败入口', async () => {
   const client = createClient();
   const input = context({ gameId: 'chunithm', providerId: 'chunithm-test', accountId: 'chunithm:test', client });
-  input.catalogQueries.chunithm = async () => mapChunithmCatalog({
+  jest.spyOn(ChunithmCatalogProvider.prototype, 'getCatalog').mockResolvedValue(mapChunithmCatalog({
     versions: [{ id: 19, version: 24000, title: 'CHUNITHM X-VERSE' }], genres: [], songs: [],
-  });
+  }));
   jest.spyOn(ChunithmCatalogProvider.prototype, 'getNewVersionTitles')
     .mockRejectedValue(new ProviderError('network', 'network unavailable', true));
 

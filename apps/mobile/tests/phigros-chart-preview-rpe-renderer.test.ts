@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
-import { PhiraChartSchema } from '@/domain/phira';
-import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
-import { parseRpeChart } from '@/features/phigros-chart-preview/webview-player/rpe-core';
-import { RpeRenderer } from '@/features/phigros-chart-preview/webview-player/rpe-renderer';
-import { createStageContext } from '@/features/chart-preview-shared/webview-player/stage';
-import { StageVideo, type StageMediaHost, type StageVideoOptions } from '@/features/chart-preview-shared/webview-player/stage-media';
+import { PhiraChartSchema } from '@rranker/game-phira/domain/phira';
+import { buildPhiraChartPreviewInput } from '@rranker/tool-chart-json/features/phira-chart-preview/chart-preview-input';
+import { parseRpeChart } from '@rranker/chart-json/features/phigros-chart-preview/webview-player/rpe-core';
+import { RpeRenderer } from '@rranker/chart-json/features/phigros-chart-preview/webview-player/rpe-renderer';
+import { createStageContext } from '@rranker/sdk/features/chart-preview-shared/webview-player/stage';
+import { StageVideo, type StageMediaHost, type StageVideoOptions } from '@rranker/sdk/features/chart-preview-shared/webview-player/stage-media';
 
-vi.mock('@/features/chart-preview-shared/webview-player/stage', async () => {
-  const original = await vi.importActual<typeof import('@/features/chart-preview-shared/webview-player/stage')>('@/features/chart-preview-shared/webview-player/stage');
+vi.mock('@rranker/sdk/features/chart-preview-shared/webview-player/stage', async () => {
+  const original = await vi.importActual<typeof import('@rranker/sdk/features/chart-preview-shared/webview-player/stage')>('@rranker/sdk/features/chart-preview-shared/webview-player/stage');
   return { ...original, stagePixels: (w: number,h: number) => ({ width:w,height:h }),
     createStageContext: (canvas: HTMLCanvasElement) => canvas.getContext('2d') };
 });

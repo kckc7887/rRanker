@@ -1,7 +1,7 @@
-import { analyzeMaimaiStrength, buildMaimaiStrengthPool } from '@/domain/maimai-strength-analysis';
-import { chartVersionKey } from '@/domain/catalog';
-import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
-import type { MaimaiDxTagScores } from '@/domain/maimai-dxtag';
+import { analyzeMaimaiStrength, buildMaimaiStrengthPool } from '@rranker/game-maimai/domain/maimai-strength-analysis';
+import { chartVersionKey } from '@rranker/game-maimai/domain/catalog';
+import type { CatalogSnapshot, ScoreRecord } from '@rranker/game-maimai/domain/models';
+import type { MaimaiDxTagScores } from '@rranker/game-maimai/domain/maimai-dxtag';
 
 function record(id: number, overrides: Partial<ScoreRecord> = {}): ScoreRecord {
   return { songId: String(id), title: `Song ${id}`, type: 'SD', levelIndex: 3, level: '13',

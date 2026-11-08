@@ -1,13 +1,16 @@
+import { getDataSource } from '@rranker/sdk/registry';
+import { catalogDemoAccountStore } from '@rranker/sdk/storage/catalog-demo-account-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CatalogTestGameId } from '@/domain/bound-account';
-import type { ProviderId } from '@/domain/game-bind-options';
-import { clearBoundAccountData, demoAccountBinding } from '@/services/account-management';
-import { loadOptionalBoundAccounts, restoreAppAccounts, retryFailedAccountSources } from '@/services/account-restoration';
-import { useDebugStore } from '@/state/debug-store';
-import { useSession } from '@/state/session-store';
-import { SecureSessionStore } from '@/storage/secure-session-store';
+import { type CatalogTestGameId } from './plugins';
+import type { ProviderId } from '@rranker/sdk/domain/game-bind-options';
+import { clearBoundAccountData } from '@rranker/sdk/services/account-management';
+import { loadOptionalBoundAccounts, restoreAppAccounts, retryFailedAccountSources } from '@rranker/sdk/services/account-restoration';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { SecureSessionStore } from '@rranker/sdk/storage/secure-session-store';
 
 const storage = vi.hoisted(() => ({ values: new Map<string, string>(), unreadable: new Set<string>() }));
+vi.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class { async clear() {} } }));
 vi.mock('expo-sqlite/kv-store', () => ({ default: {
   getItem: async (key: string) => {
     if (storage.unreadable.has(key)) throw new Error('storage unavailable');
@@ -34,10 +37,9 @@ const removal = { submit: async (_label: string, action: () => Promise<unknown>)
   cleanup: async (_label: string, action: () => Promise<unknown>) => { await action(); } };
 
 async function saveDemo(gameId: CatalogTestGameId, providerId: ProviderId) {
-  const binding = demoAccountBinding(providerId, gameId)!;
-  const account = { ...binding.create(), displayName: `${gameId} 示例玩家` };
+  const source = getDataSource(providerId)!;
   const previousKeys = new Set(storage.values.keys());
-  await binding.persist(account);
+  const account = await source.createAccount!(gameId, []);
   return { account, savedKeys: [...storage.values.keys()].filter(key => !previousKeys.has(key)) };
 }
 
@@ -85,7 +87,7 @@ describe('曲库示例账号', () => {
     for (const { account } of saved) expect(useSession.getState().boundAccounts.find(item => item.id === account.id)?.displayName).toBe(account.displayName);
 
     storage.unreadable.clear();
-    await demoAccountBinding('osu-test', 'osu-mania')!.persist({ ...failed.account, displayName: '恢复后的 mania 玩家' });
+    await catalogDemoAccountStore('osu-mania').save({ id: failed.account.id, displayName: '恢复后的 mania 玩家' });
     await retryFailedAccountSources();
     expect(useSession.getState().boundAccounts).toHaveLength(4);
     expect(useSession.getState().boundAccounts.find(item => item.id === failed.account.id)?.displayName).toBe('恢复后的 mania 玩家');

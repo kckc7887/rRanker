@@ -2,38 +2,36 @@ import { Text } from 'react-native';
 import type { ReactElement } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import type { GameId } from '@/domain/game-bind-options';
-import type { ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
-import type { MuseDashRawScore, MuseDashPlay } from '@/domain/muse-dash';
-import type { PhiraChart, PhiraQueriedBest } from '@/domain/phira';
-import type { RizlineRecord } from '@/domain/rizline';
-import type { TufPass } from '@/domain/tuf';
-import type { OsuBestScore } from '@/domain/osu';
-import { fixtureRecords } from '@/fixtures/sanitized';
-import { decodeDetailTarget, encodeDetailTarget, type DetailTarget } from '@/domain/detail-target';
-import { GameScoreCard } from '@/components/game-content/GameScoreCard';
-import { GameSongRow } from '@/components/game-content/GameSongRow';
-import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
-import {
-  presentChunithmScore,
-  presentMaimaiScore,
-  presentMuseDashScore,
-  presentPhigrosScore,
-  presentPhiraScore,
-  presentRizlineScore,
-  presentTufScore,
-} from '@/features/game-content/adapters';
-import { presentMajdataScore } from '@/features/game-content/adapters/majdata';
-import SongDetailScreen from '../app/songs/[songId]';
-import { createLocalMaimaiAccount } from '@/domain/bound-account';
+import type { GameId } from '@rranker/sdk/domain/game-bind-options';
+import type { ChunithmScoreCardData } from '@rranker/game-chunithm/domain/chunithm-score-presentation';
+import type { MuseDashRawScore, MuseDashPlay } from '@rranker/game-musedash/domain/muse-dash';
+import type { PhiraChart, PhiraQueriedBest } from '@rranker/game-phira/domain/phira';
+import type { RizlineRecord } from '@rranker/game-rizline/domain/rizline';
+import type { TufPass } from '@rranker/game-adofai/domain/tuf';
+import type { OsuBestScore } from '@rranker/game-osu/domain/osu';
+import { fixtureRecords } from './fixtures/sanitized';
+import { getGameAdapter, type DetailTarget } from '@rranker/sdk';
+import { GameScoreCard } from '@rranker/sdk/components/game-content/GameScoreCard';
+import { GameSongRow } from '@rranker/sdk/components/game-content/GameSongRow';
+import { OsuScoreCard } from '@rranker/game-osu/components/OsuScoreCard';
+import { presentChunithmScore } from '@rranker/game-chunithm/presentation';
+import { presentMaimaiScore } from '@rranker/game-maimai/presentation';
+import { presentMuseDashScore } from '@rranker/game-musedash/presentation';
+import { presentPhigrosScore } from '@rranker/game-phigros/presentation';
+import { presentPhiraScore } from '@rranker/game-phira/presentation';
+import { presentRizlineScore } from '@rranker/game-rizline/presentation';
+import { presentTufScore } from '@rranker/game-adofai/presentation';
+import { presentMajdataScore } from '@rranker/game-majdata-net/presentation';
+import SongDetailScreen from '../app/detail';
+import { createLocalMaimaiAccount } from '@rranker/game-maimai/accounts';
 
 let mockActiveGameId: GameId = 'maimai';
 let mockRouteParams: Record<string, string> = { songId: '1', gameId: 'maimai' };
 const mockPush = jest.fn();
 const mockCrossAccount = { ...createLocalMaimaiAccount('Phigros 玩家', 0), id: 'phigros:test', gameId: 'phigros' as const };
 const mockSwitch = jest.fn(async (_id: string, _options: unknown) => { mockActiveGameId = 'phigros'; });
-jest.mock('@/services/switch-bound-account', () => ({ switchBoundAccount: (id: string, options: unknown) => mockSwitch(id, options), notifyAccountSwitchError: jest.fn() }));
-jest.mock('@/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: (props: { visible: boolean; onClose: () => void; onSelectAccount: (account: unknown) => void }) => {
+jest.mock('@rranker/sdk/services/switch-bound-account', () => ({ switchBoundAccount: (id: string, options: unknown) => mockSwitch(id, options), notifyAccountSwitchError: jest.fn() }));
+jest.mock('@rranker/sdk/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: (props: { visible: boolean; onClose: () => void; onSelectAccount: (account: unknown) => void }) => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return props.visible ? React.createElement(RN.View, null,
@@ -48,8 +46,8 @@ jest.mock('expo-router', () => ({
   useSegments: () => [],
   Stack: { Screen: () => null },
 }));
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   StackScreenActivityScope: ({ children }: { children: ReactElement }) => children,
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -62,13 +60,13 @@ jest.mock('react-native-gesture-handler', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: false,
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', border: '#DDD', text: '#111',
   textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF',
   input: '#FFF', danger: '#B42318',
 }) }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: { activeGameId: GameId; activeAccountId: string; boundAccounts: typeof mockCrossAccount[] }) => unknown) => selector({
     activeGameId: mockActiveGameId,
@@ -93,11 +91,11 @@ it('跨游戏详情取消选择不加载错误游戏，切换成功后继续同�
   await view.rerender(<SongDetailScreen />);
   expect(view.getByTestId('phigros-detail')).toHaveTextContent(JSON.stringify({ songId: 'target-song', levelIndex: 2 }));
 });
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
   useMaimaiSongDetail: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   NotificationOutlet: () => null,
   useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
   useNotificationModalRequestClose: () => () => false,
@@ -112,34 +110,34 @@ function mockDetailEcho(testID: string) {
   return DetailEcho;
 }
 
-jest.mock('@/components/phigros/PhigrosSongDetail', () => ({
+jest.mock('@rranker/game-phigros/components/PhigrosSongDetail', () => ({
   PhigrosSongDetail: mockDetailEcho('phigros-detail'),
 }));
-jest.mock('@/components/majdata/MajdataSongDetail', () => ({
+jest.mock('@rranker/game-majdata-net/components/MajdataSongDetail', () => ({
   MajdataSongDetail: mockDetailEcho('majdata-detail'),
 }));
-jest.mock('@/components/rizline/RizlineSongDetail', () => ({
+jest.mock('@rranker/game-rizline/components/RizlineSongDetail', () => ({
   RizlineSongDetail: mockDetailEcho('rizline-detail'),
 }));
-jest.mock('@/components/chunithm/ChunithmSongDetail', () => ({
+jest.mock('@rranker/game-chunithm/components/ChunithmSongDetail', () => ({
   ChunithmSongDetail: mockDetailEcho('chunithm-detail'),
 }));
-jest.mock('@/components/osu/OsuSongDetail', () => ({
+jest.mock('@rranker/game-osu/components/OsuSongDetail', () => ({
   OsuSongDetail: mockDetailEcho('osu-detail'),
 }));
-jest.mock('@/screens/PhiraScreens', () => ({
+jest.mock('@rranker/game-phira/screens/PhiraScreens', () => ({
   PhiraSongDetailScreen: mockDetailEcho('phira-detail'),
   PhiraBestScreen: () => null,
   PhiraRecordsScreen: () => null,
   PhiraCatalogScreen: () => null,
 }));
-jest.mock('@/screens/TufScreens', () => ({
+jest.mock('@rranker/game-adofai/screens/TufScreens', () => ({
   TufLevelDetailScreen: mockDetailEcho('adofai-detail'),
   TufBestScreen: () => null,
   TufRecordsScreen: () => null,
   TufSearchScreen: () => null,
 }));
-jest.mock('@/screens/MuseDashScreens', () => ({
+jest.mock('@rranker/game-musedash/screens/MuseDashScreens', () => ({
   MuseDashSongDetailScreen: mockDetailEcho('musedash-detail'),
   MuseDashBestScreen: () => null,
   MuseDashRecordsScreen: () => null,
@@ -248,7 +246,7 @@ const CASES: RoundTripCase[] = [
     card: sharedCard(presentMaimaiScore(maimaiRecord), 'maimai-score-card'),
     cardTestID: 'maimai-score-card',
     detailTestID: '',
-    target: { game: 'maimai', songId: '152', chartType: 'DX', levelIndex: 4 },
+    target: { gameId: 'maimai', params: { songId: '152', chartType: 'DX', levelIndex: String(4) } },
     detailProps: {},
   },
   {
@@ -257,7 +255,7 @@ const CASES: RoundTripCase[] = [
     card: sharedCard(presentPhigrosScore(phigrosRecord), 'phigros-score-card'),
     cardTestID: 'phigros-score-card',
     detailTestID: 'phigros-detail',
-    target: { game: 'phigros', songId: 'Song.A', levelIndex: 3 },
+    target: { gameId: 'phigros', params: { songId: 'Song.A', levelIndex: String(3) } },
     detailProps: { songId: 'Song.A', levelIndex: 3 },
   },
   {
@@ -266,7 +264,7 @@ const CASES: RoundTripCase[] = [
     card: sharedCard(presentChunithmScore(chunithmCard), 'chunithm-score-card'),
     cardTestID: 'chunithm-score-card',
     detailTestID: 'chunithm-detail',
-    target: { game: 'chunithm', songId: '3', levelIndex: 3 },
+    target: { gameId: 'chunithm', params: { songId: '3', levelIndex: String(3) } },
     detailProps: { songId: '3', initialLevelIndex: 3 },
   },
   {
@@ -275,7 +273,7 @@ const CASES: RoundTripCase[] = [
     card: sharedCard(presentRizlineScore(rizlineRecord), 'rizline-score-card'),
     cardTestID: 'rizline-score-card',
     detailTestID: 'rizline-detail',
-    target: { game: 'rizline', songId: 'song.a', levelIndex: 2 },
+    target: { gameId: 'rizline', params: { songId: 'song.a', levelIndex: String(2) } },
     detailProps: { songId: 'song.a', initialLevelIndex: 2 },
   },
   {
@@ -287,7 +285,7 @@ const CASES: RoundTripCase[] = [
     }), 'majdata-score-card'),
     cardTestID: 'majdata-score-card',
     detailTestID: 'majdata-detail',
-    target: { game: 'majdata-net', songId: 'uuid-1', levelIndex: 5 },
+    target: { gameId: 'majdata-net', params: { songId: 'uuid-1', levelIndex: String(5) } },
     detailProps: { songId: 'uuid-1', initialLevelIndex: 5 },
   },
   {
@@ -296,7 +294,7 @@ const CASES: RoundTripCase[] = [
     card: sharedCard(presentMuseDashScore(museDashRaw), 'musedash-score-card'),
     cardTestID: 'musedash-score-card',
     detailTestID: 'musedash-detail',
-    target: { game: 'musedash', songId: '0-47', levelIndex: 3 },
+    target: { gameId: 'musedash', params: { songId: '0-47', levelIndex: String(3) } },
     detailProps: { songId: '0-47', levelIndex: 3 },
   },
   {
@@ -305,7 +303,7 @@ const CASES: RoundTripCase[] = [
     card: sharedCard(presentPhiraScore(phiraBest), 'phira-score-card'),
     cardTestID: 'phira-score-card',
     detailTestID: 'phira-detail',
-    target: { game: 'phira', chartId: '19365' },
+    target: { gameId: 'phira', params: { songId: '19365' } },
     detailProps: { chartId: '19365' },
   },
   {
@@ -314,7 +312,7 @@ const CASES: RoundTripCase[] = [
     card: sharedCard(presentTufScore(tufPass), 'adofai-score-card'),
     cardTestID: 'adofai-score-card',
     detailTestID: 'adofai-detail',
-    target: { game: 'adofai', levelId: '11372' },
+    target: { gameId: 'adofai', params: { songId: '11372' } },
     detailProps: { levelId: '11372' },
   },
 ];
@@ -327,6 +325,11 @@ function pushedHref(): { pathname: string; params: Record<string, string> } {
   return mockPush.mock.calls[0]![0] as { pathname: string; params: Record<string, string> };
 }
 
+function resolvedHref(href: ReturnType<typeof pushedHref>) {
+  const { gameId, ...params } = href.params;
+  return { gameId, params: getGameAdapter(gameId)?.parseDetailParams(gameId, params) };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockActiveGameId = 'maimai';
@@ -336,19 +339,19 @@ beforeEach(() => {
 describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
   it.each(CASES)('$name 公共歌曲行保留完整详情定位参数', async (testCase) => {
     const row = await render(<GameSongRow presentation={{ key: 'song', gameId: testCase.game,
-      route: encodeDetailTarget(testCase.target), title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
+      route: testCase.target, title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
       cover={null} />);
     await fireEvent.press(row.getByLabelText('打开歌曲'));
-    expect(decodeDetailTarget(pushedHref().params)).toEqual({ ok: true, target: testCase.target });
+    expect(resolvedHref(pushedHref())).toEqual(testCase.target);
   });
 
   it('公共歌曲行保留额外参数与未转义歌曲身份', async () => {
     const row = await render(<GameSongRow presentation={{ key: 'song', gameId: 'majdata-net',
-      route: { songId: '歌曲/空 格', levelIndex: 5, params: { gameId: 'majdata-net', scoreId: '42' } },
+      route: { gameId: 'majdata-net', params: { songId: '歌曲/空 格', levelIndex: String(5), scoreId: String('42') } },
       title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
       cover={null} />);
     await fireEvent.press(row.getByLabelText('打开歌曲'));
-    expect(pushedHref()).toEqual({ pathname: '/songs/[songId]',
+    expect(pushedHref()).toEqual({ pathname: '/detail',
       params: { songId: '歌曲/空 格', levelIndex: '5', gameId: 'majdata-net', scoreId: '42' } });
   });
 
@@ -358,8 +361,8 @@ describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
 
     const href = pushedHref();
-    expect(href.pathname).toBe('/songs/[songId]');
-    expect(decodeDetailTarget(href.params)).toEqual({ ok: true, target: testCase.target });
+    expect(href.pathname).toBe('/detail');
+    expect(resolvedHref(href)).toEqual(testCase.target);
     await card.unmount();
   });
 
@@ -384,13 +387,12 @@ describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
     await fireEvent.press(card.getByTestId(`osu-score-card-${osuScore.id}`));
 
     const href = pushedHref();
-    expect(href.pathname).toBe('/songs/[songId]');
+    expect(href.pathname).toBe('/detail');
     expect(href.params).toEqual({ songId: '3720', beatmapId: '22423', scoreId: '166715063', gameId: 'osu-standard' });
 
-    const resolution = decodeDetailTarget(href.params);
+    const resolution = resolvedHref(href);
     expect(resolution).toEqual({
-      ok: true,
-      target: { game: 'osu-standard', beatmapsetId: '3720', beatmapId: 22423, scoreId: 166715063 },
+      gameId: 'osu-standard', params: { songId: '3720', beatmapId: '22423', scoreId: '166715063' },
     });
 
     mockActiveGameId = 'osu-standard';

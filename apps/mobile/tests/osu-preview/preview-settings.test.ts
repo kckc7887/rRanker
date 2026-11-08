@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { DEFAULT_PREVIEW_SETTINGS, normalizePreviewSettings } from '../../src/features/osu-chart-preview/webview-player/preview-settings';
+import { DEFAULT_PREVIEW_SETTINGS, normalizePreviewSettings } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/preview-settings';
 
 describe('preview display preferences', () => {
   it('bounds numeric controls and rejects malformed stored flags without losing defaults', () => {

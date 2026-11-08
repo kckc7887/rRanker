@@ -1,7 +1,7 @@
 import {
   ArcadeFinderPreferencesStore,
   defaultArcadeFinderPreferences,
-} from '@/features/toolbox/arcade-finder-preferences';
+} from '@rranker/tool-arcade-finder/features/arcade-finder-preferences';
 
 class MemoryStore {
   values = new Map<string, string>();

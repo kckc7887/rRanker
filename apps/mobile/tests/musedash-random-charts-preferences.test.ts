@@ -2,8 +2,8 @@ import {
   MuseDashRandomChartsPreferencesStore,
   defaultMuseDashRandomChartsPreferences,
   parseMuseDashRandomChartsPreferences,
-} from '@/features/toolbox/musedash-random-charts-preferences';
-import { createMuseDashRandomChartsFilterStore } from '@/state/musedash-random-charts-filter';
+} from '@rranker/tool-musedash/features/musedash-random-charts-preferences';
+import { createMuseDashRandomChartsFilterStore } from '@rranker/tool-musedash/state/musedash-random-charts-filter';
 
 class MemoryStore {
   values = new Map<string, string>();

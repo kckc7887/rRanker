@@ -1,9 +1,9 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { OsuModeSelectContent } from '@/components/osu/OsuModeSelectContent';
+import { OsuModeSelectContent } from '@rranker/game-osu/components/OsuModeSelectContent';
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#fff',
     surface: '#fff',

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { loadMuseDashPlayerFresh } from '@/services/muse-dash-cache';
+import { loadMuseDashPlayerFresh } from '@rranker/provider-musedash-moe/services/muse-dash-cache';
 
 afterEach(() => vi.unstubAllGlobals());
 

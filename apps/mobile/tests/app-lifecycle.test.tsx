@@ -5,7 +5,7 @@ import {
   AppLifecycleProvider,
   getForegroundAbortSignal,
   useAppLifecycle,
-} from '@/state/app-lifecycle';
+} from '@rranker/sdk/state/app-lifecycle';
 
 function LifecycleProbe() {
   const lifecycle = useAppLifecycle();

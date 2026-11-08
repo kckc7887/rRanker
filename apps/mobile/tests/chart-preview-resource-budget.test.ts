@@ -14,7 +14,7 @@ import {
   createChartPreviewActualBytes,
   readBudgetedZipEntry,
   readBudgetedChartDownload,
-} from '@/features/chart-preview-shared/chart-preview-resource-budget';
+} from '@rranker/sdk/features/chart-preview-shared/chart-preview-resource-budget';
 
 async function zipEntry(bytes: Uint8Array, checksum = bytes.byteLength === 0 ? 0 : crc32(bytes)) {
   const source = new JSZip(); source.file('chart', bytes);

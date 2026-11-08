@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { MuseDashPlayerPickerSheet } from '@/components/MuseDashPlayerPickerSheet';
+import { MuseDashPlayerPickerSheet } from '@rranker/provider-musedash-moe/components/MuseDashPlayerPickerSheet';
 
 const mockSearch = jest.fn();
 const mockDirect = jest.fn();
@@ -13,12 +13,12 @@ jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 34, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', border: '#DDD', text: '#111',
   textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF', input: '#F0F1F5',
 }) }));
-jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
-jest.mock('@/hooks/use-muse-dash', () => ({
+jest.mock('@rranker/sdk/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
+jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => ({
   useMuseDashSearch: (query: string) => {
     mockSearchQuery = query;
     return mockSearch(query);

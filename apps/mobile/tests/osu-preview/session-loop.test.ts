@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { PreviewSession } from '@/features/osu-chart-preview/webview-player/playback';
-import { AudioSync } from '@/features/osu-chart-preview/webview-player/engine-audio/AudioSync';
+import { PreviewSession } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/playback';
+import { AudioSync } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine-audio/AudioSync';
 
 afterEach(() => vi.unstubAllGlobals());
 

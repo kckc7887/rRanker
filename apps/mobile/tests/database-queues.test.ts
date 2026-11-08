@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { runDatabaseWrite, runSerializedSchemaInit } from '@/storage/rranker-database';
+import { runDatabaseWrite, runSerializedSchemaInit } from '@rranker/sdk/storage/rranker-database';
 
 it('initializes the log database while an unrelated business write is pending', async () => {
   let finish!: () => void;

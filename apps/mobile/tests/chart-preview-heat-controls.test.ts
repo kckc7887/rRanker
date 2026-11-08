@@ -2,11 +2,11 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { bindHeatTimelineKeyboard, buildHeatDensity, HeatTimelineView } from '@/features/chart-preview-shared/webview-player/heat-timeline';
-import { PlayerEventScope } from '@/features/chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls } from '@/features/chart-preview-shared/webview-player/controls';
-import { setupWheelPopup } from '@/features/chart-preview-shared/webview-player/wheel';
-import { chartPreviewAppearanceScript } from '@/features/chart-preview-shared/chart-preview-inject-factory';
+import { bindHeatTimelineKeyboard, buildHeatDensity, HeatTimelineView } from '@rranker/sdk/features/chart-preview-shared/webview-player/heat-timeline';
+import { PlayerEventScope } from '@rranker/sdk/features/chart-preview-shared/webview-player/event-scope';
+import { installPreviewControls } from '@rranker/sdk/features/chart-preview-shared/webview-player/controls';
+import { setupWheelPopup } from '@rranker/sdk/features/chart-preview-shared/webview-player/wheel';
+import { chartPreviewAppearanceScript } from '@rranker/sdk/features/chart-preview-shared/chart-preview-inject-factory';
 
 afterEach(() => {
   document.body.replaceChildren();

@@ -1,8 +1,8 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { MaimaiUploadTabs } from '@/components/maimai/MaimaiUploadTabs';
+import { MaimaiUploadTabs } from '@rranker/game-maimai/components/MaimaiUploadTabs';
 
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     accent: '#246BFD',
     surface: '#FFFFFF',
@@ -16,7 +16,7 @@ describe('Maimai upload tabs', () => {
   it('switches among friend code, player QR, and sync guide pages', async () => {
     const onChange = jest.fn();
     const screen = await render(
-      <MaimaiUploadTabs value="friend_code" disabled={false} onChange={onChange} />,
+      <MaimaiUploadTabs syncGuideAvailable value="friend_code" disabled={false} onChange={onChange} />,
     );
 
     expect(screen.getByLabelText('切换到好友码页面').props.accessibilityState)
@@ -35,7 +35,7 @@ describe('Maimai upload tabs', () => {
   it('disables page switching while either page is busy', async () => {
     const onChange = jest.fn();
     const screen = await render(
-      <MaimaiUploadTabs value="lxns_guide" disabled onChange={onChange} />,
+      <MaimaiUploadTabs syncGuideAvailable value="lxns_guide" disabled onChange={onChange} />,
     );
 
     await fireEvent.press(screen.getByLabelText('切换到好友码页面'));
@@ -44,4 +44,12 @@ describe('Maimai upload tabs', () => {
     expect(screen.getByLabelText('切换到同步引导页面').props.accessibilityState)
       .toEqual({ selected: true, disabled: true });
   });
+  it('keeps friend code and QR uploads available when the LXNS guide is unavailable', async () => {
+    const onChange = jest.fn();
+    const screen = await render(<MaimaiUploadTabs value="lxns_guide" syncGuideAvailable={false} disabled={false} onChange={onChange} />);
+    expect(screen.queryByText('同步引导')).toBeNull();
+    await fireEvent.press(screen.getByText('玩家二维码'));
+    expect(onChange).toHaveBeenCalledWith('qr');
+  });
+
 });

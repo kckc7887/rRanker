@@ -1,8 +1,8 @@
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import SongDetailScreen from '../app/songs/[songId]';
-import { MuseDashSongDetailScreen } from '@/screens/MuseDashScreens';
-import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashPlayer } from '@/domain/muse-dash';
+import SongDetailScreen from '../app/detail';
+import { MuseDashSongDetailScreen } from '@rranker/game-musedash/screens/MuseDashScreens';
+import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashPlayer } from '@rranker/game-musedash/domain/muse-dash';
 
 let mockRouteParams: Record<string, string> = { songId: '0-47', gameId: 'musedash' };
 let mockAlbumsPending = false;
@@ -53,29 +53,29 @@ jest.mock('react-native-gesture-handler', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   NotificationOutlet: () => null,
   useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
   useNotificationModalRequestClose: () => () => false,
 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: false, accent: '#246BFD', accentSoft: '#EAF1FF', background: '#F7F8FA', surface: '#FFFFFF',
   surfaceMuted: '#EEF2F7', input: '#FFFFFF', border: '#D1D5DB', text: '#111827',
   textSecondary: '#4B5563', textMuted: '#6B7280', danger: '#B42318',
 }) }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: unknown) => unknown) => selector({
     activeGameId: 'musedash',
     activeAccountId: 'musedash:musedash-moe:user-1',
   }),
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: { payload: { kind: 'musedash', player: mockPlayer } },
     isLoading: false, isError: false, error: null, refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-muse-dash', () => {
+jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => {
   const query = (data: unknown) => ({
     data,
     source: { kind: 'musedash', label: 'MuseDash.moe', updatedAt: new Date(0).toISOString(), isStale: false },
@@ -90,22 +90,20 @@ jest.mock('@/hooks/use-muse-dash', () => {
     useMuseDashPlayDetails: () => new Map(),
   };
 });
-jest.mock('@/hooks/use-user-library', () => {
-  const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
-  return {
+jest.mock('@rranker/sdk/hooks/use-user-library', () => {
+    return {
     useUserLibrary: () => ({
       data: [], isLoading: false, isUpdating: false,
       setSongFavorite: jest.fn(), setChartPractice: jest.fn(), setTags: jest.fn(), setTagPresets: jest.fn(),
-      tagPresets: [], songKey: (songId: string | number) => songLibraryKey('musedash', songId),
-      chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('musedash', songId, type, levelIndex),
+      tagPresets: [], key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
     }),
   };
 });
-jest.mock('@/components/TagEditor', () => ({ TagEditor: () => null }));
-jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
-jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/TagEditor', () => ({ TagEditor: () => null }));
+jest.mock('@rranker/game-maimai/components/SongCover', () => ({ SongCover: () => null }));
+jest.mock('@rranker/game-maimai/components/CollectionImage', () => ({ CollectionImage: () => null }));
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
   useStackScreenReady: () => true,
 }));

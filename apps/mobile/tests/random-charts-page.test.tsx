@@ -1,13 +1,13 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Text } from 'react-native';
-import { RandomChartsPage } from '@/components/RandomChartsPage';
-import { MaimaiRandomChartsScreen } from '@/screens/MaimaiRandomChartsScreen';
-import { ChunithmRandomChartsScreen } from '@/screens/ChunithmRandomChartsScreen';
-import { PhigrosRandomChartsScreen } from '@/screens/PhigrosRandomChartsScreen';
-import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
-import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import { useThemeStore } from '@/state/theme-store';
+import { RandomChartsPage } from '@rranker/sdk/components/RandomChartsPage';
+import { MaimaiRandomChartsScreen } from '@rranker/tool-maimai/screens/MaimaiRandomChartsScreen';
+import { ChunithmRandomChartsScreen } from '@rranker/tool-chunithm/screens/ChunithmRandomChartsScreen';
+import { PhigrosRandomChartsScreen } from '@rranker/tool-phigros/screens/PhigrosRandomChartsScreen';
+import type { CatalogSnapshot, ScoreRecord } from '@rranker/game-maimai/domain/models';
+import type { ChunithmCatalogSnapshot } from '@rranker/game-chunithm/domain/chunithm';
+import { useThemeStore } from '@rranker/sdk/state/theme-store';
 
 const onCountChange = jest.fn();
 const onDraw = jest.fn();
@@ -33,16 +33,16 @@ jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => mockCatalogQuery }));
-jest.mock('@/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => mockCatalogQuery }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
-jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => mockScoresQuery }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => mockScoresQuery }));
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, isLoading: false, isError: false }) }));
-jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, isLoading: false, isError: false, refetch: jest.fn() }) }));
-jest.mock('@/state/random-charts-filter', () => ({ useRandomChartsFilter: () => ({ ...mockFilters, ...mockFilterActions }) }));
-jest.mock('@/state/chunithm-random-charts-filter', () => ({ useChunithmRandomChartsFilter: () => ({ ...mockFilters, ...mockFilterActions }) }));
-jest.mock('@/state/phigros-random-charts-filter', () => ({ usePhigrosRandomChartsFilter: () => ({ ...mockFilters, ...mockFilterActions }) }));
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => mockCatalogQuery }));
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => mockCatalogQuery }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => mockScoresQuery }));
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => mockScoresQuery }));
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, isLoading: false, isError: false }) }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, isLoading: false, isError: false, refetch: jest.fn() }) }));
+jest.mock('@rranker/tool-maimai/state/random-charts-filter', () => ({ useRandomChartsFilter: () => ({ ...mockFilters, ...mockFilterActions }) }));
+jest.mock('@rranker/tool-chunithm/state/chunithm-random-charts-filter', () => ({ useChunithmRandomChartsFilter: () => ({ ...mockFilters, ...mockFilterActions }) }));
+jest.mock('@rranker/tool-phigros/state/phigros-random-charts-filter', () => ({ usePhigrosRandomChartsFilter: () => ({ ...mockFilters, ...mockFilterActions }) }));
 
 describe('RandomChartsPage host contract', () => {
   beforeEach(() => {

@@ -1,18 +1,18 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RUNTIME_LOG_SCHEMA, RuntimeLogRepository } from '@/storage/runtime-log-repository';
-import { createRuntimeLogController } from '@/services/runtime-log-controller';
-import { installRuntimeLogErrors, type RuntimeExceptionHost } from '@/services/runtime-log-errors';
-import { runtimeBuildContext, sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogPreferences } from '@/domain/runtime-log';
-import { createRuntimeOperation, installRuntimeDiagnosticRecorder, installRuntimeLogRecorder, recordRuntimeDiagnostic, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
-import { requestJson, requestBytes, fetchProviderJson } from '@/providers/http-json';
-import { ProviderError } from '@/providers/errors';
+import { RUNTIME_LOG_SCHEMA, RuntimeLogRepository } from '@rranker/sdk/storage/runtime-log-repository';
+import { createRuntimeLogController } from '@rranker/sdk/services/runtime-log-controller';
+import { installRuntimeLogErrors, type RuntimeExceptionHost } from '@rranker/sdk/services/runtime-log-errors';
+import { runtimeBuildContext, sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogPreferences } from '@rranker/sdk/domain/runtime-log';
+import { createRuntimeOperation, installRuntimeDiagnosticRecorder, installRuntimeLogRecorder, recordRuntimeDiagnostic, recordRuntimeError } from '@rranker/sdk/services/runtime-diagnostics-recorder';
+import { requestJson, requestBytes, fetchProviderJson } from '@rranker/sdk/providers/http-json';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 import { z } from 'zod';
-import { queryClient } from '@/state/query-client';
+import { queryClient } from '@rranker/sdk/state/query-client';
 import Storage from 'expo-sqlite/kv-store';
-import { runtimeLogPreferencesStore } from '@/storage/runtime-log-preferences-store';
-import { recordUploadFailure } from '@/services/upload-diagnostics';
+import { runtimeLogPreferencesStore } from '@rranker/sdk/storage/runtime-log-preferences-store';
+import { recordUploadFailure } from '@rranker/tool-maimai/services/upload-diagnostics';
 
 const databases: DatabaseSync[] = [];
 const controllers: ReturnType<typeof createRuntimeLogController>[] = [];
@@ -43,7 +43,7 @@ function fixture(capacity: RuntimeLogCapacity = 2000) {
   const create = () => {
     const controller = createRuntimeLogController({
     repository: async () => repository, preferences,
-    context: () => ({ platform: 'ios', appVersion: '0.3.0', route: '/songs/[songId]' }),
+    context: () => ({ platform: 'ios', appVersion: '0.3.0', route: '/detail' }),
     now: () => new Date(1_700_000_000_000 + time++).toISOString(),
   });
     controllers.push(controller);
@@ -366,7 +366,7 @@ describe('manual runtime logs', () => {
     expect(list).not.toHaveBeenCalled();
     expect(controller.getSnapshot().sessions[0]).toMatchObject({ count: 2 });
     const entries = repository.snapshot(1).entries;
-    expect(entries[1]?.fields.route).toBe('/songs/[songId]');
+    expect(entries[1]?.fields.route).toBe('/detail');
     expect(controller.getSnapshot().sessions[0]?.lastAt).toBe(entries[1]?.at);
   });
 });
@@ -385,7 +385,7 @@ describe('runtime log preferences', () => {
 });
 
 describe('privacy and exception handling', () => {
-  it.each(['/(tabs)/b50', '/songs/[songId]', '/(tabs)/(overview)', '/files/[...parts]'])('retains route template %s', (route) => {
+  it.each(['/(tabs)/b50', '/detail', '/(tabs)/(overview)', '/files/[...parts]'])('retains route template %s', (route) => {
     expect(sanitizeRuntimeLogEntry('route', { route }, '2026-09-06').fields.route).toBe(route);
   });
 

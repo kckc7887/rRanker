@@ -1,15 +1,15 @@
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { PhiraCatalogScreen } from '@/screens/PhiraScreens';
-import { phiraProvider } from '@/providers/phira-provider';
-import { PHIRA_CATALOG_PAGE_SCAN_BUDGET, type PhiraChart, type PhiraChartPage } from '@/domain/phira';
+import { PhiraCatalogScreen } from '@rranker/game-phira/screens/PhiraScreens';
+import { phiraProvider } from '@rranker/provider-phira-community/providers/phira-provider';
+import { PHIRA_CATALOG_PAGE_SCAN_BUDGET, type PhiraChart, type PhiraChartPage } from '@rranker/game-phira/domain/phira';
 
-jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: { push: jest.fn(), back: jest.fn() },
-  useNavigation: () => ({ getState: () => ({ index: 0, routes: [{ name: 'songs/[songId]' }] }) }),
+  useNavigation: () => ({ getState: () => ({ index: 0, routes: [{ name: 'detail' }] }) }),
   useFocusEffect: () => undefined,
 }));
 jest.mock('expo-image', () => ({ Image: (props: object) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props} />; } }));
@@ -29,31 +29,31 @@ jest.mock('react-native-gesture-handler', () => {
     ScrollView: RN.ScrollView,
   };
 });
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: false, background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', input: '#F1F3F5',
   border: '#DDD', text: '#111', textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', danger: '#B42318',
 }) }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeAccountId: 'phira:community:323528' }) }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
-  data: [], tagPresets: [], isUpdating: false, songKey: (id: string) => `song:${id}`,
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeAccountId: 'phira:community:323528' }) }));
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({
+  data: [], tagPresets: [], isUpdating: false, key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
   setTagPresets: jest.fn(), setTags: jest.fn(), setSongFavorite: jest.fn(),
 }) }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({
   dismissNotification: jest.fn(), showNotification: jest.fn(),
   showActionNotification: jest.fn(), updateNotification: jest.fn(),
 }) }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({
   data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }) }));
-jest.mock('@/features/phira-chart-download/chart-package-download', () => ({
+jest.mock('@rranker/tool-chart-json/features/phira-chart-download/chart-package-download', () => ({
   downloadPhiraChartPackage: jest.fn(),
 }));
-jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+jest.mock('@rranker/sdk/features/chart-download-shared/use-chart-package-download', () => ({
   useChartPackageDownload: () => ({ isRunning: false, start: jest.fn() }),
 }));
-jest.mock('@/components/TagEditor', () => ({ TagEditor: () => null }));
-jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
+jest.mock('@rranker/sdk/components/TagEditor', () => ({ TagEditor: () => null }));
+jest.mock('@rranker/sdk/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
 
 const FILTERED_OUT_DIFFICULTY = 16.2;
 const chart = (id: number): PhiraChart => ({

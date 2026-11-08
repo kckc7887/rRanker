@@ -2,13 +2,13 @@ import {
   KALEIDX_GATES_BY_ID,
   KALEIDX_FINALES,
   resolveKaleidxSchedulePhase,
-} from '@/domain/kaleidx-scope';
+} from '@rranker/tool-maimai/domain/kaleidx-scope';
 import {
   parseKaleidxProgress,
   KaleidxScopePreferencesStore,
   type KaleidxProgressByAccount,
-} from '@/features/toolbox/kaleidx-scope-preferences';
-import { createKaleidxScopeProgressStore } from '@/state/kaleidx-scope-progress';
+} from '@rranker/tool-maimai/features/toolbox/kaleidx-scope-preferences';
+import { createKaleidxScopeProgressStore } from '@rranker/tool-maimai/state/kaleidx-scope-progress';
 
 class MemoryPreferences {
   value: KaleidxProgressByAccount = {};

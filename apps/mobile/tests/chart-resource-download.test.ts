@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Directory } from 'expo-file-system';
-import { ChartPackageDownloadCancelledError, downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
-import { ProviderError } from '@/providers/errors';
+import { ChartPackageDownloadCancelledError, downloadChartResource } from '@rranker/sdk/features/chart-download-shared/chart-download-shared';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
 const native = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(), download: vi.fn(), cancel: vi.fn(), diagnostic: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('expo-file-system/legacy', () => ({
     downloadAsync: () => native.download(url, uri, onProgress), cancelAsync: () => native.cancel(),
   }),
 }));
-vi.mock('@/services/runtime-diagnostics-recorder', () => ({
+vi.mock('@rranker/sdk/services/runtime-diagnostics-recorder', () => ({
   nextRuntimeOperationId: () => 1, recordRuntimeDiagnostic: (...args: unknown[]) => native.diagnostic(...args),
   recordRuntimeError: vi.fn(),
 }));

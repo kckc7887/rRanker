@@ -1,9 +1,9 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { AppState, PixelRatio, Platform, type AppStateStatus } from 'react-native';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import BestImageScreen from '../app/best-image';
+import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { MaimaiBestImageScreen as BestImageScreen } from '@rranker/tool-maimai/screens/maimai/MaimaiBestImageScreen';
 
 const mockShowNotification = jest.fn();
 let mockDetailedCatalogReady = true;
@@ -11,9 +11,9 @@ let mockSourceLabel = '示例账号';
 let mockPageSequence = 0;
 const mockStagedFiles = new Map<string, string>();
 
-jest.mock('@/components/AppNotification', () => {
+jest.mock('@rranker/sdk/components/AppNotification', () => {
   const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
-  return { ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+  return { ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 
 jest.mock('react-native-webview', () => {
@@ -22,14 +22,14 @@ jest.mock('react-native-webview', () => {
   return { WebView: (props: Record<string, unknown>) => React.createElement(ReactNative.View, props) };
 });
 jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn(async () => 'file:///capture.png') }));
-jest.mock('@/features/best-image/best-image-style-preferences', () => ({
+jest.mock('@rranker/tool-maimai/features/best-image/best-image-style-preferences', () => ({
   bestImageStylePreferencesStore: {
     load: jest.fn(async () => ({ version: 3, selections: {}, ratingStyle: 'game' })),
     save: jest.fn(async () => undefined),
   },
 }));
-jest.mock('@/features/best-image/best-image-export', () => ({
-  ...jest.requireActual<typeof import('@/features/best-image/best-image-export')>('@/features/best-image/best-image-export'),
+jest.mock('@rranker/sdk/features/best-image/best-image-export', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/features/best-image/best-image-export')>('@rranker/sdk/features/best-image/best-image-export'),
   deleteBestImageCapture: jest.fn(async () => undefined),
   requestBestImageExportPermission: jest.fn(async () => undefined),
   saveBestImageCapture: jest.fn(async () => undefined),
@@ -37,7 +37,7 @@ jest.mock('@/features/best-image/best-image-export', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     activeAccountId: 'test-account',
     data: {
@@ -82,43 +82,43 @@ jest.mock('@/hooks/use-game-data', () => ({
     },
   }),
 }));
-jest.mock('@/features/best-image/load-best-image-assets', () => ({
+jest.mock('@rranker/sdk/features/best-image/load-best-image-assets', () => ({
   loadBundledBestImageFile: async () => 'file:///session/icon.png',
   loadBestImageAssets: async () => ({
     fontUrl: 'file:///session/dGVzdA==',
     ratingFrameUrl: 'file:///session/dGVzdA==',
   }),
 }));
-jest.mock('@/services/remote-image-cache', () => ({
-  ...jest.requireActual<typeof import('@/services/remote-image-cache')>('@/services/remote-image-cache'),
+jest.mock('@rranker/sdk/services/remote-image-cache', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/services/remote-image-cache')>('@rranker/sdk/services/remote-image-cache'),
   acquireRemoteImageOriginal: async (url: string) => ({ fileUri: url, release: async () => undefined }),
 }));
-jest.mock('@/features/best-image/load-best-image-jackets', () => ({
+jest.mock('@rranker/tool-maimai/features/best-image/load-best-image-jackets', () => ({
   loadBestImageJackets: async (_session: unknown, songIds: string[]) => Object.fromEntries(
     songIds.map((songId) => [songId, `file:///session/jacket-${songId}`]),
   ),
 }));
-jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
+jest.mock('@rranker/sdk/features/best-image/prepare-best-image-webview-sources', () => ({
   prepareBestImageWebViewSources: async (htmlPages: string[]) => ({
     sources: htmlPages.map((html) => ({ html, uri: `file:///session/page-${++mockPageSequence}.html` })),
     dispose: jest.fn(async () => undefined),
   }),
 }));
-jest.mock('@/features/best-image/maimai-font-cache', () => ({
+jest.mock('@rranker/tool-maimai/features/best-image/maimai-font-cache', () => ({
   MAIMAI_FONT_MANIFEST: [{ cssFileName: 'maimai-noto.ttf' }],
   prepareMaimaiFonts: jest.fn(async () => ({
     directory: { uri: 'file:///assets/' },
     fullReady: Promise.resolve(),
   })),
 }));
-jest.mock('@/features/best-image/maimai-ui-cache', () => ({
+jest.mock('@rranker/tool-maimai/features/best-image/maimai-ui-cache', () => ({
   prepareMaimaiUi: jest.fn(async () => ({
     files: ['ui/Name.png'],
     directory: { uri: 'file:///assets/' },
     fullReady: Promise.resolve(),
   })),
 }));
-jest.mock('@/features/best-image/use-best-image-collections', () => ({
+jest.mock('@rranker/tool-maimai/features/best-image/use-best-image-collections', () => ({
   useBestImageCollections: () => ({
     data: {
       items: [
@@ -134,18 +134,18 @@ jest.mock('@/features/best-image/use-best-image-collections', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/components/CollectionImage', () => {
+jest.mock('@rranker/game-maimai/components/CollectionImage', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
   return { CollectionImage: (props: Record<string, unknown>) => React.createElement(ReactNative.View, props) };
 });
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({
   useDxRatingChartTags: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
   useTransientDetailedMaimaiCatalog: () => ({
-    data: mockDetailedCatalogReady ? jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog : undefined,
+    data: mockDetailedCatalogReady ? jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized').fixtureCatalog : undefined,
     error: null,
     isLoading: false,
     refetch: jest.fn(),
@@ -182,12 +182,12 @@ describe('best image preview', () => {
     mockDetailedCatalogReady = true;
     mockSourceLabel = '示例账号';
     mockShowNotification.mockClear();
-    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    const { prepareMaimaiFonts } = jest.requireMock('@rranker/tool-maimai/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     prepareMaimaiFonts.mockReset().mockImplementation(async () => ({
       directory: { uri: 'file:///assets/' },
       fullReady: Promise.resolve(),
     }));
-    const { prepareMaimaiUi } = jest.requireMock('@/features/best-image/maimai-ui-cache') as { prepareMaimaiUi: jest.Mock };
+    const { prepareMaimaiUi } = jest.requireMock('@rranker/tool-maimai/features/best-image/maimai-ui-cache') as { prepareMaimaiUi: jest.Mock };
     prepareMaimaiUi.mockReset().mockImplementation(async () => ({
       files: ['ui/Name.png'],
       directory: { uri: 'file:///assets/' },
@@ -247,7 +247,7 @@ describe('best image preview', () => {
   });
 
   it('keeps the chosen style ready when an abandoned package finishes late', async () => {
-    const { prepareMaimaiUi } = jest.requireMock('@/features/best-image/maimai-ui-cache') as { prepareMaimaiUi: jest.Mock };
+    const { prepareMaimaiUi } = jest.requireMock('@rranker/tool-maimai/features/best-image/maimai-ui-cache') as { prepareMaimaiUi: jest.Mock };
     const view = await render(<BestImageScreen />);
     await waitFor(() => expect(view.getByTestId('best-image-html-preview-0')).toBeTruthy());
     let finish!: () => void;
@@ -437,7 +437,7 @@ describe('best image preview', () => {
   });
 
   it('keeps unread plate and frame choices when editing the icon before preferences arrive', async () => {
-    const { bestImageStylePreferencesStore } = jest.requireMock('@/features/best-image/best-image-style-preferences') as {
+    const { bestImageStylePreferencesStore } = jest.requireMock('@rranker/tool-maimai/features/best-image/best-image-style-preferences') as {
       bestImageStylePreferencesStore: { load: jest.Mock; save: jest.Mock };
     };
     let finish!: (value: unknown) => void;
@@ -512,7 +512,7 @@ describe('best image preview', () => {
   });
 
   it('waits for the remote assets before enabling export', async () => {
-    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    const { prepareMaimaiFonts } = jest.requireMock('@rranker/tool-maimai/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     let finish!: () => void;
     prepareMaimaiFonts.mockImplementationOnce(async () => ({
       directory: { uri: 'file:///assets/' },
@@ -530,7 +530,7 @@ describe('best image preview', () => {
   });
 
   it('prepares resources again after their game cache is cleared', async () => {
-    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    const { prepareMaimaiFonts } = jest.requireMock('@rranker/tool-maimai/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
     let finish!: () => void;
@@ -547,7 +547,7 @@ describe('best image preview', () => {
   });
 
   it('automatically recovers failed remote assets without another press', async () => {
-    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    const { prepareMaimaiFonts } = jest.requireMock('@rranker/tool-maimai/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     prepareMaimaiFonts.mockImplementationOnce(async () => ({
       directory: { uri: 'file:///assets/' },
       fullReady: Promise.reject(new Error('字体准备失败：字体校验失败')),
@@ -560,7 +560,7 @@ describe('best image preview', () => {
 
   it('resumes unfinished session assets after returning from background', async () => {
     const changeState = listenForAppState();
-    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    const { prepareMaimaiFonts } = jest.requireMock('@rranker/tool-maimai/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     let finish!: () => void;
     prepareMaimaiFonts.mockImplementationOnce(async () => ({
       directory: { uri: 'file:///assets/' },

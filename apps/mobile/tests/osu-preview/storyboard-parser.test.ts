@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { CHART_PREVIEW_PARSE_YIELD_INTERVAL } from '@/features/chart-preview-shared/chart-preview-resource-budget';
-import { parseBeatmapVisuals, referencedImageFiles, storyboardTimeRange } from '../../src/features/osu-chart-preview/webview-player/events';
-import { compileStoryboardTriggers } from '../../src/features/osu-chart-preview/webview-player/storyboard-triggers';
-import { evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
+import { CHART_PREVIEW_PARSE_YIELD_INTERVAL } from '@rranker/sdk/features/chart-preview-shared/chart-preview-resource-budget';
+import { parseBeatmapVisuals, referencedImageFiles, storyboardTimeRange } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/events';
+import { compileStoryboardTriggers } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/storyboard-triggers';
+import { evaluateSprite } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/storyboard';
 
 describe('storyboard source parsing', () => {
   it('expands variables, numerical event types, source paths and sample layers', () => {

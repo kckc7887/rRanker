@@ -2,10 +2,10 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { MUSE_DASH_MISS_DETAIL_FAILED, museDashMissDetail } from '@/domain/muse-dash';
-import { useMuseDashPlayDetails } from '@/hooks/use-muse-dash';
-import { useBoundedQueries } from '@/hooks/use-bounded-queries';
-import { releaseInactiveQueries } from '@/state/query-client';
+import { MUSE_DASH_MISS_DETAIL_FAILED, museDashMissDetail } from '@rranker/game-musedash/domain/muse-dash';
+import { useMuseDashPlayDetails } from '@rranker/game-musedash/hooks/use-muse-dash';
+import { useBoundedQueries } from '@rranker/sdk/hooks/use-bounded-queries';
+import { releaseInactiveQueries } from '@rranker/sdk/state/query-client';
 
 type PlayDetailPayload = { play: { acc?: number; miss?: number } };
 
@@ -17,8 +17,24 @@ const mockLoadPlayDetail = jest.fn(async (
 });
 
 let mockTabActive = true;
-jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockTabActive }));
-jest.mock('@/services/muse-dash-cache', () => ({
+const mockSourceClients = new Map<string, unknown>();
+jest.mock('@rranker/sdk/state/session-store', () => ({
+  useSession: (select: (state: Record<string, unknown>) => unknown) => select({ activeAccountId: 'musedash:musedash-moe:user-1', activeProviderId: 'musedash-moe', get sourceClient() { return jest.requireMock<typeof import('@rranker/sdk/state/session-provider-resolver')>('@rranker/sdk/state/session-provider-resolver').resolveAccountClient('musedash:musedash-moe:user-1'); } }),
+}));
+jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
+  resolveAccountClient: () => {
+    const key = 'musedash';
+    if (mockSourceClients.has(key)) return mockSourceClients.get(key);
+    const value = (() => jest.requireActual<typeof import('@rranker/provider-musedash-moe/client')>('@rranker/provider-musedash-moe/client').createClient({
+    account: { id: 'musedash:musedash-moe:user-1', gameId: 'musedash', providerId: 'musedash-moe' }, credential: null,
+    assertCurrent() {}, commitCredential: async () => 'applied',
+  } as import('@rranker/sdk/credentials').SourceClientContext))();
+    mockSourceClients.set(key, value);
+    return value;
+  },
+}));
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockTabActive }));
+jest.mock('@rranker/provider-musedash-moe/services/muse-dash-cache', () => ({
   loadMuseDashPlayDetailFresh: (uid: string, difficulty: number, platform: string, userId: string, signal?: AbortSignal) =>
     mockLoadPlayDetail(uid, difficulty, platform, userId, signal),
   makeMuseDashSnapshot: (data: unknown) => ({

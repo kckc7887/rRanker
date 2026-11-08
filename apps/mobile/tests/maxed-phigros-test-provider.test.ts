@@ -1,10 +1,10 @@
-import type { CatalogSnapshot, Song } from '@/domain/models';
-import { isCatalogDrivenScoreProvider } from '@/providers/contracts';
+import type { CatalogSnapshot, Song } from '@rranker/game-phigros/domain/models';
+import { isCatalogDrivenScoreProvider } from '@rranker/game-maimai/data-source';
 import {
   buildMaxedPhigrosRecords,
   buildMaxedPhigrosSnapshot,
   MaxedPhigrosTestProvider,
-} from '@/providers/maxed-phigros-test-provider';
+} from '@rranker/provider-phigros-test/providers/maxed-phigros-test-provider';
 
 const source = {
   kind: 'generated' as const,

@@ -1,15 +1,13 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
-import { createLocalMaimaiAccount, createOsuBoundAccount } from '@/domain/bound-account';
+import { BoundAccountGroupedList } from '@rranker/sdk/components/BoundAccountGroupedList';
+import { createLocalMaimaiAccount } from '@rranker/game-maimai/accounts';
+import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('@/services/hydrate-bound-account-avatars', () => ({ hydrateBoundAccountAvatars: jest.fn(async () => undefined) }));
-jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
-jest.mock('@/services/hydrate-chunithm-account-summaries', () => ({ hydrateChunithmAccountSummaries: jest.fn(async () => undefined) }));
-jest.mock('@/services/hydrate-phigros-account-summaries', () => ({ hydratePhigrosAccountSummaries: jest.fn(async () => undefined) }));
-jest.mock('@/components/BoundAccountAvatar', () => {
+jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/components/BoundAccountAvatar', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { BoundAccountAvatar: () => <RN.View /> };
 });

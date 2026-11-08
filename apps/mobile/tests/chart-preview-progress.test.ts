@@ -10,7 +10,7 @@ import {
   mergeChartPreviewProgress,
   sequentialChartPreviewProgress,
   weightedChartPreviewProgress,
-} from '@/features/chart-preview-shared/chart-preview-progress';
+} from '@rranker/sdk/features/chart-preview-shared/chart-preview-progress';
 
 describe('chart preview progress helpers', () => {
   it('clamps non-finite and out-of-range values', () => {

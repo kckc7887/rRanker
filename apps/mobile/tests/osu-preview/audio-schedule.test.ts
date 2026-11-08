@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { parseBeatmap, type HitResult } from '../../src/features/osu-chart-preview/webview-player/engine';
+import { parseBeatmap, type HitResult } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine';
 import {
   computeHitsoundSchedule,
   hitsoundEventsFromSchedule,
@@ -8,7 +8,7 @@ import {
   resolveSample,
   sampleLookupNames,
   type HitsoundScheduleInputs,
-} from '../../src/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
+} from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
 import { fixtureOsu } from './fixtures';
 
 function mapWithObjects(objects: string[], mode: 0 | 1 | 2 | 3 = 0) {

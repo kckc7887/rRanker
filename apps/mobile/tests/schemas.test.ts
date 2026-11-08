@@ -1,11 +1,6 @@
-import {
-  DivingFishRecordSchema,
-  DivingFishRecordsResponseSchema,
-  LxnsPlayerSchema,
-  LxnsScoreSchema,
-  mapDivingFishRecord,
-} from '@/domain/schemas';
-import { unknownEnumRawRecord } from '@/fixtures/sanitized';
+import { DivingFishRecordSchema, DivingFishRecordsResponseSchema, mapDivingFishRecord } from '@rranker/provider-diving-fish/domain/schemas';
+import { LxnsPlayerSchema, LxnsScoreSchema } from '@rranker/provider-lxns/domain/schemas';
+import { unknownEnumRawRecord } from './fixtures/sanitized';
 
 describe('provider schema mapping', () => {
   it('preserves unknown enum values instead of dropping the record', () => {

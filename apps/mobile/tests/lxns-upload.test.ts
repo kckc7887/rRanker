@@ -1,9 +1,9 @@
 import { AbortController as NativeAbortController } from 'abort-controller';
-import { ProviderError } from '@/providers/errors';
-import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
-import { LXNS_API_ROOT, LXNS_OAUTH_TOKEN_URL } from '@/providers/lxns-config';
-import type { LxnsUploadScore } from '@/services/score-hub-sync-map';
-import { uploadRecordsToLxns } from '@/services/lxns-upload';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import type { LxnsOAuthSession } from '@rranker/provider-lxns/providers/lxns-oauth';
+import { LXNS_API_ROOT, LXNS_OAUTH_TOKEN_URL } from '@rranker/provider-lxns/providers/lxns-config';
+import type { LxnsUploadScore } from '@rranker/tool-maimai/services/score-hub-sync-map';
+import { uploadRecordsToLxns } from '@rranker/tool-maimai/services/lxns-upload';
 
 const score: LxnsUploadScore = {
   id: 834,

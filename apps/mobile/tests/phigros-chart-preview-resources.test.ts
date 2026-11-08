@@ -1,15 +1,15 @@
 import { releaseFixture } from './fixtures/phigros-release';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { PhigrosResourceAsset } from '@/services/phigros-resources';
-import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
+import type { PhigrosResourceAsset } from '@rranker/game-phigros/services/phigros-resources';
+import { PHIGROS_OSS_BASE } from '@rranker/game-phigros/domain/account-avatar';
 import {
   phigrosChartPreviewLevelLabel,
   resolvePhigrosChartPreviewAssetBundle,
   resolvePhigrosChartPreviewVariants,
-} from '@/domain/phigros-chart-preview';
-import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
-import { phigrosResources } from '@/services/phigros-resources';
+} from '@rranker/game-phigros/domain/phigros-chart-preview';
+import { loadPhigrosChartPreviewResources } from '@rranker/game-phigros/services/phigros-chart-preview-resources';
+import { phigrosResources } from '@rranker/game-phigros/services/phigros-resources';
 
 const native = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),

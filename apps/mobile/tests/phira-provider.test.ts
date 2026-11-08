@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PhiraProvider } from '@/providers/phira-provider';
+import { PhiraProvider } from '@rranker/provider-phira-community/providers/phira-provider';
 
 function response(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });

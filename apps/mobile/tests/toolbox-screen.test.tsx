@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import ToolsScreen from '../app/tools/index';
-import type { GameId } from '@/domain/game-bind-options';
+import type { GameId } from '@rranker/sdk/domain/game-bind-options';
 
 let mockActiveGameId: GameId = 'maimai';
 let mockPinnedToolIds: string[] = [];
@@ -14,21 +14,21 @@ jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: { push: (...args: unknown[]) => mockRouterPush(...args) },
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: GameId }) => unknown) => selector({
     activeGameId: mockActiveGameId,
   }),
 }));
-jest.mock('@/state/toolbox-pins', () => ({
+jest.mock('@rranker/sdk/state/toolbox-pins', () => ({
   useToolboxPins: (selector: (state: {
-    pinnedToolIdsByGame: Record<GameId, string[]>;
+    pinsByGame: Record<GameId, string[]>;
     hydrate: typeof mockHydratePins;
-    togglePinnedTool: typeof mockTogglePinnedTool;
+    toggle: typeof mockTogglePinnedTool;
   }) => unknown) => selector({
-    pinnedToolIdsByGame: {
+    pinsByGame: {
       example: [], rizline: [], 'majdata-net': [],
       maimai: mockPinnedToolIds,
       chunithm: [],
@@ -42,7 +42,7 @@ jest.mock('@/state/toolbox-pins', () => ({
       'osu-taiko': [],
     },
     hydrate: mockHydratePins,
-    togglePinnedTool: mockTogglePinnedTool,
+    toggle: mockTogglePinnedTool,
   }),
 }));
 
@@ -51,9 +51,9 @@ describe('game-aware toolbox screen', () => {
     mockActiveGameId = 'rizline';
     const screen = await render(<ToolsScreen />);
     await fireEvent.press(screen.getByText('随机歌曲'));
-    expect(mockRouterPush).toHaveBeenCalledWith('/tools/random-charts');
+    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.rizline', pageId: 'random-charts', gameId: mockActiveGameId } });
     await fireEvent.press(screen.getByText('音游地图'));
-    expect(mockRouterPush).toHaveBeenCalledWith('/tools/arcade-finder');
+    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.arcade-finder', pageId: 'arcade-finder', gameId: mockActiveGameId } });
     expect(screen.queryByText('我的曲库')).toBeNull();
   });
   beforeEach(() => {
@@ -66,9 +66,9 @@ describe('game-aware toolbox screen', () => {
     mockActiveGameId = 'osu-standard';
     const screen = await render(<ToolsScreen />);
     await fireEvent.press(screen.getByText('模组百科'));
-    expect(mockRouterPush).toHaveBeenCalledWith('/tools/osu-mods');
+    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.osu', pageId: 'osu-mods', gameId: mockActiveGameId } });
     await fireEvent.press(screen.getByText('音游地图'));
-    expect(mockRouterPush).toHaveBeenCalledWith('/tools/arcade-finder');
+    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.arcade-finder', pageId: 'arcade-finder', gameId: mockActiveGameId } });
   });
 
   it('renders tools registered for the active game', async () => {

@@ -1,9 +1,9 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import DiagnosticsScreen from '../app/diagnostics';
-import type { RuntimeLogState } from '@/services/runtime-log-controller';
-import type { RuntimeLogStatus } from '@/domain/runtime-log';
-import { createAppTheme } from '@/theme/theme-tokens';
+import type { RuntimeLogState } from '@rranker/sdk/services/runtime-log-controller';
+import type { RuntimeLogStatus } from '@rranker/sdk/domain/runtime-log';
+import { createAppTheme } from '@rranker/sdk/theme/theme-tokens';
 
 let mockState: RuntimeLogState;
 let mockTheme = createAppTheme('light', '#246BFD');
@@ -17,14 +17,14 @@ const mockShare = jest.fn(async (_id: number) => undefined);
 const mockExport = jest.fn(async () => undefined);
 const mockNotification = jest.fn();
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null } }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotification }) }));
-jest.mock('@/components/game-content/DetailPressable', () => {
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotification }) }));
+jest.mock('@rranker/sdk/components/game-content/DetailPressable', () => {
   const RN = jest.requireActual('react-native') as typeof import('react-native');
   return { DetailPressable: RN.Pressable, DetailGestureRoot: RN.View };
 });
-jest.mock('@/services/runtime-diagnostics', () => ({ exportRuntimeDiagnostics: () => mockExport() }));
-jest.mock('@/services/runtime-logs', () => ({
+jest.mock('@rranker/sdk/services/runtime-diagnostics', () => ({ exportRuntimeDiagnostics: () => mockExport() }));
+jest.mock('@rranker/sdk/services/runtime-logs', () => ({
   initializeRuntimeLogs: () => mockInitialize(),
   shareRuntimeLog: (id: number) => mockShare(id),
   runtimeLogs: {

@@ -4,11 +4,19 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = defineConfig([
   expoConfig,
   {
+    files: ['plugins/games/*/src/index.ts', 'plugins/providers/*/src/index.ts', 'plugins/providers/*/src/credential.ts'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
+    settings: {
+      'import/resolver': {
+        typescript: { project: require('node:path').join(__dirname, 'apps/mobile/tsconfig.json') },
+      },
+    },
     ignores: [
       'apps/mobile/dist/*',
-      'apps/mobile/assets/maimai-chart-preview/player.js',
-      'apps/mobile/src/features/simai-chart-preview/engine/**',
-      'apps/mobile/src/features/simai-chart-preview/webview-player/**',
+      'plugins/shared/chart-simai/src/features/simai-chart-preview/engine/**',
+      'plugins/shared/chart-simai/src/features/simai-chart-preview/webview-player/**',
     ],
     rules: {
       'react-hooks/set-state-in-effect': 'off',
@@ -22,7 +30,7 @@ module.exports = defineConfig([
         paths: [{
           name: 'react-native',
           importNames: ['Alert'],
-          message: '请使用 @/components/AppNotification 提供的全局顶部通知。',
+          message: '请使用 @rranker/sdk/components/AppNotification 提供的全局顶部通知。',
         }],
       }],
     },

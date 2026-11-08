@@ -3,9 +3,9 @@ import {
   groupPlatesForPicker,
   parseVersionPlateName,
   plateRequirementSpec,
-} from '@/domain/plates';
-import { fixtureRecords } from '@/fixtures/sanitized';
-import type { Plate } from '@/domain/models';
+} from '@rranker/game-maimai/domain/plates';
+import { fixtureRecords } from './fixtures/sanitized';
+import type { Plate } from '@rranker/game-maimai/domain/models';
 
 describe('plate progress', () => {
   const base = { ...fixtureRecords[0], songId: '1', levelIndex: 3, rate: 'sssp', fc: 'app', fs: 'fsdp' };

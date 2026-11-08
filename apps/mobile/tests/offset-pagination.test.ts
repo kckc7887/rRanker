@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadOffsetPagesBounded, offsetPageStarts } from '@/services/offset-pagination';
+import { loadOffsetPagesBounded, offsetPageStarts } from '@rranker/sdk/services/offset-pagination';
 
 describe('bounded offset pagination', () => {
   it('builds stable page offsets', () => {

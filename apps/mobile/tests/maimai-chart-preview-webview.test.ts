@@ -1,16 +1,16 @@
-import { maimaiChartPreviewSkinDataScript } from '@/features/simai-chart-preview/maimai-chart-preview-skin-files';
+import { maimaiChartPreviewSkinDataScript } from '@rranker/chart-simai/features/simai-chart-preview/maimai-chart-preview-skin-files';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyChartPreviewConfigToHtml,
   buildChartPreviewInjectedJavaScript,
-} from '@/features/simai-chart-preview/chart-preview-inject';
-import { chartPreviewCanvasSize } from '@/features/simai-chart-preview/webview-player/fullscreenLayout';
-import { toggleFullscreenLockUiState } from '@/features/chart-preview-shared/webview-player/fullscreenLock';
-import { chartPreviewNativeScreenOptions } from '@/features/chart-preview-shared/chart-preview-native-screen-options';
+} from '@rranker/chart-simai/features/simai-chart-preview/chart-preview-inject';
+import { chartPreviewCanvasSize } from '@rranker/chart-simai/features/simai-chart-preview/webview-player/fullscreenLayout';
+import { toggleFullscreenLockUiState } from '@rranker/sdk/features/chart-preview-shared/webview-player/fullscreenLock';
+import { chartPreviewNativeScreenOptions } from '@rranker/sdk/features/chart-preview-shared/chart-preview-native-screen-options';
 import {
   createLatestFrameScheduler,
   resolveInitialBackgroundState,
-} from '@/features/simai-chart-preview/webview-player/interactionScheduler';
+} from '@rranker/chart-simai/features/simai-chart-preview/webview-player/interactionScheduler';
 
 afterEach(() => vi.unstubAllGlobals());
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
-import { releaseInactiveQueries } from '@/state/query-client';
+import { releaseInactiveQueries } from '@rranker/sdk/state/query-client';
 
 describe('query cache cleanup', () => {
   it('retains observed data and removes unused data', () => {

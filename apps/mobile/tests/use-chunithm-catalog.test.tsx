@@ -2,19 +2,19 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { jest } from '@jest/globals';
-import type { ChunithmAliasSnapshot, ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
-import { useChunithmSongDetail } from '@/hooks/use-chunithm-song-detail';
-import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
-import { queryClient } from '@/state/query-client';
+import type { ChunithmAliasSnapshot, ChunithmCatalogSnapshot } from '@rranker/game-chunithm/domain/chunithm';
+import { useChunithmCatalog } from '@rranker/game-chunithm/hooks/use-chunithm-catalog';
+import { useChunithmSongDetail } from '@rranker/game-chunithm/hooks/use-chunithm-song-detail';
+import { useChunithmCollections } from '@rranker/game-chunithm/hooks/use-chunithm-collections';
+import { queryClient } from '@rranker/sdk/state/query-client';
 import {
   CHUNITHM_ALIAS_SCHEMA_VERSION,
   CHUNITHM_CATALOG_SCHEMA_VERSION,
   loadChunithmAliases,
   loadChunithmCatalog,
-} from '@/services/chunithm-catalog-loader';
+} from '@rranker/game-chunithm/services/chunithm-catalog-loader';
 
-jest.mock('@/state/query-client', () => {
+jest.mock('@rranker/sdk/state/query-client', () => {
   const { QueryClient } = jest.requireActual<typeof import('@tanstack/react-query')>(
     '@tanstack/react-query',
   );
@@ -32,7 +32,7 @@ jest.mock('@/state/query-client', () => {
   };
 });
 
-jest.mock('@/storage/sqlite-snapshot-repository', () => {
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => {
   const store = new Map<string, unknown>();
   class FakeRepository {
     getResource = async <T,>(key: string, version: number) => (
@@ -49,15 +49,15 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
   };
 });
 
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: 'chunithm' }) => unknown) => (
     selector({ activeGameId: 'chunithm' })
   ),
 }));
 
-jest.mock('@/services/chunithm-catalog-loader', () => {
-  const actual = jest.requireActual<typeof import('@/services/chunithm-catalog-loader')>(
-    '@/services/chunithm-catalog-loader',
+jest.mock('@rranker/game-chunithm/services/chunithm-catalog-loader', () => {
+  const actual = jest.requireActual<typeof import('@rranker/game-chunithm/services/chunithm-catalog-loader')>(
+    '@rranker/game-chunithm/services/chunithm-catalog-loader',
   );
   return {
     ...actual,
@@ -116,7 +116,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 describe('useChunithmCatalog 会话缓存', () => {
   beforeEach(() => {
-    const storage = jest.requireMock('@/storage/sqlite-snapshot-repository') as {
+    const storage = jest.requireMock('@rranker/sdk/storage/sqlite-snapshot-repository') as {
       __snapshotStore: Map<string, unknown>;
     };
     storage.__snapshotStore.clear();
@@ -126,7 +126,7 @@ describe('useChunithmCatalog 会话缓存', () => {
   });
 
   it('忽略旧磁盘快照，等待网络后只写入当前 React Query 会话', async () => {
-    const storage = jest.requireMock('@/storage/sqlite-snapshot-repository') as {
+    const storage = jest.requireMock('@rranker/sdk/storage/sqlite-snapshot-repository') as {
       __snapshotStore: Map<string, unknown>;
     };
     storage.__snapshotStore.set(`chunithm-catalog@${CHUNITHM_CATALOG_SCHEMA_VERSION}`, cachedCatalog);

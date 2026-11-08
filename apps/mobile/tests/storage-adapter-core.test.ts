@@ -1,20 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import type { SqliteSnapshotRepository } from '@rranker/sdk/storage/sqlite-snapshot-repository';
 import {
   collectStorageMeasurementInventory,
   createGameStorageAdapter,
   selectStorageInventory,
   type StorageMeasurementInventory,
-} from '@/features/storage-management/storage-adapter-core';
+} from '@rranker/sdk/features/storage-management/storage-adapter-core';
 
-vi.mock('@/features/storage-management/fs-storage', () => ({ measureDirectoryBytesAsync: async () => 0 }));
+vi.mock('@rranker/sdk/features/storage-management/fs-storage', () => ({ measureDirectoryBytesAsync: async () => 0 }));
 
 const inventory: StorageMeasurementInventory = {
   scores: [{ accountId: 'test:remote', bytes: 11 }, { accountId: 'test:local', bytes: 23 }, { accountId: 'another:remote', bytes: 31 }],
   resources: [
     { key: 'phigros-save:test:remote', bytes: 13 },
     { key: 'account-thumbnail:test:no-score-row', bytes: 17 },
-    { key: 'account-avatar:test:local', bytes: 19 },
+    { key: 'account-thumbnail:test:local', bytes: 19 },
     { key: 'account-thumbnail:another:remote', bytes: 29 },
     { key: 'catalog', bytes: 7 },
     { key: 'detail:one', bytes: 5 },

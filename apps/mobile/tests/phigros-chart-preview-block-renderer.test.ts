@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parsePgrBlocks } from '@/features/phigros-chart-preview/webview-player/pgr-blocks';
-import { parsePgrChart } from '@/features/phigros-chart-preview/webview-player/pgr-core';
-import { PgrRenderer } from '@/features/phigros-chart-preview/webview-player/renderer';
+import { parsePgrBlocks } from '@rranker/chart-json/features/phigros-chart-preview/webview-player/pgr-blocks';
+import { parsePgrChart } from '@rranker/chart-json/features/phigros-chart-preview/webview-player/pgr-core';
+import { PgrRenderer } from '@rranker/chart-json/features/phigros-chart-preview/webview-player/renderer';
 
 function environment(compile = true) {
   const alive = new Set<object>();

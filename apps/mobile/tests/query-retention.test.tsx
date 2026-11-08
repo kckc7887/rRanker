@@ -2,17 +2,19 @@ import type { PropsWithChildren } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { fixtureCatalog } from '@/fixtures/sanitized';
-import type { CatalogSnapshot } from '@/domain/models';
-import type { MajdataRanking, MajdataSong } from '@/domain/majdata';
-import type { DetailedCatalogProvider } from '@/providers/contracts';
-import { useMaimaiDxTag } from '@/hooks/use-maimai-dxtag';
-import { useMajdataRanking, useMajdataSongs } from '@/hooks/use-majdata';
-import type { loadCachedMaimaiDxTag } from '@/services/maimai-dxtag-cache';
-import { refreshMaimaiCatalog } from '@/services/maimai-catalog-query';
-import { queryClient } from '@/state/query-client';
+import { fixtureCatalog } from './fixtures/sanitized';
+import type { CatalogSnapshot } from '@rranker/game-maimai/domain/models';
+import type { MajdataRanking, MajdataSong } from '@rranker/game-majdata-net/domain/majdata';
+import type { DetailedCatalogProvider } from '@rranker/game-maimai/data-source';
+import { useMaimaiDxTag } from '@rranker/game-maimai/hooks/use-maimai-dxtag';
+import { useMajdataRanking, useMajdataSongs } from '@rranker/game-majdata-net/hooks/use-majdata';
+import type { loadCachedMaimaiDxTag } from '@rranker/game-maimai/services/maimai-dxtag-cache';
+import { ensureMaimaiCatalog, MAIMAI_CATALOG_QUERY_KEY, refreshMaimaiCatalog } from '@rranker/game-maimai/services/maimai-catalog-query';
+import { queryClient } from '@rranker/sdk/state/query-client';
 
 let mockActive = true;
+let mockGameId = 'maimai';
+let mockAccountId = 'maimai:account';
 const mockGetCatalog = jest.fn<() => Promise<CatalogSnapshot>>();
 const mockLoadDxTag = jest.fn<typeof loadCachedMaimaiDxTag>();
 const mockGetSongs = jest.fn<() => Promise<MajdataSong[]>>();
@@ -26,21 +28,27 @@ const mockCatalogProvider: DetailedCatalogProvider = {
   getCollections: async () => ({ items: [], source: fixtureCatalog.source }),
 };
 
-jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockActive }));
-jest.mock('@/services/maimai-dxtag-cache', () => ({
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockActive }));
+jest.mock('@rranker/game-maimai/services/maimai-dxtag-cache', () => ({
   loadCachedMaimaiDxTag: (...args: Parameters<typeof loadCachedMaimaiDxTag>) => mockLoadDxTag(...args),
 }));
-jest.mock('@/providers/majdata-provider', () => ({ majdataProvider: {
+jest.mock('@rranker/provider-majdata-net/providers/majdata-provider', () => ({ majdataProvider: {
   getSongs: () => mockGetSongs(), getRanking: () => mockGetRanking(),
 } }));
-jest.mock('@/services/majdata-service', () => ({
+jest.mock('@rranker/provider-majdata-net/services/majdata-service', () => ({
   loadMajdataParsedChart: jest.fn(), loadMajdataSong: jest.fn(), loadMajdataSongSnapshot: jest.fn(),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/provider-lxns/providers/lxns-catalog-provider', () => ({
+  LxnsCatalogProvider: jest.fn(() => mockCatalogProvider),
+}));
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: {
-    activeAccountId: string; activeGameId: string; catalogProvider: DetailedCatalogProvider;
-  }) => unknown) => selector({ activeAccountId: 'maimai:account', activeGameId: 'maimai', catalogProvider: mockCatalogProvider }),
+    activeAccountId: string; activeGameId: string; sourceClient: unknown;
+  }) => unknown) => selector({ activeAccountId: mockAccountId, activeGameId: mockGameId, get sourceClient() {
+    const { createClient } = jest.requireActual<typeof import('@rranker/provider-majdata-net/client')>('@rranker/provider-majdata-net/client');
+    return createClient({ account: { id: mockAccountId, gameId: mockGameId, providerId: 'majdata-net', displayName: 'player', scoreDisplay: '-', scoreLabel: 'DX 分数', providerTitle: 'Majdata' }, credential: null, assertCurrent: () => undefined, commitCredential: async () => 'removed' });
+  } }),
 }));
 
 function wrapper({ children }: PropsWithChildren) {
@@ -51,6 +59,7 @@ beforeEach(() => {
   queryClient.clear();
   jest.clearAllMocks();
   mockActive = true;
+  mockGameId = 'maimai'; mockAccountId = 'maimai:account';
   mockGetCatalog.mockResolvedValue(fixtureCatalog);
   mockLoadDxTag.mockResolvedValue({ library: {}, source: fixtureCatalog.source, coversCatalog: true });
   mockGetSongs.mockResolvedValue([]);
@@ -102,7 +111,7 @@ const majdataQueries: { name: string; useResult: () => { data: unknown }; reads:
 ];
 
 describe('Majdata query lifetime', () => {
-  beforeEach(() => { jest.useFakeTimers(); });
+  beforeEach(() => { mockGameId = 'majdata-net'; mockAccountId = 'majdata-net:public'; jest.useFakeTimers(); });
 
   it.each(majdataQueries)('$name is reused before five minutes without observers, then fetched again', async ({ useResult, reads }) => {
     const first = await renderHook(useResult, { wrapper });
@@ -138,4 +147,23 @@ describe('Majdata query lifetime', () => {
     expect(hook.result.current.data).toBe(displayed);
     expect(reads()).toBe(1);
   });
+});
+
+
+it('取消账号对公共曲库的等待仍保留其他消费者的查询', async () => {
+  let finish!: (value: CatalogSnapshot) => void;
+  let requestSignal: AbortSignal | undefined;
+  const pending = new Promise<CatalogSnapshot>(resolve => { finish = resolve; });
+  const provider = { ...mockCatalogProvider, getCatalog: (signal?: AbortSignal) => { requestSignal = signal; return pending; } };
+  const controller = new AbortController();
+  const cancelled = ensureMaimaiCatalog(queryClient, provider, controller.signal);
+  const rejected = expect(cancelled).rejects.toThrow();
+  const remaining = ensureMaimaiCatalog(queryClient, provider);
+  await waitFor(() => expect(requestSignal).toBeDefined());
+  controller.abort();
+  await rejected;
+  expect(requestSignal!.aborted).toBe(false);
+  finish(fixtureCatalog);
+  expect((await remaining).songs).toEqual(fixtureCatalog.songs);
+  expect(queryClient.getQueryData<CatalogSnapshot>(MAIMAI_CATALOG_QUERY_KEY)?.songs).toEqual(fixtureCatalog.songs);
 });

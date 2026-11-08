@@ -1,4 +1,4 @@
-import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
+import { LargeSecureValueStore } from '@rranker/sdk/storage/large-secure-value-store';
 
 function createBackend() {
   const values = new Map<string, string>();

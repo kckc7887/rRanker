@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadBestImageAssets } from '@/features/best-image/load-best-image-assets';
-import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetSession } from '@/features/best-image/load-best-image-session';
+import { loadBestImageAssets } from '@rranker/sdk/features/best-image/load-best-image-assets';
+import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetSession } from '@rranker/sdk/features/best-image/load-best-image-session';
 
 const mocks = vi.hoisted(() => ({ loadAsync: vi.fn(), resolveAssetSource: vi.fn(), files: new Map<string, string>() }));
 vi.mock('expo-asset', () => ({ Asset: { loadAsync: mocks.loadAsync } }));

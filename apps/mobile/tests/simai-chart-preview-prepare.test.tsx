@@ -1,15 +1,15 @@
 import { jest } from '@jest/globals';
-import { prepareChartPreviewWebViewSource } from '@/features/simai-chart-preview/prepare-chart-preview-webview';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import { prepareChartPreviewWebViewSource } from '@rranker/tool-simai/features/simai-chart-preview/prepare-chart-preview-webview';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
 const mockFiles = new Map<string, Uint8Array>();
 const mockDownloads: string[] = [];
 const mockDownloadReady = jest.fn(async (_signal?: AbortSignal) => {});
 let mockSession = 0;
 
-jest.mock('../assets/maimai-chart-preview/index.html', () => 1);
-jest.mock('../assets/maimai-chart-preview/player.bundle', () => 2);
-jest.mock('../assets/maimai-chart-preview/sensor.webp', () => 3);
+jest.mock('@rranker/chart-simai/assets/maimai-chart-preview/index.html', () => 1);
+jest.mock('@rranker/chart-simai/assets/maimai-chart-preview/player.bundle', () => 2);
+jest.mock('@rranker/chart-simai/assets/maimai-chart-preview/sensor.webp', () => 3);
 jest.mock('expo-file-system', () => ({
   File: class {
     readonly uri: string;
@@ -18,12 +18,12 @@ jest.mock('expo-file-system', () => ({
     get size() { return mockFiles.get(this.uri)?.byteLength ?? 0; }
   },
 }));
-jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
+jest.mock('@rranker/sdk/features/chart-preview-shared/chart-preview-assets', () => ({
   createChartPreviewSessionDirectory: async () => ({ uri: `file:///preview/${++mockSession}` }),
   chartPreviewStageDirectory: async () => ({ uri: 'file:///preview-cache' }),
   disposeChartPreviewSessionDirectory: async () => {},
 }));
-jest.mock('@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan', () => ({
+jest.mock('@rranker/sdk/features/chart-preview-shared/prepare-chart-preview-webview-from-plan', () => ({
   prepareChartPreviewWebviewFromPlan: async ({ directory }: { directory: { uri: string } }) => ({
     uri: `${directory.uri}/index.html`,
     allowingReadAccessToURL: directory.uri,
@@ -32,7 +32,7 @@ jest.mock('@/features/chart-preview-shared/prepare-chart-preview-webview-from-pl
     },
   }),
 }));
-jest.mock('@/features/chart-download-shared/chart-download-shared', () => ({
+jest.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', () => ({
   downloadChartResource: async (directory: { uri: string }, fileName: string, url: string, signal?: AbortSignal) => {
     mockDownloads.push(url);
     await mockDownloadReady(signal);

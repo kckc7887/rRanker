@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PlaybackLoop, bindPlaybackLoop } from '@/features/chart-preview-shared/webview-player/playback-loop';
-import { bindFullscreenControls } from '@/features/chart-preview-shared/webview-player/fullscreen-controls';
-import { PlayerEventScope } from '@/features/chart-preview-shared/webview-player/event-scope';
-import { renderPreviewHeading } from '@/features/chart-preview-shared/webview-player/heading';
+import { PlaybackLoop, bindPlaybackLoop } from '@rranker/sdk/features/chart-preview-shared/webview-player/playback-loop';
+import { bindFullscreenControls } from '@rranker/sdk/features/chart-preview-shared/webview-player/fullscreen-controls';
+import { PlayerEventScope } from '@rranker/sdk/features/chart-preview-shared/webview-player/event-scope';
+import { renderPreviewHeading } from '@rranker/sdk/features/chart-preview-shared/webview-player/heading';
 
 afterEach(() => { document.body.replaceChildren(); vi.useRealTimers(); });
 

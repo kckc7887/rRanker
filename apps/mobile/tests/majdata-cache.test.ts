@@ -1,11 +1,16 @@
-import { simaiDifficultyScores } from '@/features/simai-difficulty';
+import type { SourceClientContext } from '@rranker/sdk/credentials';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { commitCredential } from '@rranker/sdk/services/session-credential-service';
+import { captureBoundAccountWrites } from '@rranker/sdk/services/account-write-scope';
+import { simaiDifficultyScores } from '@rranker/chart-simai/features/simai-difficulty/index';
 import { DatabaseSync } from 'node:sqlite';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { SqliteSnapshotRepository } from '@rranker/sdk/storage/sqlite-snapshot-repository';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadMajdataCached, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, loadMajdataDemoScoresPage, clearMajdataAccount, majdataSongKey } from '@/services/majdata-service';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import { MajdataSongSchema } from '@/domain/majdata';
-import type { HttpCookieSession } from '@/providers/http-cookies';
+import { loadMajdataCached, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, clearMajdataAccount, majdataSongKey } from '@rranker/provider-majdata-net/services/majdata-service';
+import { loadMajdataDemoScoresPage } from '@rranker/provider-majdata-net-test/client';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { MajdataSongSchema } from '@rranker/game-majdata-net/domain/majdata';
+import type { HttpCookieSession } from '@rranker/provider-majdata-net/http-cookies';
 const mock = vi.hoisted(() => ({ getSong: vi.fn(), getChart: vi.fn(), getSongs: vi.fn(), getPlayer: vi.fn(), getRecords: vi.fn(), getRecent: vi.fn() }));
 const database = new DatabaseSync(':memory:');
 const repository = new SqliteSnapshotRepository();
@@ -25,16 +30,29 @@ vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
 }) }));
 afterAll(() => database.close());
 
-vi.mock('@/providers/majdata-provider', () => ({ majdataProvider: mock, MajdataProvider: class {
+vi.mock('@rranker/provider-majdata-net/providers/majdata-provider', () => ({ majdataProvider: mock, MajdataProvider: class {
   getPlayer = mock.getPlayer; getRecords = mock.getRecords; getRecent = mock.getRecent;
 } }));
-vi.mock('@/state/session-store', () => ({ useSession: { getState: () => ({ sessionsByAccountId: {} }), setState: vi.fn() } }));
+vi.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: class { async updateCredentialSession() { return 'applied'; } } }));
 
 const song = MajdataSongSchema.parse({ id: 'uuid-full-001', title: 'song', hash: 'hash1', timestamp: '2026-09-01', levels: ['', '', '', '', '14', '', '宴'] });
 const cachedSource = { kind: 'majdata-net', label: 'Majdata Net', updatedAt: '2026-09-01T00:00:00.000Z', isStale: false };
 const session: HttpCookieSession = { mode: 'http-cookies', origin: 'https://majdata.net', cookies: [{ name: 'auth', value: 'value', secure: true, path: '/' }], persistable: true };
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-beforeEach(async () => { resourceReadError = undefined; await repository.initialize(); await repository.clearResources((await repository.listResourceSizes()).map(item => item.key)); vi.clearAllMocks(); mock.getSong.mockResolvedValue(song); mock.getChart.mockResolvedValue('&inote_5=(120)1,\n&inote_7=(120)2m,'); mock.getPlayer.mockResolvedValue({ username: 'player' }); mock.getRecords.mockResolvedValue([]); mock.getRecent.mockResolvedValue([]); });
+
+function sourceContext(id: string, credential: HttpCookieSession): SourceClientContext {
+  const credentialId = `credential:${id}`;
+  if (!useAccountStore.getState().boundAccounts.some(account => account.id === id)) {
+    useAccountStore.getState().bindAccounts({ accounts: [{ id, gameId: 'majdata-net', providerId: 'majdata-net',
+      displayName: 'Player', scoreDisplay: '0', scoreLabel: '', providerTitle: '测试来源' }], credentialId, session: credential, activeAccountId: id });
+  }
+  const assertCurrent = captureBoundAccountWrites(id);
+  return { account: useAccountStore.getState().boundAccounts.find(account => account.id === id)!,
+    get credential() { return useAccountStore.getState().credentialsById[credentialId] ?? null; }, assertCurrent,
+    commitCredential: (next, expected) => commitCredential({ credentialId, providerId: 'majdata-net', next, expected, assertCurrent }) };
+}
+
+beforeEach(async () => { useAccountStore.getState().finishRestore(null); resourceReadError = undefined; await repository.initialize(); await repository.clearResources((await repository.listResourceSizes()).map(item => item.key)); vi.clearAllMocks(); mock.getSong.mockResolvedValue(song); mock.getChart.mockResolvedValue('&inote_5=(120)1,\n&inote_7=(120)2m,'); mock.getPlayer.mockResolvedValue({ username: 'player' }); mock.getRecords.mockResolvedValue([]); mock.getRecent.mockResolvedValue([]); });
 describe('Majdata revision and account cache', () => {
   it('loads full scores in catalog and raw difficulty order without persisting player records', async () => {
     const second = { ...song, id: 'uuid-second', levels: ['1', '', '', '', '', '', ''] };
@@ -90,7 +108,7 @@ describe('Majdata revision and account cache', () => {
     await expect(loadMajdataSong(song.id)).rejects.toThrow('offline');
   });
   it('isolates account snapshots and removal', async () => {
-    await loadMajdataFresh('a', session); await loadMajdataFresh('b', session);
+    await loadMajdataFresh(sourceContext('a', session)); await loadMajdataFresh(sourceContext('b', session));
     await clearMajdataAccount('a'); expect(await loadMajdataCached('a')).toBeNull(); expect(await loadMajdataCached('b')).not.toBeNull();
   });
   it('renders a local detail before its fresh request resolves', async () => {
@@ -131,12 +149,12 @@ describe('Majdata revision and account cache', () => {
     } finally { vi.useRealTimers(); }
   });
   it('keeps cached account data when a refresh fails', async () => {
-    await loadMajdataFresh('a', session); const cached = await loadMajdataCached('a'); mock.getRecords.mockRejectedValue(new Error('offline'));
-    await expect(loadMajdataFresh('a', session)).rejects.toThrow('offline'); expect(await loadMajdataCached('a')).toEqual(cached);
+    await loadMajdataFresh(sourceContext('a', session)); const cached = await loadMajdataCached('a'); mock.getRecords.mockRejectedValue(new Error('offline'));
+    await expect(loadMajdataFresh(sourceContext('a', session))).rejects.toThrow('offline'); expect(await loadMajdataCached('a')).toEqual(cached);
   });
   it('does not let a removed account request resurrect its snapshot', async () => {
     const recent = deferred<unknown[]>(); mock.getRecent.mockReturnValue(recent.promise);
-    const pending = loadMajdataFresh('a', session); await vi.waitFor(() => expect(mock.getRecent).toHaveBeenCalled());
+    const pending = loadMajdataFresh(sourceContext('a', session)); await vi.waitFor(() => expect(mock.getRecent).toHaveBeenCalled());
     await clearMajdataAccount('a'); recent.resolve([]); await expect(pending).rejects.toThrow(); expect(await loadMajdataCached('a')).toBeNull();
   });
   it('rejects cancelled and obsolete detail writes', async () => {

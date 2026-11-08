@@ -1,4 +1,4 @@
-import { localizedVersionName } from '@/domain/version-names';
+import { localizedVersionName } from '@rranker/game-maimai/domain/version-names';
 
 describe('Chinese and Japanese version names', () => {
   it('按名称或版本区间切换语言，未知版本保留输入名称', () => {

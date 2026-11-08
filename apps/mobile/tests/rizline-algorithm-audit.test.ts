@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRizlineRecords, inferRizlineAh, rizlineAccuracyRks, rizlineRiztimeThreshold, selectRizlineBest } from '@/domain/rizline';
+import { buildRizlineRecords, inferRizlineAh, rizlineAccuracyRks, rizlineRiztimeThreshold, selectRizlineBest } from '@rranker/game-rizline/domain/rizline';
 import { rizlineCatalog, rizlineChart, rizlineSave, rizlineSong } from './fixtures/rizline';
 
 describe('Rizline arithmetic boundaries', () => {

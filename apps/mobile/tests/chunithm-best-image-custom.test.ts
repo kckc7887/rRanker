@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
+import type { ChunithmScoreCardData } from '@rranker/game-chunithm/domain/chunithm-score-presentation';
 import {
   buildCustomChunithmBestImageSections,
   DEFAULT_CUSTOM_CHUNITHM_BEST_IMAGE_FILTERS,
   parseBestImageQuantity,
   type CustomChunithmBestImageFilters,
-} from '@/features/chunithm-best-image/chunithm-best-image-custom';
+} from '@rranker/tool-chunithm/features/chunithm-best-image/chunithm-best-image-custom';
 
 function card(id: number, overrides: Partial<ChunithmScoreCardData> = {}): ChunithmScoreCardData {
   return {

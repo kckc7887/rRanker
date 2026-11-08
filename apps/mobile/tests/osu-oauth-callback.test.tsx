@@ -1,10 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { AppState, type AppStateStatus } from 'react-native';
-import OsuOAuthCallbackScreen from '../app/oauth/osu';
-import { createOsuBoundAccount } from '@/domain/bound-account';
-import { ProviderError } from '@/providers/errors';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
+import OsuOAuthCallbackScreen from '@rranker/provider-osu/pages/oauth';
+import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
 
 let mockParams: Record<string, string | undefined> = {};
 let mockFocused = true;
@@ -28,36 +28,36 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 
-jest.mock('@/providers/osu-oauth', () => ({
+jest.mock('@rranker/provider-osu/providers/osu-oauth', () => ({
   exchangeOsuAuthorizationCode: (...args: unknown[]) => mockExchange(...args),
   notifyOsuOAuthOutcome: (...args: unknown[]) => mockNotify(...args),
   requireOsuOAuthState: (state: unknown) => mockRequireState(state),
 }));
 
 const mockBindOsuModes = jest.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
-jest.mock('@/services/osu-account-binding', () => ({
+jest.mock('@rranker/provider-osu/services/osu-account-binding', () => ({
   bindOsuModes: (...args: unknown[]) => mockBindOsuModes(...args),
 }));
 
-const mockSetOsuBinding = jest.fn();
-jest.mock('@/state/session-store', () => ({
+const mockBindAccounts = jest.fn();
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: Object.assign(
     () => undefined,
     {
       getState: () => ({
         boundAccounts: [],
         credentialIdsByAccountId: {},
-        setOsuBinding: mockSetOsuBinding,
+        bindAccounts: mockBindAccounts,
       }),
     },
   ),
 }));
 
-jest.mock('@/state/query-client', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: { invalidateQueries: jest.fn() },
 }));
 
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#fff',
     surface: '#fff',
@@ -91,7 +91,7 @@ beforeEach(() => {
   mockNotify.mockClear();
   mockRequireState.mockClear();
   mockBindOsuModes.mockReset();
-  mockSetOsuBinding.mockClear();
+  mockBindAccounts.mockClear();
 });
 
 describe('osu! OAuth 回调页', () => {
@@ -176,7 +176,7 @@ describe('osu! OAuth 回调页', () => {
         accounts: [mockAccount], credentialId: 'c', session: mockSession, activeAccountId: mockAccount.id,
       }));
       expect(screen.getByText('操作已取消，请重新发起授权。')).toBeTruthy();
-      expect(mockSetOsuBinding).not.toHaveBeenCalled();
+      expect(mockBindAccounts).not.toHaveBeenCalled();
       expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'success' }));
     });
 
@@ -217,7 +217,7 @@ describe('osu! OAuth 回调页', () => {
     } else await view.unmount();
     expect(input.signal?.aborted).toBe(true);
     await act(() => resolve({ accounts: [mockAccount], credentialId: 'c', session: mockSession, activeAccountId: mockAccount.id }));
-    expect(mockSetOsuBinding).not.toHaveBeenCalled();
+    expect(mockBindAccounts).not.toHaveBeenCalled();
     expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'success' }));
   });
   it('构建缺少应用凭据时直接显示配置阶段', async () => {
@@ -253,7 +253,7 @@ describe('osu! OAuth 回调页', () => {
       existingAccounts: [],
       credentialIdsByAccountId: {},
     })));
-    await waitFor(() => expect(mockSetOsuBinding).toHaveBeenCalledWith({
+    await waitFor(() => expect(mockBindAccounts).toHaveBeenCalledWith({
       accounts: [mockAccount],
       credentialId: 'osu:credential',
       session: mockSession,

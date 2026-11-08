@@ -1,20 +1,21 @@
+import type { Credential } from '@rranker/sdk/credentials';
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { useState } from 'react';
-import { UploadTaskController, uploadTaskController } from '@/services/upload-task-controller';
-import { useUploadTaskState } from '@/hooks/use-upload-task';
-import { useUploadAccountPreferences } from '@/hooks/use-upload-account-preferences';
-import { UploadDataSheet } from '@/components/UploadDataSheet';
-import { createLocalMaimaiAccount, createMaimaiBoundAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
-import type { CatalogSnapshot } from '@/domain/models';
-import type { ProviderSession } from '@/providers/contracts';
-import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
-import { NotificationProvider } from '@/components/AppNotification';
-import { ScoreHubError } from '@/services/score-hub-client';
-import { SessionPersistenceError } from '@/domain/session-vault';
-import type { UploadResult } from '@/services/upload-maimai-types';
-jest.mock('@/services/upload-task-controller', () => {
-  const actual = jest.requireActual<typeof import('@/services/upload-task-controller')>('@/services/upload-task-controller');
+import { UploadTaskController, uploadTaskController } from '@rranker/tool-maimai/services/upload-task-controller';
+import { useUploadTaskState } from '@rranker/tool-maimai/hooks/use-upload-task';
+import { useUploadAccountPreferences } from '@rranker/tool-maimai/hooks/use-upload-account-preferences';
+import { UploadDataSheet } from '@rranker/tool-maimai/components/UploadDataSheet';
+import { createLocalMaimaiAccount, createMaimaiBoundAccount, createMaxedMaimaiTestAccount } from '@rranker/game-maimai/accounts';
+import type { CatalogSnapshot } from '@rranker/game-maimai/domain/models';
+
+import type { LxnsTokenRotationUpdate } from '@rranker/provider-lxns/providers/lxns-oauth-request';
+import { NotificationProvider } from '@rranker/sdk/components/AppNotification';
+import { ScoreHubError } from '@rranker/tool-maimai/services/score-hub-client';
+import { SessionPersistenceError } from '@rranker/sdk/domain/session-vault';
+import type { UploadResult } from '@rranker/tool-maimai/services/upload-maimai-types';
+jest.mock('@rranker/tool-maimai/services/upload-task-controller', () => {
+  const actual = jest.requireActual<typeof import('@rranker/tool-maimai/services/upload-task-controller')>('@rranker/tool-maimai/services/upload-task-controller');
   return { ...actual, uploadTaskController: new actual.UploadTaskController() };
 });
 
@@ -103,7 +104,7 @@ const mockUpsert = jest.fn(async (partial: {
   }
   return { ...mockHubState };
 });
-type BindInput = Parameters<typeof import('@/services/upload-maimai-from-friend-code').uploadMaimaiWithScoreHubQr>[0];
+type BindInput = Parameters<typeof import('@rranker/tool-maimai/services/upload-maimai-from-friend-code').uploadMaimaiWithScoreHubQr>[0];
 const mockBindQr = jest.fn(async (_input: BindInput) => ({ uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] }));
 const mockLoadQrRisk = jest.fn(async () => true);
 const mockSaveQrRisk = jest.fn(async (_value: boolean) => undefined);
@@ -160,8 +161,8 @@ jest.mock('expo-image-manipulator', () => ({
   manipulateAsync: jest.fn(),
   SaveFormat: { JPEG: 'jpeg' },
 }));
-jest.mock('@/services/maimai-qr-decode', () => {
-  const actual = jest.requireActual<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
+jest.mock('@rranker/tool-maimai/services/maimai-qr-decode', () => {
+  const actual = jest.requireActual<typeof import('@rranker/tool-maimai/services/maimai-qr-decode')>('@rranker/tool-maimai/services/maimai-qr-decode');
   return {
     ...actual,
     decodeMaimaiQrFromImageUri: jest.fn(async () => 'SGWCMAIDDECODED'),
@@ -171,7 +172,7 @@ jest.mock('react-native-gesture-handler', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };
 });
-jest.mock('@/storage/upload-prefs-store', () => ({
+jest.mock('@rranker/tool-maimai/storage/upload-prefs-store', () => ({
   qrRiskPreferencesStore: { load: () => mockLoadQrRisk(), save: (value: boolean) => mockSaveQrRisk(value) },
   uploadPrefsStore: {
     load: () => mockLoadPrefs(),
@@ -179,7 +180,7 @@ jest.mock('@/storage/upload-prefs-store', () => ({
     removeSelection: (friendCode: string) => mockRemoveSelection(friendCode),
   },
 }));
-jest.mock('@/storage/score-hub-account-store', () => ({
+jest.mock('@rranker/tool-maimai/storage/score-hub-account-store', () => ({
   scoreHubAccountStore: {
     load: () => mockLoadHubAccount(),
     patch: (partial: Partial<TestHubAccount>) => mockUpsert({
@@ -194,9 +195,9 @@ jest.mock('@/storage/score-hub-account-store', () => ({
     remove: (friendCode: string) => mockRemove(friendCode),
   },
 }));
-jest.mock('@/services/upload-maimai-from-friend-code', () => {
-  const actual = jest.requireActual<typeof import('@/services/upload-maimai-from-friend-code')>(
-    '@/services/upload-maimai-from-friend-code',
+jest.mock('@rranker/tool-maimai/services/upload-maimai-from-friend-code', () => {
+  const actual = jest.requireActual<typeof import('@rranker/tool-maimai/services/upload-maimai-from-friend-code')>(
+    '@rranker/tool-maimai/services/upload-maimai-from-friend-code',
   );
   return {
     ...actual,
@@ -225,12 +226,12 @@ jest.mock('@/services/upload-maimai-from-friend-code', () => {
     },
   };
 });
-jest.mock('@/domain/maimai-maintenance', () => ({
+jest.mock('@rranker/game-maimai/domain/maimai-maintenance', () => ({
   isMaimaiMaintenanceWindow: () => mockIsMaimaiMaintenance(),
   MAIMAI_MAINTENANCE_MESSAGE: '维护窗口说明',
 }));
-jest.mock('@/services/score-hub-client', () => {
-  const actual = jest.requireActual<typeof import('@/services/score-hub-client')>('@/services/score-hub-client');
+jest.mock('@rranker/tool-maimai/services/score-hub-client', () => {
+  const actual = jest.requireActual<typeof import('@rranker/tool-maimai/services/score-hub-client')>('@rranker/tool-maimai/services/score-hub-client');
   return {
     ...actual,
     fetchScoreHubStatistics: () => mockFetchStatistics(),
@@ -243,7 +244,7 @@ const water = createMaimaiBoundAccount({
   providerId: 'diving-fish', displayName: '水鱼玩家', rating: 15000, playerId: 'water',
 });
 const testAccount = createMaxedMaimaiTestAccount(16750);
-const waterSession: ProviderSession = {
+const waterSession: Credential = {
   mode: 'import-token', value: 'water-token', persistable: true,
 };
 const catalog: CatalogSnapshot = {
@@ -367,7 +368,7 @@ describe('好友码统一上传弹窗', () => {
     await view.unmount();
   });
   beforeEach(() => {
-    jest.requireMock<{ uploadTaskController: UploadTaskController }>('@/services/upload-task-controller').uploadTaskController = new UploadTaskController();
+    jest.requireMock<{ uploadTaskController: UploadTaskController }>('@rranker/tool-maimai/services/upload-task-controller').uploadTaskController = new UploadTaskController();
     jest.clearAllMocks();
     mockHubAccounts.clear();
     mockHubState = { friendCode: '', hasCabinetBound: false };
@@ -1036,7 +1037,7 @@ describe('好友码统一上传弹窗', () => {
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
     const imagePicker = jest.requireMock<typeof import('expo-image-picker')>('expo-image-picker');
-    const decode = jest.requireMock<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
+    const decode = jest.requireMock<typeof import('@rranker/tool-maimai/services/maimai-qr-decode')>('@rranker/tool-maimai/services/maimai-qr-decode');
     (imagePicker.launchImageLibraryAsync as unknown as {
       mockResolvedValueOnce: (value: unknown) => void;
     }).mockResolvedValueOnce({
@@ -1059,7 +1060,7 @@ describe('好友码统一上传弹窗', () => {
 
   it('关闭后取消图片识别并忽略迟到结果', async () => {
     const imagePicker = jest.requireMock<typeof import('expo-image-picker')>('expo-image-picker');
-    const decode = jest.requireMock<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
+    const decode = jest.requireMock<typeof import('@rranker/tool-maimai/services/maimai-qr-decode')>('@rranker/tool-maimai/services/maimai-qr-decode');
     jest.mocked(imagePicker.launchImageLibraryAsync).mockResolvedValueOnce({
       canceled: false, assets: [{ uri: 'file:///late-qr.jpg', width: 100, height: 100 }],
     });

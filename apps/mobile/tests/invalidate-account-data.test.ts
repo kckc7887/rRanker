@@ -1,12 +1,12 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import type { GameDataBundle } from '@/domain/game-data';
-import { getGameProfile } from '@/domain/game-profile';
-import type { Player, ScoreSnapshot } from '@/domain/models';
+import type { GameDataBundle } from '@rranker/sdk/data';
+import { getGameProfile } from '@rranker/sdk/domain/game-profile';
+import type { Player, ScoreSnapshot } from '@rranker/game-maimai/domain/models';
 import {
   invalidateAccountDataQueries,
-  patchMaimaiPlayerDisplayName,
-} from '@/services/invalidate-account-data';
+} from '@rranker/sdk/services/invalidate-account-data';
+import { patchMaimaiPlayerDisplayName } from '@rranker/provider-local/services/player-display';
 
 const source = {
   kind: 'local' as const,
@@ -63,8 +63,8 @@ describe('invalidateAccountDataQueries', () => {
     const accountKey = ['game-data', 4, 'account-a', 'maimai'];
     const publicKey = ['detailed-catalog', 'maimai', 2];
     try {
-      await client.fetchQuery({ queryKey: accountKey, queryFn: async () => 'old account' });
-      await client.fetchQuery({ queryKey: publicKey, queryFn: async () => 'old catalog' });
+      await client.fetchQuery({ queryKey: accountKey, meta: { gameId: 'maimai', accountId: 'account-a' }, queryFn: async () => 'old account' });
+      await client.fetchQuery({ queryKey: publicKey, meta: { gameId: 'maimai' }, queryFn: async () => 'old catalog' });
       await invalidateAccountDataQueries(client, 'none', includeGlobal);
       await expect(client.fetchQuery({ queryKey: accountKey, queryFn: async () => 'fresh account' })).resolves.toBe('fresh account');
       await expect(client.fetchQuery({ queryKey: publicKey, queryFn: async () => 'fresh catalog' })).resolves.toBe(includeGlobal ? 'fresh catalog' : 'old catalog');
@@ -79,21 +79,25 @@ describe('phigros push query identity', () => {
     const keyFor = (accountId: string) => ['phigros-push-rks', accountId, 'player', 'rev', null, 0.01, 1, true] as const;
     await client.fetchQuery({
       queryKey: keyFor('account-a'),
+      meta: { gameId: 'phigros', accountId: 'account-a' },
       queryFn: async () => { calls += 1; return 'a'; },
     });
     await expect(client.fetchQuery({
       queryKey: keyFor('account-b'),
+      meta: { gameId: 'phigros', accountId: 'account-b' },
       queryFn: async () => { calls += 1; return 'b'; },
     })).resolves.toBe('b');
     expect(calls).toBe(2);
     await client.fetchQuery({
       queryKey: keyFor('account-a'),
+      meta: { gameId: 'phigros', accountId: 'account-a' },
       queryFn: async () => { calls += 1; return 'a-again'; },
     });
     expect(calls).toBe(2);
     await invalidateAccountDataQueries(client, 'none');
     await expect(client.fetchQuery({
       queryKey: keyFor('account-a'),
+      meta: { gameId: 'phigros', accountId: 'account-a' },
       queryFn: async () => { calls += 1; return 'a-fresh'; },
     })).resolves.toBe('a-fresh');
     expect(calls).toBe(3);

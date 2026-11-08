@@ -1,11 +1,11 @@
-import { ScoreRecordCard } from '@/components/ScoreRecordCard';
-import { fixtureRecords } from '@/fixtures/sanitized';
+import { ScoreRecordCard } from '@rranker/game-maimai/components/ScoreRecordCard';
+import { fixtureRecords } from './fixtures/sanitized';
 import { Animated } from 'react-native';
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
-import { useRecordsFilter } from '@/state/records-filter';
+import { useRecordsFilter } from '@rranker/game-maimai/state/records-filter';
 
 const mockPush = jest.fn();
 let mockRecordsDxRatingState: 'live' | 'cache' | 'error' | 'loading' = 'live';
@@ -16,7 +16,7 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
 } as unknown as ReturnType<typeof Animated.loop>);
 
 jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href) } }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: { activeGameId: 'maimai'; activeAccountId: string }) => unknown) => selector({
     activeGameId: 'maimai',
@@ -36,11 +36,11 @@ jest.mock('react-native-safe-area-context', () => ({
   ...(jest.requireActual('react-native-safe-area-context') as object),
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const { useMemo } = jest.requireActual<typeof import('react')>('react');
   return useMemo(() => {
-  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+  const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
   const base = fixtures.fixtureRecords[0];
   const b35Low = { ...base, songId: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2,
     difficulty: 'expert' as const, difficultyConstant: 12.4, achievements: 99, rating: 100, rate: 'ss', fs: null };
@@ -67,10 +67,10 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   };
 
   }, []); } }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
   const { useMemo } = jest.requireActual<typeof import('react')>('react');
   return useMemo(() => {
-  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+  const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
   const charts = [
     { id: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2, difficulty: 'expert' as const, difficultyConstant: 12.4 },
     { id: '352', title: 'B35高', type: 'SD' as const, levelIndex: 3, difficulty: 'master' as const, difficultyConstant: 13.7 },
@@ -95,7 +95,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
   }, isLoading: false, isError: false, error: null };
 
   }, []); } }));
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
   const { useMemo } = jest.requireActual<typeof import('react')>('react');
   const currentRecordsDxRatingState = mockRecordsDxRatingState;
   return useMemo(() => {
@@ -127,9 +127,9 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
   error: null,
 };
   }, [currentRecordsDxRatingState]); } }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
-  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
-  const profile = jest.requireActual<typeof import('../src/domain/game-profile')>('../src/domain/game-profile')
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => {
+  const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
+  const profile = jest.requireActual<typeof import('@rranker/sdk/domain/game-profile')>('@rranker/sdk/domain/game-profile')
     .getGameProfile('maimai');
   const base = fixtures.fixtureRecords[0];
   const b35Low = { ...base, songId: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2,
@@ -197,7 +197,7 @@ describe('M4 score list cards', () => {
   it('renders Best35 above Best15 and sorts each section by Rating', async () => {
     const screen = await render(<Best50Screen />);
     await fireEvent.press(screen.getByLabelText('生成B50图片'));
-    expect(mockPush).toHaveBeenCalledWith('/best-image');
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.maimai', pageId: 'best-image', gameId: 'maimai' } });
     expect(screen.getByText('过往版本 Best35')).toBeTruthy();
     expect(screen.getByText('当前版本 Best15')).toBeTruthy();
     expect(screen.getByText('MASTER (13.7)')).toBeTruthy();
@@ -213,7 +213,7 @@ describe('M4 score list cards', () => {
 
     await fireEvent.press(screen.getByLabelText('查看谱面 B35高 SD master'));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '352', chartType: 'SD', levelIndex: '3', gameId: 'maimai' },
     });
   });
@@ -232,7 +232,7 @@ describe('M4 score list cards', () => {
 
     await fireEvent.press(screen.getByLabelText('查看谱面 B15高 DX remaster'));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '152', chartType: 'DX', levelIndex: '4', gameId: 'maimai' },
     });
   });

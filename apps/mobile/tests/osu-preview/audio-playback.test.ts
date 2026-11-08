@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
-import { AudioSync, type AudioSyncInputs } from '../../src/features/osu-chart-preview/webview-player/engine-audio/AudioSync';
+import { AudioSync, type AudioSyncInputs } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine-audio/AudioSync';
 
 beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', () => 1);

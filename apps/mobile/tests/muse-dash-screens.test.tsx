@@ -1,22 +1,22 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { View } from 'react-native';
-import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
-import { buildMuseDashFilterSummary } from '@/components/musedash/MuseDashFilterBar';
-import { useMuseDashCatalogFilter } from '@/state/musedash-catalog-filter';
-import { useMuseDashRecordsFilter } from '@/state/musedash-records-filter';
+import { MuseDashAccValue } from '@rranker/game-musedash/components/MuseDashAccValue';
+import { buildMuseDashFilterSummary } from '@rranker/game-musedash/components/MuseDashFilterBar';
+import { useMuseDashCatalogFilter } from '@rranker/game-musedash/state/musedash-catalog-filter';
+import { useMuseDashRecordsFilter } from '@rranker/game-musedash/state/musedash-records-filter';
 import type {
   MuseDashAlbumsResponse,
   MuseDashCeResponse,
   MuseDashMissDetailValue,
   MuseDashPlayer,
-} from '@/domain/muse-dash';
+} from '@rranker/game-musedash/domain/muse-dash';
 import {
   MuseDashBestScreen,
   MuseDashCatalogScreen,
   MuseDashRecordsScreen,
   MuseDashSongDetailScreen,
-} from '@/screens/MuseDashScreens';
+} from '@rranker/game-musedash/screens/MuseDashScreens';
 
 const mockRefetch = jest.fn();
 const mockBack = jest.fn();
@@ -52,17 +52,17 @@ jest.mock('react-native-gesture-handler', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', border: '#DDD', text: '#111',
   textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF', dark: false,
 }) }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
   activeAccountId: 'musedash:musedash-moe:6ea4f986ffd211e8aa980242ac110011',
   activeGameId: 'musedash',
 }) }));
-jest.mock('@/hooks/use-muse-dash', () => {
+jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => {
   const query = (data: unknown) => ({
     data, source: { kind: 'musedash', label: 'MuseDash.moe', updatedAt: '2026-08-10T00:00:00.000Z', isStale: false },
     isLoading: false, isError: false, error: null, isFetching: false, refetch: mockRefetch,
@@ -80,7 +80,7 @@ jest.mock('@/hooks/use-muse-dash', () => {
     }),
   };
 });
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: mockPlayer ? { payload: { kind: 'musedash', player: mockPlayer } } : undefined,
     isLoading: false,
@@ -89,9 +89,8 @@ jest.mock('@/hooks/use-game-data', () => ({
     refetch: mockRefetch,
   }),
 }));
-jest.mock('@/hooks/use-user-library', () => {
-  const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
-  const state: { data: unknown[] } = { data: [] };
+jest.mock('@rranker/sdk/hooks/use-user-library', () => {
+    const state: { data: unknown[] } = { data: [] };
   return {
     __libraryMockState: state,
     useUserLibrary: () => ({
@@ -103,12 +102,11 @@ jest.mock('@/hooks/use-user-library', () => {
       setTags: (...args: unknown[]) => mockSetTags(...args),
       setTagPresets: jest.fn(),
       tagPresets: ['爆发', '交互'],
-      songKey: (songId: string | number) => songLibraryKey('musedash', songId),
-      chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('musedash', songId, type, levelIndex),
+      key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
     }),
   };
 });
-jest.mock('@/components/TagEditor', () => ({
+jest.mock('@rranker/sdk/components/TagEditor', () => ({
   TagEditor: ({ onChange }: { onChange?: (tags: string[]) => void }) => {
     const React = jest.requireActual<typeof import('react')>('react');
     const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -119,8 +117,8 @@ jest.mock('@/components/TagEditor', () => ({
     });
   },
 }));
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   useCachedTabActive: () => true,
 }));
 
@@ -356,10 +354,10 @@ describe('Muse Dash screens', () => {
     await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: carousel.props.snapToInterval } } });
     const hidden = within(screen.getByTestId('musedash-chart-3'));
     await fireEvent.press(hidden.getByLabelText('加入练习清单'));
-    expect(mockSetChartPractice).toHaveBeenCalledWith('0-47', 'SD', 3, true);
+    expect(mockSetChartPractice).toHaveBeenCalledWith({ gameId: 'musedash', kind: 'chart', id: JSON.stringify(['0-47', 3]), target: { songId: '0-47', levelIndex: '3' } }, true);
     await fireEvent.press(hidden.getByLabelText('编辑标签'));
     expect(mockSetTags).toHaveBeenCalledWith(
-      { kind: 'chart', songId: '0-47', type: 'SD', levelIndex: 3 },
+      { gameId: 'musedash', kind: 'chart', id: JSON.stringify(['0-47', 3]), target: { songId: '0-47', levelIndex: '3' } },
       ['测试标签'],
     );
   });

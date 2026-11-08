@@ -3,9 +3,9 @@ import {
   StageImages,
   StageVideo,
   type StageMediaHost,
-} from '@/features/chart-preview-shared/webview-player/stage-media';
-import type { StageContext } from '@/features/chart-preview-shared/webview-player/stage';
-import { SimaiBackgroundMedia } from '@/features/simai-chart-preview/webview-player/backgroundMedia';
+} from '@rranker/sdk/features/chart-preview-shared/webview-player/stage-media';
+import type { StageContext } from '@rranker/sdk/features/chart-preview-shared/webview-player/stage';
+import { SimaiBackgroundMedia } from '@rranker/chart-simai/features/simai-chart-preview/webview-player/backgroundMedia';
 
 class Video extends EventTarget {
   src = '';

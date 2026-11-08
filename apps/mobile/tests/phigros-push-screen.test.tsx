@@ -1,20 +1,16 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import PushRksToolScreen from '../app/tools/push-rks';
-import { parsePhigrosPushChartCost, parsePhigrosPushDelta } from '@/domain/phigros-push';
-import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
-import { parseNumericInput } from '@/utils/numeric-input';
+import PushRksToolScreen from '@rranker/tool-phigros/pages/push-rks';
+import type { PushRecommendationsResult } from '@rranker/game-phigros/domain/phigros-push';
+import type { PhigrosDataSource } from '@rranker/game-phigros/data-source';
 
-let lastQueryOptions: { enabled?: boolean } | null = null;
-const mockScoreProvider = new PhigrosScoreProvider({
-  mode: 'phi-session',
-  sessionToken: 'token',
-  openid: 'player', displayName: 'player',
-  persistable: true,
-});
+type QueryOptions = { enabled?: boolean; queryFn: (context: { signal: AbortSignal }) => Promise<PushRecommendationsResult> };
+let lastQueryOptions: QueryOptions | null = null;
+const mockPush = jest.fn<NonNullable<PhigrosDataSource['getPushRecommendations']>>();
+let mockSourceClient: Pick<PhigrosDataSource, 'getSaveUpdatedAt' | 'getPushRecommendations'> | undefined;
 
 jest.mock('@tanstack/react-query', () => ({
-  useQuery: (options: { enabled?: boolean }) => {
+  useQuery: (options: QueryOptions) => {
     lastQueryOptions = options;
     return {
       data: undefined,
@@ -26,36 +22,26 @@ jest.mock('@tanstack/react-query', () => ({
   },
 }));
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null } }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', input: '#F1F3F5', border: '#DDD',
   text: '#111', textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF',
   danger: '#B42318', onAccent: '#FFF', dark: false,
 }) }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
-jest.mock('@/providers/phigros-score-provider', () => ({
-  PhigrosScoreProvider: class PhigrosScoreProvider {
-    getSaveUpdatedAt(): string | null { return null; }
-  },
-}));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: unknown) => unknown) => selector({
-    session: { mode: 'phi-session', sessionToken: 'token', openid: 'player', displayName: 'player', persistable: true },
     activeAccountId: 'phigros:player',
-    scoreProvider: mockScoreProvider,
+    activeProviderId: 'phi-taptap', sourceClient: mockSourceClient,
   }),
 }));
-
-function domainAccepts(deltaText: string, chartCostText: string): boolean {
-  return parsePhigrosPushDelta(parseNumericInput(deltaText)) != null
-    && parsePhigrosPushChartCost(parseNumericInput(chartCostText)) != null;
-}
 
 describe('Phigros push screen input rules', () => {
   beforeEach(() => {
     lastQueryOptions = null;
     jest.clearAllMocks();
+    mockSourceClient = { getSaveUpdatedAt: () => null, getPushRecommendations: mockPush };
   });
 
   it('runs the query for the default legal input', async () => {
@@ -65,30 +51,30 @@ describe('Phigros push screen input rules', () => {
     expect(screen.queryByText(/成本须为/)).toBeNull();
   });
 
-  it('applies the domain parsing rule to every input the user can type', async () => {
+  it('only accepts the documented delta and chart cost ranges', async () => {
     const screen = await render(<PushRksToolScreen />);
     const deltaField = screen.getByLabelText('期望加值');
     const chartCostField = screen.getByLabelText('期望成本（张谱面）');
-    const cases: readonly (readonly [string, string])[] = [
-      ['0.01', '1'],
-      ['0.01', '30'],
-      ['0.1', '30'],
-      ['0.015', '7'],
-      ['0.014', '7'],
-      ['1', '1'],
-      ['0', '1'],
-      ['-1', '1'],
-      ['abc', '1'],
-      ['', '1'],
-      ['1e999', '1'],
-      ['0.01', '0'],
-      ['0.01', '-1'],
-      ['0.01', '31'],
-      ['0.01', '1.5'],
-      ['0.01', 'abc'],
-      ['0.01', '1e999'],
+    const cases: readonly (readonly [string, string, boolean])[] = [
+      ['0.01', '1', true],
+      ['0.01', '30', true],
+      ['0.1', '30', true],
+      ['0.015', '7', false],
+      ['0.014', '7', false],
+      ['1', '1', true],
+      ['0', '1', false],
+      ['-1', '1', false],
+      ['abc', '1', false],
+      ['', '1', false],
+      ['1e999', '1', false],
+      ['0.01', '0', false],
+      ['0.01', '-1', false],
+      ['0.01', '31', false],
+      ['0.01', '1.5', false],
+      ['0.01', 'abc', false],
+      ['0.01', '1e999', false],
     ];
-    for (const [deltaText, chartCostText] of cases) {
+    for (const [deltaText, chartCostText, enabled] of cases) {
       await fireEvent.changeText(deltaField, deltaText);
       await fireEvent.changeText(chartCostField, chartCostText);
       expect({
@@ -98,9 +84,28 @@ describe('Phigros push screen input rules', () => {
       }).toEqual({
         deltaText,
         chartCostText,
-        enabled: domainAccepts(deltaText, chartCostText),
+        enabled,
       });
     }
+  });
+
+
+  it('passes user inputs and cancellation to the available source capability', async () => {
+    await render(<PushRksToolScreen />);
+    const signal = new AbortController().signal;
+    const result: PushRecommendationsResult = { currentRks: 15, displayRks: 15, exactTarget: 15.01, displayTarget: 15.01,
+      chartCost: 1, gainNeeded: 0.01, perChartShare: 0.01, includePhi: true, searchStatus: 'not_found',
+      combinationReachesTarget: false, plan: [], alternatives: [], recommendations: [] };
+    mockPush.mockResolvedValueOnce(result);
+    await expect(lastQueryOptions!.queryFn({ signal })).resolves.toBe(result);
+    expect(mockPush).toHaveBeenCalledWith(0.01, 1, true, signal);
+  });
+
+  it('shows unavailable state when the source has no calculation capability', async () => {
+    mockSourceClient = { getSaveUpdatedAt: () => null };
+    const screen = await render(<PushRksToolScreen />);
+    expect(screen.getByText('当前来源不支持推分计算')).toBeTruthy();
+    expect(lastQueryOptions?.enabled).toBe(false);
   });
 
   it('shows the range error instead of searching for illegal values', async () => {

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { PhigrosKyouProvider } from '@/providers/phigros-kyou-provider';
+import { PhigrosKyouProvider } from '@rranker/provider-phi-taptap/providers/phigros-kyou-provider';
 
 const manifest = {
   ok: true,

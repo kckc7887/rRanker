@@ -1,13 +1,13 @@
-import type { StageContext } from '@/features/chart-preview-shared/webview-player/stage';
-import { StageImages } from '@/features/chart-preview-shared/webview-player/stage-media';
-import { buildFrame, prepareChart } from '@/features/simai-chart-preview/engine/renderers/frame';
+import type { StageContext } from '@rranker/sdk/features/chart-preview-shared/webview-player/stage';
+import { StageImages } from '@rranker/sdk/features/chart-preview-shared/webview-player/stage-media';
+import { buildFrame, prepareChart } from '@rranker/chart-simai/features/simai-chart-preview/engine/renderers/frame';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
-import { MainRenderer } from '@/features/simai-chart-preview/engine/renderers/MainRenderer';
-import { ChartPreviewSkin } from '@/features/simai-chart-preview/engine/renderers/skinAtlas';
-import { MAIMAI_CHART_PREVIEW_SKIN_ASSETS } from '@/features/simai-chart-preview/maimai-chart-preview-skin-manifest.generated';
-import { EFFECT_SPRITES } from '@/features/simai-chart-preview/engine/renderers/effectSprites.generated';
-import { parseJudgeHint } from '@/features/simai-chart-preview/engine/utils/judgeHint';
+import { parseSimaiBody } from '@rranker/chart-simai/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { MainRenderer } from '@rranker/chart-simai/features/simai-chart-preview/engine/renderers/MainRenderer';
+import { ChartPreviewSkin } from '@rranker/chart-simai/features/simai-chart-preview/engine/renderers/skinAtlas';
+import { MAIMAI_CHART_PREVIEW_SKIN_ASSETS } from '@rranker/chart-simai/features/simai-chart-preview/maimai-chart-preview-skin-manifest.generated';
+import { EFFECT_SPRITES } from '@rranker/chart-simai/features/simai-chart-preview/engine/renderers/effectSprites.generated';
+import { parseJudgeHint } from '@rranker/chart-simai/features/simai-chart-preview/engine/utils/judgeHint';
 
 type Matrix = [number, number, number, number, number, number];
 type Draw = { image: string; x: number; y: number; width: number; height: number; alpha: number; tint?: string };

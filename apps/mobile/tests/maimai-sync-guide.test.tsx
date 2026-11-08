@@ -8,11 +8,8 @@ import {
   MAIMAI_PROXY_SERVER,
   MaimaiSyncGuideContent,
   MaimaiSyncGuideSheet,
-} from '@/components/maimai/MaimaiSyncGuideSheet';
-import {
-  createLocalMaimaiAccount,
-  createMaimaiBoundAccount,
-} from '@/domain/bound-account';
+} from '@rranker/tool-maimai/components/MaimaiSyncGuideSheet';
+import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
 
 const mockSetStringAsync = jest.fn(async (_value: string) => undefined);
 const mockShowNotification = jest.fn();
@@ -24,7 +21,7 @@ jest.mock('expo-clipboard', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
-jest.mock('@/components/AppModal', () => ({
+jest.mock('@rranker/sdk/components/AppModal', () => ({
   AppModal: ({
     visible,
     children,
@@ -42,18 +39,18 @@ jest.mock('@/components/AppModal', () => ({
     ) : null;
   },
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification }),
 }));
-jest.mock('@/components/BoundAccountAvatar', () => {
+jest.mock('@rranker/sdk/components/BoundAccountAvatar', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { BoundAccountAvatar: () => <RN.View testID="mock-account-avatar" /> };
 });
-jest.mock('@/domain/maimai-maintenance', () => ({
+jest.mock('@rranker/game-maimai/domain/maimai-maintenance', () => ({
   MAIMAI_MAINTENANCE_MESSAGE: '舞萌维护窗口说明',
   isMaimaiMaintenanceWindow: () => mockMaintenance,
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     accent: '#246BFD',
     background: '#F7F8FA',

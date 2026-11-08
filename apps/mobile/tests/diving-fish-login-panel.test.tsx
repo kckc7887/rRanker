@@ -1,34 +1,35 @@
+import type { Credential } from '@rranker/sdk/credentials';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { DivingFishLoginPanel } from '@/components/maimai/DivingFishLoginPanel';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
-import type { Player } from '@/domain/models';
-import type { ProviderSession } from '@/providers/contracts';
+import { DivingFishLoginPanel } from '@rranker/provider-diving-fish/components/maimai/DivingFishLoginPanel';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
+import type { Player } from '@rranker/game-maimai/domain/models';
+
 
 let mockLifecycle: AppLifecycleSnapshot;
 const mockSetSession = jest.fn();
 const mockSave = jest.fn<(account: unknown, signal?: AbortSignal) => Promise<string>>();
 const mockPlayer = jest.fn<(signal?: AbortSignal) => Promise<Player>>();
 const mockRecords = jest.fn(async (_signal?: AbortSignal) => []);
-const mockLogin = jest.fn<(credentials: unknown, signal?: AbortSignal) => Promise<ProviderSession>>();
-const session: ProviderSession = { mode: 'import-token', value: 'token', persistable: true };
+const mockLogin = jest.fn<(credentials: unknown, signal?: AbortSignal) => Promise<Credential>>();
+const session: Credential = { mode: 'import-token', value: 'token', persistable: true };
 const player: Player = { id: 'player', displayName: '玩家', rating: 15000,
   source: { kind: 'diving-fish', label: '水鱼', updatedAt: '', isStale: false } };
 
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({ text: '#111', textMuted: '#777', input: '#fff', border: '#ddd', accent: '#246BFD' }) }));
-jest.mock('@/state/query-client', () => ({ queryClient: { invalidateQueries: jest.fn(async () => undefined) } }));
-jest.mock('@/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ setSession: mockSetSession }) }));
-jest.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: class { upsertAccount = (...args: Parameters<typeof mockSave>) => mockSave(...args); } }));
-jest.mock('@/providers/diving-fish-provider', () => ({ DivingFishProvider: class {
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({ text: '#111', textMuted: '#777', input: '#fff', border: '#ddd', accent: '#246BFD' }) }));
+jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: { invalidateQueries: jest.fn(async () => undefined) } }));
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ setSession: mockSetSession }) }));
+jest.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: class { upsertAccount = (...args: Parameters<typeof mockSave>) => mockSave(...args); } }));
+jest.mock('@rranker/provider-diving-fish/providers/diving-fish-provider', () => ({ DivingFishProvider: class {
   getPlayer = (signal?: AbortSignal) => mockPlayer(signal);
   getRecords = (signal?: AbortSignal) => mockRecords(signal);
 } }));
-jest.mock('@/providers/diving-fish-auth', () => ({ DivingFishAuthProvider: class {
+jest.mock('@rranker/provider-diving-fish/providers/diving-fish-auth', () => ({ DivingFishAuthProvider: class {
   loginWithPassword = (...args: Parameters<typeof mockLogin>) => mockLogin(...args);
   useImportToken = () => session;
 } }));
-jest.mock('@/services/invalidate-account-data', () => ({ cancelBoundAccountQueries: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/services/invalidate-account-data', () => ({ cancelBoundAccountQueries: jest.fn(async () => undefined) }));
 
 beforeEach(() => {
   jest.clearAllMocks();

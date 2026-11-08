@@ -2,12 +2,12 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, BackHandler, Pressable, Text, View } from 'react-native';
 import { useRef } from 'react';
-import { snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
+import { snapshotEmergencyRuntimeDiagnostics } from '@rranker/sdk/services/runtime-diagnostics-recorder';
 import {
   NotificationProvider,
   useNotification,
   useNotificationModalRequestClose,
-} from '@/components/AppNotification';
+} from '@rranker/sdk/components/AppNotification';
 
 const mockCancel = jest.fn(() => undefined);
 const mockDelete = jest.fn(() => undefined);

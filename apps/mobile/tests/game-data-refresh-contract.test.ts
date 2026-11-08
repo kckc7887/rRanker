@@ -1,17 +1,13 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  awaitGameDataBackground,
-  gameDataQueryKey,
-  refreshGameDataBundle,
-  registerGameDataBackground,
-  type GameDataRefreshResult,
-} from '@/services/game-data-query';
-import { successfulRefresh, failedRefresh } from '@/domain/refresh-result';
-import { maimaiPayloadFromSnapshot, type GameDataBundle } from '@/domain/game-data';
-import { getGameProfile } from '@/domain/game-profile';
-import { ProviderError } from '@/providers/errors';
-import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
+import { awaitGameDataBackground, gameDataQueryKey, refreshGameDataBundle, registerGameDataBackground } from '@rranker/sdk/services/game-data-query';
+import { type GameDataRefreshResult } from '@rranker/sdk/data-load';
+import { successfulRefresh, failedRefresh } from '@rranker/sdk/domain/refresh-result';
+import { maimaiPayloadFromSnapshot } from '@rranker/game-maimai/domain/game-data';
+import { type GameDataBundle } from '@rranker/sdk/data';
+import { getGameProfile } from '@rranker/sdk/domain/game-profile';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource } from './fixtures/sanitized';
 const accountId = 'lxns:player-a';
 const params = { accountId, gameId: 'maimai', providerId: 'lxns', mode: 'lxns-oauth' } as const;
 const queryKey = gameDataQueryKey(params.accountId, params.gameId, params.providerId, params.mode);

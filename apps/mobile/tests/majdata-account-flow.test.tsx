@@ -1,16 +1,19 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { MajdataLoginPanel } from '@/components/majdata/MajdataLoginPanel';
+import { MajdataLoginPanel } from '@rranker/provider-majdata-net/components/majdata/MajdataLoginPanel';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
-import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
-import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
-import { GamePickerSheet } from '@/components/GamePickerSheet';
-import { createMajdataBoundAccount, createOsuBoundAccount, groupBoundAccountGameIds } from '@/domain/bound-account';
-import { GAME_OPTIONS, findGame, isCredentialProvider } from '@/domain/game-bind-options';
-import { useSession } from '@/state/session-store';
-import { switchBoundAccount } from '@/services/switch-bound-account';
-import { hydrateAccountDisplayData, persistBoundAccountThumbnail } from '@/services/account-thumbnail';
-import majdataIcon from '../assets/images/majdata.png';
+import { AccountSwitchSheet } from '@rranker/sdk/components/AccountSwitchSheet';
+import { BoundAccountGroupedList } from '@rranker/sdk/components/BoundAccountGroupedList';
+import { GamePickerSheet } from '@rranker/sdk/components/GamePickerSheet';
+import { createMajdataBoundAccount } from '@rranker/game-majdata-net/accounts';
+import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
+import { groupBoundAccountGameIds } from '@rranker/sdk/domain/bound-account';
+import { getGameOptions, findGame, isCredentialProvider } from '@rranker/sdk/domain/game-bind-options';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { switchBoundAccount } from '@rranker/sdk/services/switch-bound-account';
+import { hydrateAccountDisplayData } from '@rranker/sdk/services/account-hydration';
+import { persistBoundAccountThumbnail } from '@rranker/sdk/services/account-thumbnail';
+import { adapter as majdataAdapter } from '@rranker/game-majdata-net';
 
 const mockSession = { mode: 'http-cookies', origin: 'https://majdata.net', persistable: true,
   cookies: [{ name: 'auth', value: 'test-cookie', path: '/', secure: true }] } as const;
@@ -27,37 +30,35 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-router', () => ({ router: { canDismiss: () => false, navigate: jest.fn(), push: jest.fn() } }));
-jest.mock('@/providers/majdata-provider', () => ({ MajdataProvider: class { login = mockLogin; getPlayer = mockGetPlayer; } }));
-jest.mock('@/storage/secure-session-store', () => {
-  const actual = jest.requireActual<typeof import('@/storage/secure-session-store')>('@/storage/secure-session-store');
+jest.mock('@rranker/provider-majdata-net/providers/majdata-provider', () => ({ MajdataProvider: class { login = mockLogin; getPlayer = mockGetPlayer; } }));
+jest.mock('@rranker/sdk/storage/secure-session-store', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/storage/secure-session-store')>('@rranker/sdk/storage/secure-session-store');
   return { ...actual, SecureSessionStore: class {
     upsertAccount = (input: unknown, signal?: AbortSignal) => mockUpsert(input, signal);
     removeAccount = (id: string) => mockRemove(id); setActiveAccountId = (id: string | null) => mockPersistActive(id);
   } };
 });
-jest.mock('@/services/majdata-service', () => ({ clearMajdataAccount: (id: string) => mockClear(id) }));
-jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
+jest.mock('@rranker/provider-majdata-net/services/majdata-service', () => ({ clearMajdataAccount: (id: string) => mockClear(id) }));
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
   clear = jest.fn(async () => undefined); getLatest = jest.fn(async () => null); getResource = jest.fn(async () => null);
 } }));
-jest.mock('@/state/query-client', () => ({ queryClient: {
+jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: {
   invalidateQueries: jest.fn(async () => undefined), cancelQueries: jest.fn(async () => undefined), removeQueries: jest.fn(),
 } }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn(async () => undefined) }) }));
-jest.mock('@/components/AppNotification', () => ({
-  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showActionNotification: mockNotification, showNotification: jest.fn() }) }));
-jest.mock('@/services/hydrate-bound-account-avatars', () => ({ hydrateBoundAccountAvatars: jest.fn(async () => undefined) }));
-jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined), persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
-jest.mock('@/services/hydrate-chunithm-account-summaries', () => ({ hydrateChunithmAccountSummaries: jest.fn(async () => undefined) }));
-jest.mock('@/services/hydrate-phigros-account-summaries', () => ({ hydratePhigrosAccountSummaries: jest.fn(async () => undefined) }));
-jest.mock('@/components/RemoteImage', () => {
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn(async () => undefined) }) }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'), useNotification: () => ({ showActionNotification: mockNotification, showNotification: jest.fn() }) }));
+jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/services/account-thumbnail', () => ({ persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/components/RemoteImage', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { RemoteImage: ({ source }: { source: unknown }) => <RN.View testID="player-avatar"><RN.Text>{String(source)}</RN.Text></RN.View> };
 });
-jest.mock('@/components/ProviderLoginSheet', () => ({ ProviderLoginSheet: () => null }));
-jest.mock('@/components/TufPlayerPickerSheet', () => ({ TufPlayerPickerSheet: () => null }));
-jest.mock('@/components/PhiraPlayerPickerSheet', () => ({ PhiraPlayerPickerSheet: () => null }));
-jest.mock('@/components/MuseDashPlayerPickerSheet', () => ({ MuseDashPlayerPickerSheet: () => null }));
-jest.mock('@/components/RenameLocalAccountSheet', () => ({ RenameLocalAccountSheet: () => null }));
+jest.mock('@rranker/sdk/components/ProviderLoginSheet', () => ({ ProviderLoginSheet: () => null }));
+jest.mock('@rranker/provider-tuf/components/TufPlayerPickerSheet', () => ({ TufPlayerPickerSheet: () => null }));
+jest.mock('@rranker/provider-phira-community/components/PhiraPlayerPickerSheet', () => ({ PhiraPlayerPickerSheet: () => null }));
+jest.mock('@rranker/provider-musedash-moe/components/MuseDashPlayerPickerSheet', () => ({ MuseDashPlayerPickerSheet: () => null }));
+jest.mock('@rranker/sdk/components/RenameAccountSheet', () => ({ RenameAccountSheet: () => null }));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -104,12 +105,12 @@ test('login appears in real management and switch lists with the player avatar a
 });
 
 test('both game pickers and bound groups place Majdata after the existing osu family', async () => {
-  expect(GAME_OPTIONS.at(-2)?.id).toBe('majdata-net');
-  expect(findGame('majdata-net')?.icon).toEqual(majdataIcon);
+  expect(getGameOptions().at(-2)?.id).toBe('majdata-net');
+  expect(findGame('majdata-net')?.icon).toEqual(majdataAdapter.games[0].icon);
   expect(isCredentialProvider('majdata-net')).toBe(true);
   expect(isCredentialProvider('phira-community')).toBe(false);
-  const accounts = GAME_OPTIONS.map(game => ({ ...createMajdataBoundAccount({ accountId: game.id, displayName: game.title }), gameId: game.id }));
-  expect(groupBoundAccountGameIds(accounts)).toHaveLength(GAME_OPTIONS.length);
+  const accounts = getGameOptions().map(game => ({ ...createMajdataBoundAccount({ accountId: game.id, displayName: game.title }), gameId: game.id }));
+  expect(groupBoundAccountGameIds(accounts)).toHaveLength(getGameOptions().length);
   expect(groupBoundAccountGameIds(accounts).at(-2)).toBe('majdata-net');
   const majdata = createMajdataBoundAccount({ accountId: 'majdata-net:account:p', displayName: 'Player', scoreDisplay: '395.6252%' });
   const osu = createOsuBoundAccount({ gameId: 'osu-standard', userId: 1, displayName: 'Osu', pp: 100 });

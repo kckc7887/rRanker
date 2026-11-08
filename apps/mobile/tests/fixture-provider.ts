@@ -1,5 +1,5 @@
-import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/sanitized';
-import type { DetailedCatalogProvider, ScoreProvider } from '@/providers/contracts';
+import { fixtureCatalog, fixturePlayer, fixtureRecords } from './fixtures/sanitized';
+import type { DetailedCatalogProvider, ScoreProvider } from '@rranker/game-maimai/data-source';
 
 export class FixtureProvider implements ScoreProvider {
   async getPlayer() { return structuredClone(fixturePlayer); }

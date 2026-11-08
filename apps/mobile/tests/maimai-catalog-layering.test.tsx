@@ -2,11 +2,11 @@ import type { PropsWithChildren } from 'react';
 import { jest } from '@jest/globals';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
-import { fixtureCatalog } from '@/fixtures/sanitized';
-import type { AliasSnapshot, CatalogSnapshot, Song } from '@/domain/models';
-import { queryClient } from '@/state/query-client';
-import { useDetailedCatalog, useMaimaiSongDetail, useTransientDetailedMaimaiCatalog } from '@/hooks/use-detailed-catalog';
-import { MAIMAI_CATALOG_QUERY_KEY } from '@/services/maimai-catalog-query';
+import { fixtureCatalog } from './fixtures/sanitized';
+import type { AliasSnapshot, CatalogSnapshot, Song } from '@rranker/game-maimai/domain/models';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { useDetailedCatalog, useMaimaiSongDetail, useTransientDetailedMaimaiCatalog } from '@rranker/game-maimai/hooks/use-detailed-catalog';
+import { MAIMAI_CATALOG_QUERY_KEY } from '@rranker/game-maimai/services/maimai-catalog-query';
 
 const mockGetCatalog = jest.fn<() => Promise<CatalogSnapshot>>();
 const mockGetDetailedCatalog = jest.fn<(signal?: AbortSignal) => Promise<CatalogSnapshot>>();
@@ -22,29 +22,26 @@ const mockCatalogProvider = {
 let mockActiveAccountId = 'maimai:lxns:first';
 let mockActive = true;
 
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   useCachedTabActive: () => mockActive,
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: (enabled?: boolean) => mockUseGameData(enabled),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: {
     activeAccountId: string;
     activeGameId: string;
-    catalogProvider: {
-      getCatalog: typeof mockGetCatalog;
-      getDetailedCatalog: typeof mockGetDetailedCatalog;
-      getAliases: typeof mockGetAliases;
-      getSong: typeof mockGetSong;
-    };
   }) => unknown) => selector({
     activeAccountId: mockActiveAccountId,
     activeGameId: 'maimai',
-    catalogProvider: mockCatalogProvider,
   }),
+}));
+
+jest.mock('@rranker/provider-lxns/providers/lxns-catalog-provider', () => ({
+  LxnsCatalogProvider: jest.fn(() => mockCatalogProvider),
 }));
 
 function wrapper({ children }: PropsWithChildren) {

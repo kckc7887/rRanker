@@ -8,9 +8,9 @@ import {
   formatChunithmRating,
   formatChunithmScore,
   formatChunithmWorldsEndLabel,
-} from '@/domain/chunithm-score-presentation';
-import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import type { ChunithmScore } from '@/domain/chunithm-personal';
+} from '@rranker/game-chunithm/domain/chunithm-score-presentation';
+import type { ChunithmCatalogSnapshot } from '@rranker/game-chunithm/domain/chunithm';
+import type { ChunithmScore } from '@rranker/game-chunithm/domain/chunithm-personal';
 
 const scoreBase: ChunithmScore = {
   id: 42,

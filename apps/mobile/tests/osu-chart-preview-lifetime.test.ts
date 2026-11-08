@@ -1,18 +1,18 @@
-import { PlaybackLoop } from '@/features/chart-preview-shared/webview-player/playback-loop';
+import { PlaybackLoop } from '@rranker/sdk/features/chart-preview-shared/webview-player/playback-loop';
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextEncoder as NodeTextEncoder } from 'node:util';
-import { normalizeOsuChartPreviewSettings } from '@/features/osu-chart-preview/configuration';
+import { normalizeOsuChartPreviewSettings } from '@rranker/chart-osu/features/osu-chart-preview/configuration';
 
 const playback = vi.hoisted(() => ({
   start: vi.fn(), destroy: vi.fn(), play: vi.fn(), pause: vi.fn(), seek: vi.fn(),
   disposeSkins: vi.fn(), sessionDestroy: vi.fn(), setSettings: vi.fn(),
 }));
-vi.mock('@/features/osu-chart-preview/webview-player/engine', () => ({ md5: () => 'hash' }));
-vi.mock('@/features/osu-chart-preview/webview-player/builtin-skin', () => ({ disposeBuiltinSkins: playback.disposeSkins }));
-vi.mock('@/features/osu-chart-preview/webview-player/playback', () => ({
+vi.mock('@rranker/chart-osu/features/osu-chart-preview/webview-player/engine', () => ({ md5: () => 'hash' }));
+vi.mock('@rranker/chart-osu/features/osu-chart-preview/webview-player/builtin-skin', () => ({ disposeBuiltinSkins: playback.disposeSkins }));
+vi.mock('@rranker/chart-osu/features/osu-chart-preview/webview-player/playback', () => ({
   startPlayback: playback.start, destroyPlayback: playback.destroy, playFrom: playback.play,
   pausePlayback: playback.pause, seekPlayback: playback.seek, presentationTime: () => 0,
   applyManiaScrollSpeed: vi.fn(),
@@ -25,7 +25,7 @@ function message(type: string): void { window.dispatchEvent(new MessageEvent('me
 
 beforeEach(() => {
   vi.resetModules(); vi.clearAllMocks(); vi.useFakeTimers(); resizeCallbacks.length = 0;
-  const html = readFileSync(resolve(process.cwd(), 'assets/osu-chart-preview/index.html'), 'utf8');
+  const html = readFileSync(createRequire(import.meta.url).resolve('@rranker/chart-osu/assets/osu-chart-preview/index.html'), 'utf8');
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
   vi.stubGlobal('ResizeObserver', class {
     constructor(callback: ResizeObserverCallback) { resizeCallbacks.push(callback); }
@@ -59,7 +59,7 @@ afterEach(() => {
 
 describe('osu! 播放器入口生命周期', () => {
   it('标题和原生模式来自准备会话，dispose后交互、观察器和计时器均无副作用', async () => {
-    await import('@/features/osu-chart-preview/webview-player/main');
+    await import('@rranker/chart-osu/features/osu-chart-preview/webview-player/main');
     expect(document.getElementById('status')!.textContent, JSON.stringify(post.mock.calls)).not.toContain('无法');
     expect(document.getElementById('title')!.textContent).toBe('Session title');
     expect(document.getElementById('mode-notice')!.textContent).toContain('osu!mania');
@@ -86,7 +86,7 @@ describe('osu! 播放器入口生命周期', () => {
   it('准备结束前释放时只销毁迟到会话，不创建控件或发送ready', async () => {
     let resolvePlayback!: (value: unknown) => void;
     playback.start.mockImplementation(() => new Promise(resolve => { resolvePlayback = resolve; }));
-    await import('@/features/osu-chart-preview/webview-player/main');
+    await import('@rranker/chart-osu/features/osu-chart-preview/webview-player/main');
     message('dispose');
     resolvePlayback({ session: { destroy: playback.sessionDestroy } });
     await Promise.resolve();

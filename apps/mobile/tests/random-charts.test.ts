@@ -1,14 +1,10 @@
-import type { CatalogSnapshot, ScoreRecord, Song } from '@/domain/models';
-import { chartVersionKey } from '@/domain/catalog';
-import {
-  filterMaimaiRandomCharts,
-  filterPhigrosRandomCharts,
-  pickRandomItems,
-  type MaimaiRandomChartFilters,
-  type PhigrosRandomChartFilters,
-} from '@/domain/random-charts';
-import type { DxRatingChartTagsSnapshot } from '@/domain/dxrating-chart-tags';
-import { fixtureSource } from '@/fixtures/sanitized';
+import type { CatalogSnapshot, ScoreRecord, Song } from '@rranker/game-maimai/domain/models';
+import { chartVersionKey } from '@rranker/game-maimai/domain/catalog';
+import { filterMaimaiRandomCharts, type MaimaiRandomChartFilters } from '@rranker/game-maimai/domain/random-charts';
+import { filterPhigrosRandomCharts, type PhigrosRandomChartFilters } from '@rranker/game-phigros/domain/random-charts';
+import { pickRandomItems } from '@rranker/sdk/domain/random-charts';
+import type { DxRatingChartTagsSnapshot } from '@rranker/game-maimai/domain/dxrating-chart-tags';
+import { fixtureSource } from './fixtures/sanitized';
 
 const songs: Song[] = [
   {

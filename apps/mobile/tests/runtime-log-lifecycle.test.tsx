@@ -1,10 +1,10 @@
 import { act, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { AppState, Text } from 'react-native';
-import type { RuntimeLogCapacity, RuntimeLogEntry, RuntimeLogStatus } from '@/domain/runtime-log';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
-import { subscribeAppLifecycleSnapshot } from '@/state/app-lifecycle-core';
-import { initializeRuntimeLogs, runtimeLogs } from '@/services/runtime-logs';
+import type { RuntimeLogCapacity, RuntimeLogEntry, RuntimeLogStatus } from '@rranker/sdk/domain/runtime-log';
+import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
+import { subscribeAppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle-core';
+import { initializeRuntimeLogs, runtimeLogs } from '@rranker/sdk/services/runtime-logs';
 
 const mockEntries: RuntimeLogEntry[] = [];
 let mockCapacity: RuntimeLogCapacity = 2000;
@@ -12,15 +12,15 @@ let mockStatus: RuntimeLogStatus = 'recording';
 const mockOpen = jest.fn(async () => ({ execAsync: async () => undefined }));
 const mockStarts = jest.fn();
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '0.0.0-test' } } }));
-jest.mock('@/services/runtime-diagnostics', () => ({ snapshotRuntimeDiagnosticsForExport: async () => ({ sessions: [], emergency: [], storageAvailable: true }) }));
-jest.mock('@/storage/rranker-database', () => ({
+jest.mock('@rranker/sdk/services/runtime-diagnostics', () => ({ snapshotRuntimeDiagnosticsForExport: async () => ({ sessions: [], emergency: [], storageAvailable: true }) }));
+jest.mock('@rranker/sdk/storage/rranker-database', () => ({
   getRuntimeLogDatabase: () => mockOpen(),
   runSerializedSchemaInit: async (initialize: () => Promise<void>) => initialize(),
 }));
-jest.mock('@/storage/runtime-log-preferences-store', () => ({ runtimeLogPreferencesStore: {
+jest.mock('@rranker/sdk/storage/runtime-log-preferences-store', () => ({ runtimeLogPreferencesStore: {
   load: async () => ({ capacity: 2000, enabled: true }), save: async () => undefined,
 } }));
-jest.mock('@/storage/runtime-log-repository', () => ({
+jest.mock('@rranker/sdk/storage/runtime-log-repository', () => ({
   RUNTIME_LOG_SCHEMA: '',
   RuntimeLogRepository: class {
     recover() {}

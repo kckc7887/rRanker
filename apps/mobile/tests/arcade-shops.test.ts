@@ -18,7 +18,7 @@ import {
   shopMatchesNameKeyword,
   stripArcadeHtml,
   type ArcadeShop,
-} from '@/domain/arcade-shops';
+} from '@rranker/tool-arcade-finder/domain/arcade-shops';
 
 function shop(partial: Partial<ArcadeShop> & Pick<ArcadeShop, 'id' | 'name'>): ArcadeShop {
   return {

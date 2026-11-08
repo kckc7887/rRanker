@@ -7,9 +7,9 @@ import {
   serializeRangeValue,
   snapRangeValue,
   useStableRangeBounds,
-} from '@/components/game-content/RangeSelector';
+} from '@rranker/sdk/components/game-content/RangeSelector';
 
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   surface: '#FFFFFF', border: '#D1D5DB', text: '#111827', textMuted: '#6B7280', accent: '#246BFD',
 }) }));
 

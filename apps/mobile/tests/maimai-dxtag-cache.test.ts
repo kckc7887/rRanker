@@ -1,9 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { CatalogSnapshot, ChartType } from '@/domain/models';
-import { loadCachedMaimaiDxTag } from '@/services/maimai-dxtag-cache';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import type { CatalogSnapshot, ChartType } from '@rranker/game-maimai/domain/models';
+import { loadCachedMaimaiDxTag } from '@rranker/game-maimai/services/maimai-dxtag-cache';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { SqliteSnapshotRepository } from '@rranker/sdk/storage/sqlite-snapshot-repository';
 
 const database = new DatabaseSync(':memory:');
 const repository = new SqliteSnapshotRepository();

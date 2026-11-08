@@ -1,14 +1,14 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { CollectionImage } from '@/components/CollectionImage';
-import type { RemoteImageOriginal } from '@/services/remote-image-cache';
-import { GameSongCover } from '@/components/game-content/GameSongCover';
-import { GameSongRow } from '@/components/game-content/GameSongRow';
+import { CollectionImage } from '@rranker/game-maimai/components/CollectionImage';
+import type { RemoteImageOriginal } from '@rranker/sdk/services/remote-image-cache';
+import { GameSongCover } from '@rranker/sdk/components/game-content/GameSongCover';
+import { GameSongRow } from '@rranker/sdk/components/game-content/GameSongRow';
 import {
   RemoteImage,
   RemoteImageActivityScope,
   RemoteImagePersistenceScope,
-} from '@/components/RemoteImage';
+} from '@rranker/sdk/components/RemoteImage';
 
 const mockFind = jest.fn<() => Promise<unknown>>();
 const mockCache = jest.fn<(_source: unknown, _options: unknown, signal?: AbortSignal) => Promise<unknown>>();
@@ -18,13 +18,13 @@ const mockInvalidateOriginal = jest.fn<() => Promise<void>>();
 const mockInvalidate = jest.fn<() => Promise<void>>();
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 
-jest.mock('@/services/remote-image-cache', () => ({
+jest.mock('@rranker/sdk/services/remote-image-cache', () => ({
   acquireRemoteImageOriginal: (...args: [unknown, string, AbortSignal?]) => mockAcquire(...args),
   cacheCompressedRemoteImage: (...args: [unknown, unknown, AbortSignal?]) => mockCache(...args),
   findCompressedRemoteImage: () => mockFind(),
   invalidateCompressedRemoteImage: () => mockInvalidate(),
-  normalizeRemoteImageSource: jest.requireActual<typeof import('@/services/remote-image-cache')>(
-    '@/services/remote-image-cache',
+  normalizeRemoteImageSource: jest.requireActual<typeof import('@rranker/sdk/services/remote-image-cache')>(
+    '@rranker/sdk/services/remote-image-cache',
   ).normalizeRemoteImageSource,
   supportsCompressedRemoteImageCache: () => true,
 }));
@@ -56,7 +56,7 @@ describe('歌曲封面来源更新', () => {
     mockInvalidateOriginal.mockResolvedValue(undefined);
     mockAcquire.mockResolvedValue({ fileUri: 'file:///original.jpg', release: mockReleaseOriginal, invalidate: mockInvalidateOriginal });
     const content = (source: string) => kind === 'cover' ? <GameSongCover source={source} gameId="phigros" /> : <GameSongRow
-      presentation={{ key: 'song', gameId: 'phigros', route: { songId: 'song', params: { gameId: 'phigros' } }, title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
+      presentation={{ key: 'song', gameId: 'phigros', route: { gameId: 'phigros', params: { songId: 'song' } }, title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
       coverSource={source} />;
     const screen = await render(content('https://example.test/old.jpg'));
     await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull());

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
+import { PhigrosScoreProvider } from '@rranker/provider-phi-taptap/providers/phigros-score-provider';
 
 const state = vi.hoisted(() => ({ release: { revision: 'r1', difficulty: 'Song.A\t10\t0\t0\t0' } }));
 const download = vi.hoisted(() => vi.fn(async () => new ArrayBuffer(0)));
@@ -10,16 +10,16 @@ const summaryBase64 = vi.hoisted(() => {
 });
 const metadata = vi.hoisted(() => vi.fn(async () => ({ saveUrl: 'https://example.com/save', updatedAt: 'today', summaryBase64 })));
 const playerName = vi.hoisted(() => vi.fn(async () => 'Player'));
-vi.mock('@/services/phigros-resources', () => ({ phigrosResources: {
+vi.mock('@rranker/game-phigros/services/phigros-resources', () => ({ phigrosResources: {
   load: async () => state.release, peek: () => state.release,
 } }));
-vi.mock('@/providers/phigros-auth', () => ({
+vi.mock('@rranker/provider-phi-taptap/providers/phigros-auth', () => ({
   getGameSave: metadata,
   getPlayerName: playerName,
   downloadSave: download,
 }));
-vi.mock('@/domain/phigros', async (original) => ({
-  ...await original<typeof import('@/domain/phigros')>(),
+vi.mock('@rranker/game-phigros/domain/phigros', async (original) => ({
+  ...await original<typeof import('@rranker/game-phigros/domain/phigros')>(),
   decodeSaveZip: async () => ({ gameRecord: { 'Song.A': [{
     songId: 'Song.A', level: 'EZ', difficulty: 0, score: 1_000_000,
     rawAcc: 100, acc: 100, fc: true, rks: 0,

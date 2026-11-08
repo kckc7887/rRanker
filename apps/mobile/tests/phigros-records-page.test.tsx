@@ -13,9 +13,9 @@ type MockSessionState = {
   session: { mode: string } | null;
 };
 let mockSessionState: MockSessionState;
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
-  useSession: (selector: (state: MockSessionState) => unknown) => selector(mockSessionState),
+  useSession: (selector: (state: MockSessionState) => unknown) => selector({ ...mockSessionState, sourceClient: mockSessionState.session || mockSessionState.activeProviderId?.endsWith('-test') ? {} : undefined }),
 }));
 
 let mockGameQuery: Record<string, unknown>;
@@ -23,21 +23,21 @@ let mockCatalogQuery: Record<string, unknown>;
 let mockTagsQuery: Record<string, unknown>;
 let mockKeyword = '';
 const mockSelectedTags: string[] = [];
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => mockGameQuery }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
-jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => mockTagsQuery }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
-jest.mock('@/hooks/use-score-snapshot', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => mockGameQuery }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => mockTagsQuery }));
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({
   useScoreSnapshot: () => ({ data: null, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: null, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({
   useDxRatingChartTags: () => ({ data: null, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/state/records-filter', () => ({
+jest.mock('@rranker/game-maimai/state/records-filter', () => ({
   useRecordsFilter: () => ({
     keyword: '', collapsed: false, difficulty: 'all', version: 'all', type: 'all',
     constantMin: null, constantMax: null, achievementMin: null, achievementMax: null,
@@ -49,7 +49,7 @@ jest.mock('@/state/records-filter', () => ({
     clearFilters: jest.fn(),
   }),
 }));
-jest.mock('@/state/phigros-records-filter', () => ({
+jest.mock('@rranker/game-phigros/state/phigros-records-filter', () => ({
   usePhigrosRecordsFilter: () => ({
     keyword: mockKeyword, collapsed: false, level: 'all', constantMin: '', constantMax: '',
     accuracyMin: '', accuracyMax: '', rank: null, xing: null, chapter: 'all',
@@ -142,7 +142,7 @@ describe('Phigros records screen', () => {
     expect(screen.getByText('共 1 条成绩')).toBeTruthy();
     expect(screen.getByLabelText('Phigros 定数范围下限 15.2')).toBeTruthy();
     expect(screen.getByLabelText('Phigros 定数范围上限 15.2')).toBeTruthy();
-    expect(screen.queryByText('尚未绑定 TapTap 账号')).toBeNull();
+    expect(screen.queryByText('尚未绑定账号')).toBeNull();
   });
 
   it('shows the unbound hint when no TapTap session exists', async () => {
@@ -154,6 +154,6 @@ describe('Phigros records screen', () => {
     };
     const screen = await render(<RecordsScreen />);
     expect(screen.queryByTestId('phigros-records-list')).toBeNull();
-    expect(screen.getByText('尚未绑定 TapTap 账号')).toBeTruthy();
+    expect(screen.getByText('尚未绑定账号')).toBeTruthy();
   });
 });

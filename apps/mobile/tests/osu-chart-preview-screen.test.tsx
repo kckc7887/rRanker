@@ -1,10 +1,10 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import OsuChartPreviewScreen from '../app/songs/osu-chart-preview';
+import OsuChartPreviewScreen from '@rranker/tool-osu/pages/chart-preview';
 
 const mockShowActionNotification = jest.fn();
 const mockDismissNotification = jest.fn();
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({
   showActionNotification: mockShowActionNotification, dismissNotification: mockDismissNotification,
 }) }));
 
@@ -37,11 +37,11 @@ jest.mock('expo-sqlite/kv-store', () => ({
     setItem: (key: string, value: string) => mockSaveSettings(key, value),
   },
 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: true, background: '#000000', text: '#ffffff', textMuted: '#cccccc',
   accent: '#ff66aa', surfaceMuted: '#333333', statusBar: 'light',
 }) }));
-jest.mock('@/features/osu-chart-preview/prepare-osu-chart-preview-webview', () => ({
+jest.mock('@rranker/tool-osu/features/osu-chart-preview/prepare-osu-chart-preview-webview', () => ({
   prepareOsuChartPreviewWebViewSource: (...args: unknown[]) => mockPrepare(...args),
 }));
 

@@ -7,9 +7,9 @@ import {
   toPhigrosScoreRecord,
   type PhigrosDifficultyTable,
   type PhigrosScoreEntry,
-} from '@/domain/phigros';
-import type { ScoreRecord } from '@/domain/models';
-import { presentPhigrosScore } from '@/features/game-content/adapters/phigros';
+} from '@rranker/game-phigros/domain/phigros';
+import type { ScoreRecord } from '@rranker/game-phigros/domain/models';
+import { presentPhigrosScore } from '@rranker/game-phigros/presentation';
 
 const entry: PhigrosScoreEntry = {
   songId: 'Glaciaxion.SunsetRay',
@@ -95,7 +95,7 @@ describe('Phigros 领域成绩记录', () => {
     expect(shared).toEqual(sharedView);
 
     const card = presentPhigrosScore(shared);
-    expect(card.route).toEqual({ songId: 'Glaciaxion.SunsetRay', levelIndex: 2, params: { gameId: 'phigros' } });
+    expect(card.route).toEqual({ gameId: 'phigros', params: { songId: 'Glaciaxion.SunsetRay', levelIndex: String(2) } });
     expect(card.primaryMetric).toEqual({
       key: 'score',
       label: 'Score',

@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   OSU_RULESET_BY_GAME_ID,
   type OsuBeatmapsetLookupRaw,
-} from '@/domain/osu';
-import type { OsuGameId } from '@/domain/game-mode-family';
+} from '@rranker/game-osu/domain/osu';
+import type { OsuGameId } from '@rranker/game-osu';
 import {
   buildMaxedOsuBeatmapsetScores,
   buildMaxedOsuBestScores,
   maxedOsuPlayerSnapshot,
-} from '@/providers/maxed-osu-test-provider';
-import { OsuPublicCatalogProvider } from '@/providers/osu-public-catalog-provider';
+} from '@rranker/provider-osu-test/providers/maxed-osu-test-provider';
+import { OsuPublicCatalogProvider } from '@rranker/provider-osu/providers/osu-public-catalog-provider';
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('expo/fetch', () => ({ fetch: mocks.fetch }));

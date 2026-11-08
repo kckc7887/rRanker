@@ -1,11 +1,11 @@
-import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
+import type { ChunithmCatalogSnapshot } from '@rranker/game-chunithm/domain/chunithm';
 import {
   chunithmRandomChartKey,
   filterChunithmRandomCharts,
   type ChunithmRandomChartFilters,
-} from '@/domain/chunithm-random-charts';
-import type { ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
-import { fixtureSource } from '@/fixtures/sanitized';
+} from '@rranker/game-chunithm/domain/chunithm-random-charts';
+import type { ChunithmScoreCardData } from '@rranker/game-chunithm/domain/chunithm-score-presentation';
+import { fixtureSource } from './fixtures/sanitized';
 
 const catalog: ChunithmCatalogSnapshot = {
   currentVersion: { id: 2, title: 'NEW' },

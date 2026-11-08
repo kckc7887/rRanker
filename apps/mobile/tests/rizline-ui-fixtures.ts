@@ -1,4 +1,4 @@
-import { rizlineDifficultyIndex, type RizlineChart, type RizlineDifficulty, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
+import { rizlineDifficultyIndex, type RizlineChart, type RizlineDifficulty, type RizlineRecord, type RizlineSong } from '@rranker/game-rizline/domain/rizline';
 
 export function rizlineChart(difficulty: RizlineDifficulty, constant: number | null = 12, songId = 'song.a'): RizlineChart {
   return { id: `${songId}.${difficulty}`, songId, difficulty, level: difficulty === 'SP' ? '?' : '12', constant,

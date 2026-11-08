@@ -1,17 +1,17 @@
 import { PixelRatio } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
-import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import type { ChunithmScore } from '@/domain/chunithm-personal';
+import { ChunithmBestImageScreen } from '@rranker/tool-chunithm/screens/ChunithmBestImageScreen';
+import type { ChunithmCatalogSnapshot } from '@rranker/game-chunithm/domain/chunithm';
+import type { ChunithmScore } from '@rranker/game-chunithm/domain/chunithm-personal';
 
 const mockShowNotification = jest.fn();
 const mockLoadRemoteImage = jest.fn(async (_session: unknown, url: string | null): Promise<string | null> => url);
 const mockFiles = new Map<string, string>();
 
-jest.mock('@/components/AppNotification', () => {
+jest.mock('@rranker/sdk/components/AppNotification', () => {
   const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
-  return { ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+  return { ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 
 jest.mock('expo-asset', () => {
@@ -111,11 +111,11 @@ const mockCatalogData = {
   source: { kind: 'fixture', label: '测试曲库', updatedAt: '', isStale: false },
 } satisfies ChunithmCatalogSnapshot;
 
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => mockGameData,
 }));
 
-jest.mock('@/hooks/use-chunithm-catalog', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: mockCatalogData,
     isLoading: false,
@@ -124,7 +124,7 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
   }),
 }));
 
-jest.mock('@/hooks/use-chunithm-collections', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-collections', () => ({
   useChunithmCollections: (kind: string) => ({
     data: { items: kind === 'plate' ? [{ id: 42, name: '测试名牌' }] : kind === 'trophy' ? [
       { id: 7, name: '金色称号', color: 'gold', level: 2 },
@@ -134,7 +134,7 @@ jest.mock('@/hooks/use-chunithm-collections', () => ({
   }),
 }));
 
-jest.mock('@/features/chunithm-best-image/load-chunithm-best-image-jackets', () => ({
+jest.mock('@rranker/tool-chunithm/features/chunithm-best-image/load-chunithm-best-image-jackets', () => ({
   chunithmBestImageJacketUrl: (jacketId: string) => `https://assets2.lxns.net/chunithm/jacket/${encodeURIComponent(jacketId)}.png`,
   resolveChunithmBestImageJacketId: (songId: string, levelIndex: number) => (
     levelIndex === 5 ? `we-${songId}` : songId
@@ -148,7 +148,7 @@ jest.mock('@/features/chunithm-best-image/load-chunithm-best-image-jackets', () 
   )),
 }));
 
-jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () => ({
+jest.mock('@rranker/tool-chunithm/features/chunithm-best-image/chunithm-best-image-preferences', () => ({
   chunithmBestImagePreferencesStore: {
     load: jest.fn(async () => ({
       version: 3,
@@ -178,14 +178,14 @@ jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () =
   },
 }));
 
-jest.mock('@/features/best-image/best-image-export', () => ({
-  ...jest.requireActual<typeof import('@/features/best-image/best-image-export')>('@/features/best-image/best-image-export'),
+jest.mock('@rranker/sdk/features/best-image/best-image-export', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/features/best-image/best-image-export')>('@rranker/sdk/features/best-image/best-image-export'),
   deleteBestImageCapture: jest.fn(async () => undefined),
   requestBestImageExportPermission: jest.fn(async () => undefined),
   saveBestImageCapture: jest.fn(async () => undefined),
 }));
 
-jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => {
+jest.mock('@rranker/sdk/features/best-image/prepare-best-image-webview-sources', () => {
   let batch = 0;
   return {
     prepareBestImageWebViewSources: async (htmlPages: readonly string[]) => {
@@ -206,7 +206,7 @@ describe('chunithm best image custom', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('selects a plate, saves it for the account, and restores the default board', async () => {
-    const { chunithmBestImagePreferencesStore } = jest.requireMock('@/features/chunithm-best-image/chunithm-best-image-preferences') as { chunithmBestImagePreferencesStore: { save: jest.Mock } };
+    const { chunithmBestImagePreferencesStore } = jest.requireMock('@rranker/tool-chunithm/features/chunithm-best-image/chunithm-best-image-preferences') as { chunithmBestImagePreferencesStore: { save: jest.Mock } };
     const screen = await render(<ChunithmBestImageScreen />);
     await screen.findByTestId('chunithm-best-image-html-preview-0');
     await fireEvent.press(screen.getByText('名牌'));
@@ -219,7 +219,7 @@ describe('chunithm best image custom', () => {
   });
 
   it('selects text and image trophies, saves their appearance, and can hide or restore the current trophy', async () => {
-    const { chunithmBestImagePreferencesStore } = jest.requireMock('@/features/chunithm-best-image/chunithm-best-image-preferences') as { chunithmBestImagePreferencesStore: { save: jest.Mock } };
+    const { chunithmBestImagePreferencesStore } = jest.requireMock('@rranker/tool-chunithm/features/chunithm-best-image/chunithm-best-image-preferences') as { chunithmBestImagePreferencesStore: { save: jest.Mock } };
     const screen = await render(<ChunithmBestImageScreen />);
     await screen.findByTestId('chunithm-best-image-html-preview-0');
     await fireEvent.press(screen.getByLabelText('选择称号'));
@@ -259,7 +259,7 @@ describe('chunithm best image custom', () => {
   });
 
   it('exports the prepared Chunithm artwork and reports a saved image', async () => {
-    const { saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as { saveBestImageCapture: jest.Mock };
+    const { saveBestImageCapture } = jest.requireMock('@rranker/sdk/features/best-image/best-image-export') as { saveBestImageCapture: jest.Mock };
     saveBestImageCapture.mockClear();
     const screen = await render(<ChunithmBestImageScreen />);
     await screen.findByTestId('chunithm-best-image-html-preview-0');
@@ -381,12 +381,12 @@ jest.mock('expo-file-system/legacy', () => ({
   },
 }));
 
-jest.mock('@/features/best-image/load-best-image-session', () => {
-  const actual = jest.requireActual<typeof import('@/features/best-image/load-best-image-session')>('@/features/best-image/load-best-image-session');
+jest.mock('@rranker/sdk/features/best-image/load-best-image-session', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/features/best-image/load-best-image-session')>('@rranker/sdk/features/best-image/load-best-image-session');
   return { ...actual, loadRemoteImageFile: (session: unknown, url: string | null) => mockLoadRemoteImage(session, url) };
 });
 
-jest.mock('@/features/chunithm-best-image/chunithm-ui-cache', () => ({
+jest.mock('@rranker/tool-chunithm/features/chunithm-best-image/chunithm-ui-cache', () => ({
   prepareChunithmUi: async () => {
     const files = ['basic', 'advanced', 'expert', 'master', 'ultima', 'worldsend'].map(difficulty => `card/${difficulty}.svg`);
     for (const file of files) mockFiles.set(`file:///ui/${file}`, '<svg xmlns="http://www.w3.org/2000/svg" width="756" height="320"/>');

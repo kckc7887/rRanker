@@ -1,5 +1,5 @@
-import { readMaimaiSave } from '@/services/maimai-save';
-import { convertHubScoresToLxnsRecords } from '@/services/score-hub-sync-map';
+import { readMaimaiSave } from '@rranker/tool-maimai/services/maimai-save';
+import { convertHubScoresToLxnsRecords } from '@rranker/tool-maimai/services/score-hub-sync-map';
 
 const native = vi.hoisted(() => ({ readSaveAsync: vi.fn() }));
 vi.mock('expo-modules-core', () => ({ requireOptionalNativeModule: () => native }));

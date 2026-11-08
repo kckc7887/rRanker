@@ -1,6 +1,6 @@
 import {
   isChunithmMaintenanceWindow,
-} from '@/domain/chunithm-maintenance';
+} from '@rranker/game-chunithm/domain/chunithm-maintenance';
 
 describe('chunithm maintenance window', () => {
   it('uses inclusive 04:00 and exclusive 07:00 in UTC+8', () => {

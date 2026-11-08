@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { MuseDashRandomChartsScreen } from '@/screens/MuseDashRandomChartsScreen';
+import { MuseDashRandomChartsScreen } from '@rranker/tool-musedash/screens/MuseDashRandomChartsScreen';
 import type {
   MuseDashAlbumsResponse,
   MuseDashAchievementFilter,
@@ -8,8 +8,8 @@ import type {
   MuseDashDifficultySlot,
   MuseDashMissDetailValue,
   MuseDashPlayer,
-} from '@/domain/muse-dash';
-import type { RandomChartsCount } from '@/domain/random-charts';
+} from '@rranker/game-musedash/domain/muse-dash';
+import type { RandomChartsCount } from '@rranker/sdk/domain/random-charts';
 
 const mockRefetch = jest.fn(async () => ({ data: undefined }));
 const mockRetryFailedDetails = jest.fn();
@@ -72,21 +72,28 @@ jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', input: '#F1F3F5', border: '#DDD',
   text: '#111', textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF',
   danger: '#B42318', dark: false,
 }) }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: unknown) => unknown) => selector({
     activeAccountId: 'musedash:musedash-moe:user-1',
     activeGameId: 'musedash',
   }),
 }));
-jest.mock('@/state/musedash-random-charts-filter', () => ({
+jest.mock('@rranker/tool-musedash/state/musedash-random-charts-filter', () => ({
   useMuseDashRandomChartsFilter: () => ({ ...mockFilters, ...mockFilterActions }),
 }));
-jest.mock('@/hooks/use-muse-dash', () => {
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
+  useGameData: () => {
+    const state = { data: player, isLoading: false, isError: false, error: null,
+      isFetching: false, refetch: mockRefetch, ...mockQueryStates.player };
+    return { ...state, data: state.data ? { payload: { kind: 'musedash', player: state.data } } : undefined };
+  },
+}));
+jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => {
   const query = (data: unknown, name?: keyof typeof mockQueryStates) => ({
     data,
     source: { kind: 'musedash', label: 'MuseDash.moe', updatedAt: '2026-08-10T00:00:00.000Z', isStale: false },
@@ -94,7 +101,6 @@ jest.mock('@/hooks/use-muse-dash', () => {
     ...(name ? mockQueryStates[name] : {}),
   });
   return {
-    useMuseDashPlayer: () => query(player, 'player'),
     useMuseDashAlbums: () => query(albums, 'albums'),
     useMuseDashCe: () => query(ce, 'ce'),
     useMuseDashDiffdiff: () => query(diffdiff, 'diffdiff'),

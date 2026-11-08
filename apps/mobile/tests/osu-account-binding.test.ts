@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bindOsuModes } from '@/services/osu-account-binding';
-import { createOsuBoundAccount } from '@/domain/bound-account';
-import { ProviderError } from '@/providers/errors';
+import { bindOsuModes } from '@rranker/provider-osu/services/osu-account-binding';
+import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
 const mocks = vi.hoisted(() => ({
   getOwnUser: vi.fn(),
@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   upsertAccounts: vi.fn(),
 }));
 
-vi.mock('@/providers/osu-score-provider', () => ({
+vi.mock('@rranker/provider-osu/providers/osu-score-provider', () => ({
   OsuScoreProvider: vi.fn(function OsuScoreProviderMock() {
     return {
       getOwnUser: mocks.getOwnUser,
@@ -20,7 +20,7 @@ vi.mock('@/providers/osu-score-provider', () => ({
   }),
 }));
 
-vi.mock('@/storage/secure-session-store', () => ({
+vi.mock('@rranker/sdk/storage/secure-session-store', () => ({
   SecureSessionStore: vi.fn(function SecureSessionStoreMock() {
     return {
       upsertAccounts: mocks.upsertAccounts,

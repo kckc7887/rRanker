@@ -1,5 +1,5 @@
-import { buildBest50, calculateChartRating, mapCoverId, minimumAchievementForRating, ratingTableDescending } from '@/domain/rating';
-import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource, FIXTURE_CURRENT_VERSION } from '@/fixtures/sanitized';
+import { buildBest50, calculateChartRating, mapCoverId, minimumAchievementForRating, ratingTableDescending } from '@rranker/game-maimai/domain/rating';
+import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource, FIXTURE_CURRENT_VERSION } from './fixtures/sanitized';
 
 describe('rating and B50', () => {
   it('matches manually calculated rating boundaries', () => {

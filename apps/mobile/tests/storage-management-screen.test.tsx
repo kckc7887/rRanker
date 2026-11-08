@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import * as React from 'react';
-import type { StorageUsageReport } from '@/features/storage-management/storage-usage';
+import type { StorageUsageReport } from '@rranker/sdk/features/storage-management/storage-usage';
 const mockReactNative = jest.requireActual<typeof import('react-native')>('react-native');
 let StorageManagementScreen: typeof import('@/screens/StorageManagementScreen').StorageManagementScreen;
 
@@ -54,20 +54,20 @@ const usage: StorageUsageReport = {
 };
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@/components/StorageDonutChart', () => ({ StorageDonutChart: () => null }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
-jest.mock('@/features/storage-management/storage-usage', () => ({
+jest.mock('@rranker/sdk/components/StorageDonutChart', () => ({ StorageDonutChart: () => null }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
+jest.mock('@rranker/sdk/features/storage-management/storage-usage', () => ({
   collectStorageUsage: () => mockCollect(),
   listClearableCategoryIds: () => ['maimai', 'shared'],
 }));
-jest.mock('@/features/storage-management/clear-storage-cache', () => ({
+jest.mock('@rranker/sdk/features/storage-management/clear-storage-cache', () => ({
   clearStorageByCategories: (ids: unknown) => mockClear(ids),
 }));
-jest.mock('@/storage/storage-clear-prefs-store', () => ({ storageClearPreferencesStore: {
+jest.mock('@rranker/sdk/storage/storage-clear-prefs-store', () => ({ storageClearPreferencesStore: {
   load: () => mockLoad(),
   save: (value: unknown) => mockSave(value),
 } }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   background: '#fff', surface: '#fff', text: '#111', textMuted: '#666', textSecondary: '#444',
   border: '#ddd', accent: '#246BFD',
 }) }));

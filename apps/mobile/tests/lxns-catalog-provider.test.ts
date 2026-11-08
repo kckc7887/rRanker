@@ -1,5 +1,5 @@
-import { chartVersionKey } from '@/domain/catalog';
-import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
+import { chartVersionKey } from '@rranker/game-maimai/domain/catalog';
+import { LxnsCatalogProvider } from '@rranker/provider-lxns/providers/lxns-catalog-provider';
 
 const responsePayload = {
   versions: [
@@ -282,6 +282,21 @@ describe('LxnsCatalogProvider', () => {
     expect(snapshot.items.map((item) => item.kind)).toEqual(['icon', 'plate', 'trophy', 'frame']);
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContainEqual(expect.stringContaining('required=true'));
+  });
+
+  it('cancels an in-flight collection request through its caller signal', async () => {
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal ?? undefined;
+      return new Promise<Response>((_, reject) => requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason), { once: true }));
+    }));
+    const controller = new AbortController();
+    const pending = new LxnsCatalogProvider().getCollections({ kinds: ['icon'], required: false }, controller.signal);
+    const rejected = expect(pending).rejects.toBeDefined();
+    await vi.waitFor(() => expect(requestSignal).toBeDefined());
+    controller.abort(new Error('取消素材加载'));
+    await rejected;
+    expect(requestSignal?.aborted).toBe(true);
   });
 
   it('maps LXNS minor release ids down to the nearest declared main version', async () => {

@@ -7,13 +7,13 @@ import {
   sampleMove,
   sampleTween,
   ticksToSeconds,
-} from '@/features/phigros-chart-preview/webview-player/pgr-core';
+} from '@rranker/chart-json/features/phigros-chart-preview/webview-player/pgr-core';
 import {
   buildHitSoundEvents,
   findHitSoundCursor,
   HIT_SOUND_LOOKAHEAD_SECONDS,
   hitSoundScheduleDelay,
-} from '@/features/phigros-chart-preview/webview-player/hit-sound';
+} from '@rranker/chart-json/features/phigros-chart-preview/webview-player/hit-sound';
 
 type RawLine = {
   bpm: number;

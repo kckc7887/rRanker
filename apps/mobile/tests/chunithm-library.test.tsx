@@ -33,7 +33,7 @@ jest.mock('expo-router', () => {
     },
   };
   return {
-    router: { push: (...args: unknown[]) => mockPush(...args) },
+    Stack: { Screen: () => null }, router: { push: (...args: unknown[]) => mockPush(...args) },
     useNavigation: () => navigation,
     useIsFocused: () => true,
   };
@@ -48,56 +48,36 @@ jest.mock('expo-image', () => {
     ),
   };
 });
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: 'chunithm' }) => unknown) => (
     selector({ activeGameId: 'chunithm' })
   ),
 }));
-jest.mock('@/hooks/use-chunithm-catalog', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: { songs: [mockSong] },
   }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined }),
 }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({ data: undefined }),
 }));
-jest.mock('@/hooks/use-phira', () => ({
+jest.mock('@rranker/game-phira/hooks/use-phira', () => ({
   usePhiraChartsByIds: () => ({ data: [], isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
     data: [
-      {
-        key: 'song:chunithm:3',
-        gameId: 'chunithm',
-        kind: 'song',
-        songId: '3',
-        favorite: true,
-        tags: [],
-        createdAt: '2026-07-28T00:00:00.000Z',
-        updatedAt: '2026-07-28T00:00:00.000Z',
-      },
-      {
-        key: 'chart:chunithm:3:SD:3',
-        gameId: 'chunithm',
-        kind: 'chart',
-        songId: '3',
-        type: 'SD',
-        levelIndex: 3,
-        practice: true,
-        tags: ['爆发'],
-        createdAt: '2026-07-28T00:00:00.000Z',
-        updatedAt: '2026-07-28T00:00:00.000Z',
-      },
+      { key: JSON.stringify(['chunithm', 'song', '3']), id: '3', target: { songId: '3' }, gameId: 'chunithm', kind: 'song', favorite: true, tags: [], createdAt: '2026-07-28T00:00:00.000Z', updatedAt: '2026-07-28T00:00:00.000Z' },
+      { key: JSON.stringify(['chunithm', 'chart', JSON.stringify(['3', 3])]), id: JSON.stringify(['3', 3]), target: { songId: '3', levelIndex: '3' }, gameId: 'chunithm', kind: 'chart', practice: true, tags: ['爆发'], createdAt: '2026-07-28T00:00:00.000Z', updatedAt: '2026-07-28T00:00:00.000Z' },
     ],
     isLoading: false,
     isError: false,
   }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     accent: '#246BFD',
     background: '#F7F8FA',
@@ -124,8 +104,12 @@ describe('Chunithm personal library', () => {
 
     await fireEvent.press(screen.getByText('练习谱面 · MASTER'));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '3', levelIndex: '3', gameId: 'chunithm' },
     });
   });
 });
+
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }), NotificationOutlet: () => null, useNotificationModalRequestClose: () => () => false }));
+
+jest.mock('@/services/user-data-file-service', () => ({ pickUserDataBackup: jest.fn(), shareUserDataBackup: jest.fn() }));

@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MuseDashProvider } from '@/providers/muse-dash-provider';
-import { TufProvider } from '@/providers/tuf-provider';
-import { DxRatingChartTagsProvider } from '@/providers/dxrating-chart-tags-provider';
-import { PhigrosKyouProvider } from '@/providers/phigros-kyou-provider';
-import { PROVIDER_MAX_RESPONSE_BYTES } from '@/providers/http-json';
-import { PhigrosResourceService } from '@/services/phigros-resources';
-import { RizlineResourceService, rizlineResources } from '@/services/rizline-resources';
-import { loadRizlineChartPreviewResources } from '@/services/rizline-chart-preview-resources';
-import { requestDeviceCode } from '@/providers/phigros-auth';
+import { MuseDashProvider } from '@rranker/provider-musedash-moe/providers/muse-dash-provider';
+import { TufProvider } from '@rranker/provider-tuf/providers/tuf-provider';
+import { DxRatingChartTagsProvider } from '@rranker/game-maimai/providers/dxrating-chart-tags-provider';
+import { PhigrosKyouProvider } from '@rranker/provider-phi-taptap/providers/phigros-kyou-provider';
+import { PROVIDER_MAX_RESPONSE_BYTES } from '@rranker/sdk/providers/http-json';
+import { PhigrosResourceService } from '@rranker/game-phigros/services/phigros-resources';
+import { RizlineResourceService, rizlineResources } from '@rranker/game-rizline/services/rizline-resources';
+import { loadRizlineChartPreviewResources } from '@rranker/game-rizline/services/rizline-chart-preview-resources';
+import { requestDeviceCode } from '@rranker/provider-phi-taptap/providers/phigros-auth';
 import { rizlineCatalog, rizlineCatalogAssetFiles } from './fixtures/rizline';
 
 const transport = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>() }));

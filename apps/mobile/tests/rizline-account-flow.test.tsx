@@ -1,18 +1,20 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
-import { GamePickerSheet } from '@/components/GamePickerSheet';
+import { ProviderLoginSheet } from '@rranker/sdk/components/ProviderLoginSheet';
+import { GamePickerSheet } from '@rranker/sdk/components/GamePickerSheet';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
-import { findGame, findProvider, isCredentialProvider } from '@/domain/game-bind-options';
-import { ProviderError } from '@/providers/errors';
-import { useSession } from '@/state/session-store';
-import { invalidateResourceWrites, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
-import type { RizlineSave } from '@/domain/rizline';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+import { findGame, findProvider, isCredentialProvider } from '@rranker/sdk/domain/game-bind-options';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { createRizlineBoundAccount } from '@rranker/game-rizline/accounts';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { invalidateResourceWrites, resourceWriteGeneration } from '@rranker/sdk/services/snapshot-cache-utils';
+import type { RizlineSave } from '@rranker/game-rizline/domain/rizline';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
 
 let mockLifecycle: AppLifecycleSnapshot;
-jest.mock('@/state/app-lifecycle', () => ({
-  ...jest.requireActual<typeof import('@/state/app-lifecycle')>('@/state/app-lifecycle'),
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/state/app-lifecycle')>('@rranker/sdk/state/app-lifecycle'),
   useAppLifecycle: () => mockLifecycle,
 }));
 
@@ -38,7 +40,7 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-router', () => ({ router: { canDismiss: () => false, navigate: jest.fn(), push: jest.fn() } }));
-jest.mock('@/providers/rizline-provider', () => ({
+jest.mock('@rranker/provider-rizline-official/providers/rizline-provider', () => ({
   RizlineProvider: class {
     login = mockLogin;
     loginWithPassword = mockPasswordLogin;
@@ -46,34 +48,35 @@ jest.mock('@/providers/rizline-provider', () => ({
   },
   isRizlineNeedsSmsError: (error: unknown) => Boolean(error && typeof error === 'object' && 'needsCode' in error && (error as { needsCode?: boolean }).needsCode),
 }));
-jest.mock('@/storage/rizline-password-store', () => ({
+jest.mock('@rranker/provider-rizline-official/storage/rizline-password-store', () => ({
   writeRizlinePassword: (id: string, password: string) => mockWritePassword(id, password),
   deleteRizlinePassword: (id: string) => mockDeletePassword(id),
 }));
-jest.mock('@/storage/secure-session-store', () => {
-  const actual = jest.requireActual<typeof import('@/storage/secure-session-store')>('@/storage/secure-session-store');
+jest.mock('@rranker/sdk/storage/secure-session-store', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/storage/secure-session-store')>('@rranker/sdk/storage/secure-session-store');
   return { ...actual, SecureSessionStore: class {
     upsertAccount = (value: unknown, signal?: AbortSignal) => mockUpsert(value, signal);
     removeAccount = (id: string) => mockRemove(id);
     setActiveAccountId = jest.fn(async () => undefined); } };
 });
-jest.mock('@/services/rizline-service', () => ({ clearRizlineAccount: (id: string) => mockClear(id),
+jest.mock('@rranker/provider-rizline-official/services/rizline-service', () => ({ clearRizlineAccount: (id: string) => mockClear(id),
   cacheRizlineSave: (id: string, save: RizlineSave, signal?: AbortSignal) => mockCacheSave(id, save, signal) }));
-jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
   clear = jest.fn(async () => undefined); getLatest = jest.fn(async () => null); getResource = jest.fn(async () => null);
 } }));
-jest.mock('@/state/query-client', () => ({ queryClient: {
+jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: {
   invalidateQueries: jest.fn(async () => undefined), cancelQueries: (filters: unknown) => mockCancelQueries(filters),
   removeQueries: (filters: unknown) => mockRemoveQueries(filters),
 } }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn(async () => undefined) }) }));
-jest.mock('@/components/AppNotification', () => ({
-  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showActionNotification: mockNotification, showNotification: mockShowNotification }) }));
-jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined), persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
-jest.mock('@/components/TufPlayerPickerSheet', () => ({ TufPlayerPickerSheet: () => null }));
-jest.mock('@/components/PhiraPlayerPickerSheet', () => ({ PhiraPlayerPickerSheet: () => null }));
-jest.mock('@/components/MuseDashPlayerPickerSheet', () => ({ MuseDashPlayerPickerSheet: () => null }));
-jest.mock('@/components/RenameLocalAccountSheet', () => ({ RenameLocalAccountSheet: () => null }));
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn(async () => undefined) }) }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'), useNotification: () => ({ showActionNotification: mockNotification, showNotification: mockShowNotification }) }));
+jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/services/account-thumbnail', () => ({ persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
+jest.mock('@rranker/provider-tuf/components/TufPlayerPickerSheet', () => ({ TufPlayerPickerSheet: () => null }));
+jest.mock('@rranker/provider-phira-community/components/PhiraPlayerPickerSheet', () => ({ PhiraPlayerPickerSheet: () => null }));
+jest.mock('@rranker/provider-musedash-moe/components/MuseDashPlayerPickerSheet', () => ({ MuseDashPlayerPickerSheet: () => null }));
+jest.mock('@rranker/sdk/components/RenameAccountSheet', () => ({ RenameAccountSheet: () => null }));
 
 beforeEach(() => {
   jest.clearAllMocks(); useSession.getState().finishRestore(null);
@@ -95,8 +98,7 @@ test('selects the official SMS source through the game picker', async () => {
 });
 
 test('blocks password submission while password cleanup owns the panel', async () => {
-  useSession.getState().setSession(mockSession, { gameId: 'rizline', providerId: 'rizline-official',
-    accountId: `rizline:official:${mockPlayer.userId}`, playerId: mockPlayer.userId, displayName: mockPlayer.username, rating: null, credentialId: 'credential' });
+  useAccountStore.getState().bindAccounts({ accounts: [createRizlineBoundAccount(mockPlayer)], session: mockSession, credentialId: 'credential', activeAccountId: `rizline:official:${mockPlayer.userId}` });
   let finish!: () => void;
   mockDeletePassword.mockImplementationOnce(async () => { await new Promise<void>(resolve => { finish = resolve; }); });
   const game = findGame('rizline')!;
@@ -117,8 +119,7 @@ test('blocks password submission while password cleanup owns the panel', async (
 });
 
 test('an old cleanup cannot unlock a newer login after backgrounding', async () => {
-  useSession.getState().setSession(mockSession, { gameId: 'rizline', providerId: 'rizline-official',
-    accountId: `rizline:official:${mockPlayer.userId}`, playerId: mockPlayer.userId, displayName: mockPlayer.username, rating: null, credentialId: 'credential' });
+  useAccountStore.getState().bindAccounts({ accounts: [createRizlineBoundAccount(mockPlayer)], session: mockSession, credentialId: 'credential', activeAccountId: `rizline:official:${mockPlayer.userId}` });
   let finishCleanup!: () => void;
   mockDeletePassword.mockImplementationOnce(async () => { await new Promise<void>(resolve => { finishCleanup = resolve; }); });
   let finishLogin!: (value: { session: typeof mockSession; player: typeof mockPlayer; save: typeof mockSave }) => void;
@@ -246,8 +247,7 @@ test.each(['cache', 'password'] as const)('keeps the valid binding and reports r
 });
 
 test('handles password cleanup failure without an unhandled rejection or repeated operation', async () => {
-  useSession.getState().setSession(mockSession, { gameId: 'rizline', providerId: 'rizline-official',
-    accountId: `rizline:official:${mockPlayer.userId}`, playerId: mockPlayer.userId, displayName: mockPlayer.username, rating: null, credentialId: 'credential' });
+  useAccountStore.getState().bindAccounts({ accounts: [createRizlineBoundAccount(mockPlayer)], session: mockSession, credentialId: 'credential', activeAccountId: `rizline:official:${mockPlayer.userId}` });
   let reject!: (reason: unknown) => void;
   const pending = new Promise<void>((_resolve, fail) => { reject = fail; });
   mockDeletePassword.mockImplementationOnce(async () => { await pending; return undefined; });

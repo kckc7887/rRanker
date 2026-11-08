@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { decodeBase64AudioDataUrl } from '@/features/simai-chart-preview/engine/core/audio/AudioManager';
-import { parseSimaiBuddyCharts, parseSimaiChart } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { decodeBase64AudioDataUrl } from '@rranker/chart-simai/features/simai-chart-preview/engine/core/audio/AudioManager';
+import { parseSimaiBuddyCharts, parseSimaiChart } from '@rranker/chart-simai/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import {
   beatsToMs,
   calculateMusicTime,
   resolveBackgroundVideoFrame,
   resolvePlaybackRange,
-} from '@/features/simai-chart-preview/webview-player/timeConversion';
+} from '@rranker/chart-simai/features/simai-chart-preview/webview-player/timeConversion';
 
 describe('resolvePlaybackRange', () => {
   it('keeps a 161-second song playable after its chart ends at music time 156', () => {

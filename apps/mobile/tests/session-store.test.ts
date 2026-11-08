@@ -1,52 +1,47 @@
-import { useDebugStore } from '@/state/debug-store';
-import {
-  CHUNITHM_TEST_ACCOUNT_ID,
-  CHUNITHM_TEMP_ACCOUNT_ID,
-  PHIGROS_TEST_ACCOUNT_ID,
-  createMaxedChunithmTestAccount,
-  createChunithmTempAccount,
-  createLocalMaimaiAccount,
-  groupBoundAccountGameIds,
-  createMaxedMaimaiTestAccount,
-  createMaxedMuseDashTestAccount,
-  createMaxedPhigrosTestAccount,
-  createMuseDashBoundAccount,
-  createOsuBoundAccount,
-  createPhiraBoundAccount,
-  createRizlineBoundAccount,
-  createTufBoundAccount,
-  LOCAL_MAIMAI_ACCOUNT_ID,
-  MAIMAI_TEST_ACCOUNT_ID,
-} from '@/domain/bound-account';
-import type { ProviderSession } from '@/providers/contracts';
-import type { SecureSessionStore } from '@/storage/secure-session-store';
+import { applyLxnsTokenRotation } from '@rranker/provider-lxns/rotation';
+import { commitCredential } from '@rranker/sdk/services/session-credential-service';
+import type { Credential } from '@rranker/sdk/credentials';
+import type { BoundAccount } from '@rranker/sdk/account';
+import type { MaimaiDataSource } from '@rranker/game-maimai/data-source';
+import type { OsuDataSource } from '@rranker/game-osu/data-source';
+import { resolveAccountClient } from '@rranker/sdk/state/session-provider-resolver';
+import type { LxnsOAuthSession } from '@rranker/provider-lxns/credential';
+import type { HttpCookieSession } from '@rranker/provider-majdata-net/credential';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { createMajdataBoundAccount } from '@rranker/game-majdata-net/accounts';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
+import { setDisabledPlugins } from '@rranker/sdk/registry';
+import { CHUNITHM_TEST_ACCOUNT_ID, CHUNITHM_TEMP_ACCOUNT_ID, createChunithmBoundAccount, createMaxedChunithmTestAccount, createChunithmTempAccount } from '@rranker/game-chunithm/accounts';
+import { PHIGROS_TEST_ACCOUNT_ID, createMaxedPhigrosTestAccount } from '@rranker/game-phigros/accounts';
+import { createMaimaiBoundAccount, createLocalMaimaiAccount, createMaxedMaimaiTestAccount, LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID } from '@rranker/game-maimai/accounts';
+import { groupBoundAccountGameIds } from '@rranker/sdk/domain/bound-account';
+import { createMaxedMuseDashTestAccount, createMuseDashBoundAccount } from '@rranker/game-musedash/accounts';
+import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
+import { createPhiraBoundAccount } from '@rranker/game-phira/accounts';
+import { createRizlineBoundAccount } from '@rranker/game-rizline/accounts';
+import { createTufBoundAccount } from '@rranker/game-adofai/accounts';
+
+import type { SecureSessionStore } from '@rranker/sdk/storage/secure-session-store';
 import {
   clearOsuRotationCache,
-} from '@/providers/osu-oauth';
-import {
-  applyLxnsTokenRotation,
-  applyMajdataSessionRotation,
-  applyOsuTokenRotation,
-  applyRizlineSessionRotation,
-  restoreSession,
-  retryPendingRotationWrites,
-  UNBOUND_ACCOUNT_ID,
-  useSession,
-} from '@/state/session-store';
+} from '@rranker/provider-osu/providers/osu-oauth';
+import { restoreSession, retryPendingRotationWrites, UNBOUND_ACCOUNT_ID, useSession } from '@rranker/sdk/state/session-store';
+
+function bindAccount(account: BoundAccount, session: Credential, credentialId = `credential:${account.id}`) {
+  useAccountStore.getState().bindAccounts({ accounts: [account], session, credentialId, activeAccountId: account.id });
+}
 
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 
-const updateAccountSession = vi.hoisted(() => vi.fn<SecureSessionStore['updateAccountSession']>(async () => 'applied'));
 const updateCredentialSession = vi.hoisted(() => (
   vi.fn<SecureSessionStore['updateCredentialSession']>(async () => 'applied')
 ));
 
-vi.mock('@/storage/secure-session-store', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/storage/secure-session-store')>();
+vi.mock('@rranker/sdk/storage/secure-session-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@rranker/sdk/storage/secure-session-store')>();
   return {
     ...actual,
     SecureSessionStore: class {
-      updateAccountSession = updateAccountSession;
       updateCredentialSession = updateCredentialSession;
     },
   };
@@ -67,20 +62,21 @@ vi.mock('expo-sqlite', () => ({
   })),
 }));
 
-const jwtSession: ProviderSession = { mode: 'jwt', value: 'fake-jwt-token', persistable: true };
-const tokenSessionA: ProviderSession = { mode: 'import-token', value: 'token-a', persistable: true };
-const tokenSessionB: ProviderSession = { mode: 'import-token', value: 'token-b', persistable: true };
+const jwtSession: Credential = { mode: 'jwt', value: 'fake-jwt-token', persistable: true };
+const tokenSessionA: Credential = { mode: 'import-token', value: 'token-a', persistable: true };
+const tokenSessionB: Credential = { mode: 'import-token', value: 'token-b', persistable: true };
 
 beforeEach(() => {
+  setDisabledPlugins([]);
   useDebugStore.setState({ hydrated: true, testAccountsEnabled: true });
-  updateAccountSession.mockReset().mockResolvedValue('applied');
   updateCredentialSession.mockReset().mockResolvedValue('applied');
-  useSession.getState().finishRestore(null);
+  useAccountStore.getState().finishRestore(null);
 });
 
 afterEach(async () => {
-  useSession.getState().clearSession();
-  useSession.getState().finishRestore(null);
+  setDisabledPlugins([]);
+  useAccountStore.getState().clearSession();
+  useAccountStore.getState().finishRestore(null);
   await retryPendingRotationWrites();
   if (vi.isFakeTimers()) vi.clearAllTimers();
   vi.useRealTimers();
@@ -92,47 +88,47 @@ describe('Rizline account sessions', () => {
   const account = createRizlineBoundAccount({ userId: '123', username: 'Rizline 玩家', totalRks: 135.4321 });
   const metadata = { gameId: 'rizline', providerId: 'rizline-official', playerId: '123', displayName: account.displayName,
     rating: 135.4321, credentialId: 'rizline-credential' } as const;
-  beforeEach(() => { useSession.getState().finishRestore(null); updateAccountSession.mockClear(); });
+  beforeEach(() => { useAccountStore.getState().finishRestore(null); updateCredentialSession.mockClear(); });
   it('activates and restores the same stable account id and RKS', () => {
-    useSession.getState().setSession(session, metadata);
+    bindAccount(account, session, metadata.credentialId);
     expect(useSession.getState()).toMatchObject({ activeGameId: 'rizline', activeProviderId: 'rizline-official', activeAccountId: account.id, session });
-    useSession.getState().finishRestore({ version: 3, activeAccountId: account.id,
+    useAccountStore.getState().finishRestore({ version: 3, activeAccountId: account.id,
       credentials: [{ id: metadata.credentialId, providerId: 'rizline-official', session }],
       accounts: [{ id: account.id, credentialId: metadata.credentialId, gameId: 'rizline', providerId: 'rizline-official', displayName: account.displayName, scoreDisplay: '135.4321' }],
     });
-    expect(useSession.getState().boundAccounts[0]).toEqual(account);
+    expect(useSession.getState().boundAccounts[0]).toMatchObject(account);
     expect(useSession.getState().activeGameId).toBe('rizline');
   });
   it('rotates the current session and ignores a late rotation after reauthentication', async () => {
-    useSession.getState().setSession(session, metadata);
+    bindAccount(account, session, metadata.credentialId);
     const next = { ...session, token: 'rotated' };
-    await applyRizlineSessionRotation(account.id, next, session);
+    await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next, expected: session });
     expect(useSession.getState().session).toBe(next);
-    expect(updateAccountSession).toHaveBeenCalledWith(account.id, next, { expected: session, signal: undefined });
-    updateAccountSession.mockClear();
+    expect(updateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
+    updateCredentialSession.mockClear();
     const latest = { ...session, token: 'new-login' };
-    useSession.getState().setSession(latest, metadata);
-    await applyRizlineSessionRotation(account.id, { ...session, token: 'late' }, next);
-    expect(updateAccountSession).not.toHaveBeenCalled();
+    bindAccount(account, latest, metadata.credentialId);
+    await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next: { ...session, token: 'late' }, expected: next });
+    expect(updateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().session).toBe(latest);
   });
   it('rotates when the in-memory session is an equivalent token copy', async () => {
-    useSession.getState().setSession(session, metadata);
+    bindAccount(account, session, metadata.credentialId);
     const copy = { ...session };
-    useSession.setState({ sessionsByAccountId: { [account.id]: copy }, session: copy });
+    useAccountStore.getState().updateCredential(metadata.credentialId, copy);
     const next = { ...session, token: 'rotated' };
-    await applyRizlineSessionRotation(account.id, next, session);
-    expect(updateAccountSession).toHaveBeenCalledWith(account.id, next, { expected: session, signal: undefined });
+    await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next, expected: session });
+    expect(updateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
     expect(useSession.getState().session).toBe(next);
   });
   it('does not project a session when persistent eligibility rejects the update', async () => {
-    useSession.getState().setSession(session, metadata);
-    updateAccountSession.mockResolvedValueOnce('stale');
-    await applyRizlineSessionRotation(account.id, { ...session, token: 'rotated' }, session);
+    bindAccount(account, session, metadata.credentialId);
+    updateCredentialSession.mockResolvedValueOnce('stale');
+    await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next: { ...session, token: 'rotated' }, expected: session });
     expect(useSession.getState().session).toBe(session);
   });
 });
-const lxnsSession: ProviderSession = {
+const lxnsSession: LxnsOAuthSession = {
   mode: 'lxns-oauth',
   accessToken: 'access',
   refreshToken: 'refresh',
@@ -143,7 +139,7 @@ const lxnsSession: ProviderSession = {
 describe('useSession store', () => {
 
   beforeEach(() => {
-    useSession.getState().finishRestore(null, [
+    useAccountStore.getState().finishRestore(null, [
       createLocalMaimaiAccount('本地玩家', 0),
       createMaxedMaimaiTestAccount(),
       createMaxedPhigrosTestAccount(),
@@ -151,18 +147,17 @@ describe('useSession store', () => {
   });
 
   it('activates, restores and switches isolated Majdata accounts with real avatar URLs', async () => {
-    const session = (value: string): ProviderSession => ({ mode: 'http-cookies', origin: 'https://majdata.net',
+    const session = (value: string): Credential => ({ mode: 'http-cookies', origin: 'https://majdata.net',
       cookies: [{ name: 'auth', value, path: '/', secure: true }], persistable: true });
     const first = { accountId: 'majdata-net:account:玩家 a&b', displayName: '玩家 A&B',
       gameId: 'majdata-net' as const, providerId: 'majdata-net' as const, rating: null, credentialId: 'credential:first' };
     const second = { ...first, accountId: 'majdata-net:account:second', displayName: 'Second', credentialId: 'credential:second' };
-    useSession.getState().setSession(session('one'), first);
-    useSession.getState().updateBoundAccountScore(first.accountId, '123.4567%');
-    useSession.getState().setSession(session('one'), first);
+    bindAccount(createMajdataBoundAccount(first), session('one'), first.credentialId);
+    useAccountStore.getState().updateBoundAccountScore(first.accountId, '123.4567%');
     expect(useSession.getState().boundAccounts.find(a => a.id === first.accountId)?.scoreDisplay).toBe('123.4567%');
-    useSession.getState().setSession(session('two'), second);
+    bindAccount(createMajdataBoundAccount(second), session('two'), second.credentialId);
     expect(groupBoundAccountGameIds(useSession.getState().boundAccounts)).toContain('majdata-net');
-    useSession.getState().selectBoundAccount(first.accountId);
+    useAccountStore.getState().selectBoundAccount(first.accountId);
     expect(useSession.getState().session).toEqual(session('one'));
     expect(useSession.getState().boundAccounts.find(a => a.id === first.accountId)?.avatarUrl)
       .toBe('https://majdata.net/api3/api/account/Icon?username=%E7%8E%A9%E5%AE%B6%20A%26B');
@@ -174,58 +169,76 @@ describe('useSession store', () => {
     expect(useSession.getState().activeAccountId).toBe(second.accountId);
     expect(useSession.getState().session).toEqual(session('two'));
     expect(useSession.getState().boundAccounts.every(a => a.scoreDisplay === '200.0000%')).toBe(true);
-    useSession.getState().selectBoundAccount(first.accountId);
-    useSession.getState().removeBoundAccount(second.accountId);
+    useAccountStore.getState().selectBoundAccount(first.accountId);
+    useAccountStore.getState().removeBoundAccount(second.accountId);
     expect(useSession.getState().session).toEqual(session('one'));
     expect(useSession.getState().boundAccounts).toHaveLength(1);
     expect(useSession.getState().credentialIdsByAccountId[second.accountId]).toBeUndefined();
   });
 
   it('does not re-inject deleted local or demo accounts', () => {
-    useSession.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
-    useSession.getState().removeBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
+    useAccountStore.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
+    useAccountStore.getState().removeBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
     const { boundAccounts } = useSession.getState();
     expect(boundAccounts.map((account) => account.id)).not.toContain(LOCAL_MAIMAI_ACCOUNT_ID);
     expect(boundAccounts.map((account) => account.id)).not.toContain(MAIMAI_TEST_ACCOUNT_ID);
     expect(boundAccounts.map((account) => account.id)).toContain(PHIGROS_TEST_ACCOUNT_ID);
   });
   it('commits Majdata cookies once with the active projection and rejects stale persistent updates', async () => {
-    const session: Extract<ProviderSession, { mode: 'http-cookies' }> = { mode: 'http-cookies', origin: 'https://majdata.net', cookies: [{ name: 'auth', value: 'first', path: '/', secure: true }], persistable: true };
+    const session: HttpCookieSession = { mode: 'http-cookies', origin: 'https://majdata.net', cookies: [{ name: 'auth', value: 'first', path: '/', secure: true }], persistable: true };
     const metadata = { accountId: 'majdata-net:account:player', displayName: 'Player', gameId: 'majdata-net', providerId: 'majdata-net', rating: null, credentialId: 'majdata-credential' } as const;
-    useSession.getState().setSession(session, metadata);
+    bindAccount(createMajdataBoundAccount(metadata), session, metadata.credentialId);
     const next = { ...session, cookies: [{ ...session.cookies[0], value: 'next' }] };
-    const notifications: ProviderSession[] = [];
+    const notifications: Credential[] = [];
     const unsubscribe = useSession.subscribe((state) => { notifications.push(state.session!); expect(state.sessionsByAccountId[metadata.accountId]).toBe(state.session); });
-    await applyMajdataSessionRotation(metadata.accountId, next, session);
+    await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next, expected: session });
     unsubscribe();
     expect(notifications).toEqual([next]);
-    expect(updateAccountSession).toHaveBeenCalledWith(metadata.accountId, next, { expected: session, signal: undefined });
-    updateAccountSession.mockResolvedValueOnce('stale');
-    await applyMajdataSessionRotation(metadata.accountId, session, next);
+    expect(updateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
+    updateCredentialSession.mockResolvedValueOnce('stale');
+    await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next: session, expected: next });
     expect(useSession.getState().session).toBe(next);
-    updateAccountSession.mockRejectedValueOnce(new Error('offline'));
-    await expect(applyMajdataSessionRotation(metadata.accountId, session, next)).rejects.toThrow('offline');
-    expect(useSession.getState().session).toBe(next);
+    updateCredentialSession.mockRejectedValueOnce(new Error('offline'));
+    await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next: session, expected: next });
+    expect(useSession.getState().session).toBe(session);
+    await expect(retryPendingRotationWrites()).resolves.toBe(1);
   });
 
   it('enters unbound empty state when all accounts are removed', () => {
-    useSession.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
-    useSession.getState().removeBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
-    useSession.getState().removeBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
+    useAccountStore.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
+    useAccountStore.getState().removeBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
+    useAccountStore.getState().removeBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.boundAccounts).toEqual([]);
     expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
     expect(state.activeProviderId).toBeNull();
-    expect(state.catalogProvider).toBeNull();
+  });
+
+  it.each(['game.phigros', 'provider.phigros-test'])('restores the selected account after enabling %s again', pluginId => {
+    const selected = createMaxedPhigrosTestAccount();
+    const fallback = createLocalMaimaiAccount('本地玩家', 0);
+    useAccountStore.getState().finishRestore({ version: 3, activeAccountId: selected.id, accounts: [], credentials: [] }, [selected, fallback]);
+    expect(useSession.getState().activeAccountId).toBe(selected.id);
+    setDisabledPlugins([pluginId]);
+    expect(useSession.getState().activeAccountId).toBe(fallback.id);
+    expect(useSession.getState().boundAccounts.map(account => account.id)).toEqual([selected.id, fallback.id]);
+    setDisabledPlugins([]);
+    expect(useSession.getState().activeAccountId).toBe(selected.id);
+  });
+
+  it('prefers an authenticated maimai account when the saved selection is missing', () => {
+    useAccountStore.getState().finishRestore({
+      version: 3, activeAccountId: 'removed',
+      credentials: [{ id: 'credential:remote', providerId: 'diving-fish', session: tokenSessionA }],
+      accounts: [{ id: 'maimai:diving-fish:remote', gameId: 'maimai', providerId: 'diving-fish',
+        credentialId: 'credential:remote', displayName: '水鱼玩家', scoreDisplay: '15000' }],
+    }, [createPhiraBoundAccount({ playerId: 7, displayName: 'Phira' }), createLocalMaimaiAccount('本地玩家', 0)]);
+    expect(useSession.getState().activeAccountId).toBe('maimai:diving-fish:remote');
+    expect(useSession.getState().session).toEqual(tokenSessionA);
   });
 
   it('binds a maimai account with display name and DX rating meta', () => {
-    useSession.getState().setSession(jwtSession, {
-      displayName: '尘言',
-      rating: 15000,
-      playerId: 'p1',
-      providerId: 'diving-fish',
-    });
+    bindAccount(createMaimaiBoundAccount({ displayName: '尘言', rating: 15000, playerId: 'p1', providerId: 'diving-fish' }), jwtSession);
     const state = useSession.getState();
     expect(state.session).toEqual(jwtSession);
 
@@ -238,12 +251,7 @@ describe('useSession store', () => {
   });
 
   it('binds an lxns oauth account onto LxnsScoreProvider', () => {
-    useSession.getState().setSession(lxnsSession, {
-      displayName: '落雪玩家',
-      rating: 12000,
-      playerId: '123456789000000',
-      providerId: 'lxns',
-    });
+    bindAccount(createMaimaiBoundAccount({ displayName: '落雪玩家', rating: 12000, playerId: '123456789000000', providerId: 'lxns' }), lxnsSession);
     const state = useSession.getState();
     expect(state.session).toEqual(lxnsSession);
     expect(state.activeProviderId).toBe('lxns');
@@ -267,29 +275,19 @@ describe('useSession store', () => {
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
     }));
-    useSession.getState().setSession(expired, { displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' });
-    await expect(useSession.getState().scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '已刷新玩家' });
+    bindAccount(createMaimaiBoundAccount({ displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' }), expired);
+    await expect((useSession.getState().sourceClient as MaimaiDataSource).scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '已刷新玩家' });
     const next = useSession.getState().session;
     expect(next).toMatchObject({ accessToken: 'first-next', refreshToken: 'first-next-refresh' });
     expect(updateCredentialSession).toHaveBeenCalledWith('credential:maimai:lxns:1', next, {
-      acceptedRefreshTokens: expect.arrayContaining(['first-refresh']),
+      expected: expired, assertCurrent: expect.any(Function),
     });
     expect(authorizations).toEqual(['Bearer first-next']);
   });
 
   it('keeps multiple diving-fish accounts instead of replacing the previous one', () => {
-    useSession.getState().setSession(tokenSessionA, {
-      displayName: '账号甲',
-      rating: 14000,
-      playerId: 'a1',
-      providerId: 'diving-fish',
-    });
-    useSession.getState().setSession(tokenSessionB, {
-      displayName: '账号乙',
-      rating: 15000,
-      playerId: 'b2',
-      providerId: 'diving-fish',
-    });
+    bindAccount(createMaimaiBoundAccount({ displayName: '账号甲', rating: 14000, playerId: 'a1', providerId: 'diving-fish' }), tokenSessionA);
+    bindAccount(createMaimaiBoundAccount({ displayName: '账号乙', rating: 15000, playerId: 'b2', providerId: 'diving-fish' }), tokenSessionB);
     const state = useSession.getState();
     const maimaiIds = state.boundAccounts
       .filter((account) => account.gameId === 'maimai')
@@ -304,36 +302,34 @@ describe('useSession store', () => {
     expect(state.sessionsByAccountId['maimai:diving-fish:a1']).toEqual(tokenSessionA);
     expect(state.sessionsByAccountId['maimai:diving-fish:b2']).toEqual(tokenSessionB);
 
-    useSession.getState().selectBoundAccount('maimai:diving-fish:a1');
+    useAccountStore.getState().selectBoundAccount('maimai:diving-fish:a1');
     expect(useSession.getState().session).toEqual(tokenSessionA);
     expect(useSession.getState().activeAccountId).toBe('maimai:diving-fish:a1');
   });
 
   it('switches between Phigros and the no-score Chunithm account', () => {
-    useSession.getState().selectBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
+    useAccountStore.getState().selectBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
     expect(useSession.getState().activeGameId).toBe('phigros');
 
-    useSession.getState().upsertBoundAccount(createChunithmTempAccount());
-    useSession.getState().selectBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
+    useAccountStore.getState().upsertBoundAccount(createChunithmTempAccount());
+    useAccountStore.getState().selectBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(CHUNITHM_TEMP_ACCOUNT_ID);
     expect(state.activeGameId).toBe('chunithm');
-    expect(state.catalogProvider).toBeNull();
   });
 
   it('switches to the no-score Chunithm temporary account', () => {
-    useSession.getState().upsertBoundAccount(createChunithmTempAccount());
-    useSession.getState().selectBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
+    useAccountStore.getState().upsertBoundAccount(createChunithmTempAccount());
+    useAccountStore.getState().selectBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(CHUNITHM_TEMP_ACCOUNT_ID);
     expect(state.activeGameId).toBe('chunithm');
     expect(state.activeProviderId).toBe('chunithm-temp');
-    expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
 
   it('switches to the generated maxed maimai demo account', () => {
-    useSession.getState().selectBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
+    useAccountStore.getState().selectBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(MAIMAI_TEST_ACCOUNT_ID);
     expect(state.activeGameId).toBe('maimai');
@@ -343,37 +339,35 @@ describe('useSession store', () => {
   });
 
   it('switches to the generated maxed Chunithm demo account', () => {
-    useSession.getState().upsertBoundAccount(createMaxedChunithmTestAccount());
-    useSession.getState().selectBoundAccount(CHUNITHM_TEST_ACCOUNT_ID);
+    useAccountStore.getState().upsertBoundAccount(createMaxedChunithmTestAccount());
+    useAccountStore.getState().selectBoundAccount(CHUNITHM_TEST_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(CHUNITHM_TEST_ACCOUNT_ID);
     expect(state.activeGameId).toBe('chunithm');
     expect(state.activeProviderId).toBe('chunithm-test');
-    expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
 
   it('switches to the generated maxed Phigros demo account', () => {
-    useSession.getState().upsertBoundAccount(createMaxedPhigrosTestAccount());
-    useSession.getState().selectBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
+    useAccountStore.getState().upsertBoundAccount(createMaxedPhigrosTestAccount());
+    useAccountStore.getState().selectBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(PHIGROS_TEST_ACCOUNT_ID);
     expect(state.activeGameId).toBe('phigros');
     expect(state.activeProviderId).toBe('phigros-test');
-    expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
 
   it('keeps multiple local players and rebuilds the active provider after renaming', async () => {
     const extra = createLocalMaimaiAccount('第二位玩家', 12345, 'maimai:local:second');
-    useSession.getState().upsertBoundAccount(extra);
-    useSession.getState().selectBoundAccount(extra.id);
-    useSession.getState().renameLocalAccount(extra.id, '已改名玩家');
+    useAccountStore.getState().upsertBoundAccount(extra);
+    useAccountStore.getState().selectBoundAccount(extra.id);
+    useAccountStore.getState().renameLocalAccount(extra.id, '已改名玩家');
 
     const state = useSession.getState();
     expect(state.boundAccounts.filter((account) => account.providerId === 'local')).toHaveLength(2);
     expect(state.activeAccountId).toBe(extra.id);
-    await expect(state.scoreProvider.getPlayer()).resolves.toMatchObject({
+    await expect((state.sourceClient as MaimaiDataSource).scoreProvider.getPlayer()).resolves.toMatchObject({
       id: extra.id,
       displayName: '已改名玩家',
     });
@@ -382,9 +376,9 @@ describe('useSession store', () => {
   it('can remove the default local player and keep other locals', () => {
     const extraA = createLocalMaimaiAccount('本地 A', 10000, 'maimai:local:a');
     const extraB = createLocalMaimaiAccount('本地 B', 11000, 'maimai:local:b');
-    useSession.getState().upsertBoundAccount(extraA);
-    useSession.getState().upsertBoundAccount(extraB);
-    useSession.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
+    useAccountStore.getState().upsertBoundAccount(extraA);
+    useAccountStore.getState().upsertBoundAccount(extraB);
+    useAccountStore.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
 
     const localIds = useSession.getState().boundAccounts
       .filter((account) => account.providerId === 'local')
@@ -393,11 +387,11 @@ describe('useSession store', () => {
   });
 
   it('clears remote binds and keeps remaining local/demo accounts', () => {
-    useSession.getState().upsertBoundAccount(createChunithmTempAccount());
-    useSession.getState().upsertBoundAccount(createMaxedChunithmTestAccount());
-    useSession.getState().upsertBoundAccount(createMaxedPhigrosTestAccount());
-    useSession.getState().setSession(jwtSession, { displayName: '尘言', rating: 1 });
-    useSession.getState().clearSession();
+    useAccountStore.getState().upsertBoundAccount(createChunithmTempAccount());
+    useAccountStore.getState().upsertBoundAccount(createMaxedChunithmTestAccount());
+    useAccountStore.getState().upsertBoundAccount(createMaxedPhigrosTestAccount());
+    bindAccount(createMaimaiBoundAccount({ displayName: '尘言', rating: 1, providerId: 'diving-fish' }), jwtSession);
+    useAccountStore.getState().clearSession();
     const state = useSession.getState();
     expect(state.session).toBeNull();
     expect(state.boundAccounts.some((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)).toBe(true);
@@ -409,19 +403,9 @@ describe('useSession store', () => {
   });
 
   it('removes one bound account without wiping the other', () => {
-    useSession.getState().setSession(tokenSessionA, {
-      displayName: '账号甲',
-      rating: 14000,
-      playerId: 'a1',
-      providerId: 'diving-fish',
-    });
-    useSession.getState().setSession(tokenSessionB, {
-      displayName: '账号乙',
-      rating: 15000,
-      playerId: 'b2',
-      providerId: 'diving-fish',
-    });
-    useSession.getState().removeBoundAccount('maimai:diving-fish:b2');
+    bindAccount(createMaimaiBoundAccount({ displayName: '账号甲', rating: 14000, playerId: 'a1', providerId: 'diving-fish' }), tokenSessionA);
+    bindAccount(createMaimaiBoundAccount({ displayName: '账号乙', rating: 15000, playerId: 'b2', providerId: 'diving-fish' }), tokenSessionB);
+    useAccountStore.getState().removeBoundAccount('maimai:diving-fish:b2');
     const state = useSession.getState();
     expect(state.sessionsByAccountId['maimai:diving-fish:a1']).toEqual(tokenSessionA);
     expect(state.sessionsByAccountId['maimai:diving-fish:b2']).toBeUndefined();
@@ -433,7 +417,7 @@ describe('useSession store', () => {
 
   it('restores a Phigros session when the displayed nickname differs from the player ID', () => {
     const session = { mode: 'phi-session', sessionToken: 'phi-token', openid: 'phi-player', displayName: 'Phigros 玩家', persistable: true } as const;
-    useSession.getState().finishRestore({
+    useAccountStore.getState().finishRestore({
       version: 3,
       activeAccountId: 'phigros:phi-taptap:phi-player',
       credentials: [{
@@ -444,14 +428,14 @@ describe('useSession store', () => {
       accounts: [{
         id: 'phigros:phi-taptap:phi-player', gameId: 'phigros', providerId: 'phi-taptap',
         credentialId: 'credential:phi',
-        displayName: 'Phigros 玩家', scoreDisplay: '15.4321', challengeModeRank: 523,
+        displayName: 'Phigros 玩家', scoreDisplay: '15.4321', displayData: { challengeModeRank: 523 },
       }],
     });
     expect(useSession.getState()).toMatchObject({
       activeAccountId: 'phigros:phi-taptap:phi-player', session,
       boundAccounts: [{
         id: 'phigros:phi-taptap:phi-player', displayName: 'Phigros 玩家',
-        scoreDisplay: '15.4321', challengeModeRank: 523,
+        scoreDisplay: '15.4321', displayData: { challengeModeRank: 523 },
       }],
     });
 
@@ -500,7 +484,7 @@ describe('useSession store', () => {
       expiresAt: Date.now() + 60_000,
       persistable: true,
     } as const;
-    useSession.getState().finishRestore({
+    useAccountStore.getState().finishRestore({
       version: 3,
       activeAccountId: 'chunithm:lxns:2',
       credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: lxnsSession }],
@@ -520,7 +504,7 @@ describe('useSession store', () => {
           credentialId: 'lxns:shared',
           displayName: '中二玩家',
           scoreDisplay: '17.25',
-          ratingPossession: 'rainbow',
+          displayData: { ratingPossession: 'rainbow' },
         },
       ],
     });
@@ -537,7 +521,7 @@ describe('useSession store', () => {
     });
     expect(useSession.getState().boundAccounts.find(
       (account) => account.id === 'chunithm:lxns:2',
-    )?.ratingPossession).toBe('rainbow');
+    )?.displayData?.ratingPossession).toBe('rainbow');
     expect(useSession.getState().session).toEqual(rotated);
   });
 
@@ -549,7 +533,7 @@ describe('useSession store', () => {
       expiresAt: Date.now() + 600_000,
       persistable: true,
     } as const;
-    useSession.getState().finishRestore({
+    useAccountStore.getState().finishRestore({
       version: 3,
       activeAccountId: 'maimai:lxns:1',
       credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: initial }],
@@ -578,7 +562,7 @@ describe('useSession store', () => {
       authorization = new Headers(init.headers).get('Authorization');
       return Response.json({ success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } });
     });
-    await expect(state.scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '舞萌玩家', rating: 15000 });
+    await expect((state.sourceClient as MaimaiDataSource).scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '舞萌玩家', rating: 15000 });
     expect(authorization).toBe('Bearer access-b');
     expect(state.sessionsByAccountId).toMatchObject({
       'maimai:lxns:1': rotated,
@@ -587,9 +571,7 @@ describe('useSession store', () => {
   });
 
   it('keeps the latest in-memory LXNS session and marks it pending when persistence fails', async () => {
-    useSession.getState().setSession(lxnsSession, {
-      displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
-    });
+    bindAccount(createMaimaiBoundAccount({ displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' }), lxnsSession);
     const accountId = useSession.getState().activeAccountId;
     const rotated = {
       ...lxnsSession,
@@ -609,7 +591,7 @@ describe('useSession store', () => {
       authorization = new Headers(init.headers).get('Authorization');
       return Response.json({ success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } });
     });
-    await expect(state.scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '舞萌玩家', rating: 15000 });
+    await expect((state.sourceClient as MaimaiDataSource).scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '舞萌玩家', rating: 15000 });
     expect(authorization).toBe('Bearer access-b');
     updateCredentialSession.mockResolvedValue('applied');
     await expect(retryPendingRotationWrites()).resolves.toBe(1);
@@ -617,16 +599,14 @@ describe('useSession store', () => {
   });
 
   it('drops pending writes after the account was removed', async () => {
-    useSession.getState().setSession(lxnsSession, {
-      displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
-    });
+    bindAccount(createMaimaiBoundAccount({ displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' }), lxnsSession);
     const accountId = useSession.getState().activeAccountId;
     const rotated = { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' };
     updateCredentialSession.mockRejectedValue(new Error('disk offline'));
     await expect(applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated }))
       .resolves.toBe('pending-persist');
 
-    useSession.getState().removeBoundAccount(accountId);
+    useAccountStore.getState().removeBoundAccount(accountId);
     updateCredentialSession.mockClear();
     await expect(retryPendingRotationWrites()).resolves.toBe(0);
     expect(updateCredentialSession).not.toHaveBeenCalled();
@@ -634,9 +614,7 @@ describe('useSession store', () => {
   });
 
   it('runs pending write retries one at a time and is idempotent', async () => {
-    useSession.getState().setSession(lxnsSession, {
-      displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
-    });
+    bindAccount(createMaimaiBoundAccount({ displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' }), lxnsSession);
     const accountId = useSession.getState().activeAccountId;
     const rotated = { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' };
     updateCredentialSession.mockRejectedValueOnce(new Error('disk offline'));
@@ -662,14 +640,14 @@ describe('useSession store', () => {
   it('retains an exhausted automatic retry and resumes it when manually triggered', async () => {
     vi.useFakeTimers();
     try {
-      useSession.getState().setSession(lxnsSession, { displayName: 'Player', rating: 12000, playerId: '1', providerId: 'lxns' });
+      bindAccount(createMaimaiBoundAccount({ displayName: 'Player', rating: 12000, playerId: '1', providerId: 'lxns' }), lxnsSession);
       const accountId = useSession.getState().activeAccountId;
       const next = { ...lxnsSession, accessToken: 'next', refreshToken: 'next' };
       updateCredentialSession.mockRejectedValue(new Error('offline'));
       await applyLxnsTokenRotation(accountId, { previous: lxnsSession, next });
       await vi.advanceTimersByTimeAsync(5_000 + 30_000 + 120_000);
       await vi.advanceTimersByTimeAsync(600_000);
-      let persisted: ProviderSession | null = null;
+      let persisted: Credential | null = null;
       updateCredentialSession.mockImplementation(async (_credentialId, session) => { persisted = session; return 'applied'; });
       await expect(retryPendingRotationWrites()).resolves.toBe(1);
       expect(persisted).toBe(next);
@@ -680,33 +658,25 @@ describe('useSession store', () => {
   });
 
   it('writes the shared osu credential even after the initiating mode account was removed', async () => {
-    const expected = {
-      mode: 'osu-oauth' as const,
-      accessToken: 'access-a',
-      refreshToken: 'refresh-a',
-      expiresAt: Date.now() + 60_000,
-      persistable: true as const,
-    };
-    const rotated = { ...expected, accessToken: 'access-b', refreshToken: 'refresh-b' };
+    const expected = { mode: 'osu-oauth', accessToken: 'access-a', refreshToken: 'refresh-a',
+      expiresAt: 0, persistable: true } as const;
     const mania = createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: 'mania', pp: 1 });
     const standard = createOsuBoundAccount({ gameId: 'osu-standard', userId: 7, displayName: 'standard', pp: 1 });
-    useSession.getState().finishRestore(null);
-    useSession.getState().setOsuBinding({
-      accounts: [mania, standard],
-      credentialId: 'osu-shared',
-      activeAccountId: standard.id,
-      session: expected,
-    });
-    useSession.getState().removeBoundAccount(mania.id);
-    updateCredentialSession.mockClear();
-
-    await expect(applyOsuTokenRotation(mania.id, rotated, expected)).resolves.toBe('applied');
-
+    useAccountStore.getState().finishRestore(null);
+    useAccountStore.getState().bindAccounts({ accounts: [mania, standard], credentialId: 'osu-shared',
+      activeAccountId: standard.id, session: expected });
+    const client = resolveAccountClient(mania.id) as OsuDataSource;
+    useAccountStore.getState().removeBoundAccount(mania.id);
+    vi.stubGlobal('fetch', async (url: string) => Response.json(String(url).endsWith('/oauth/token')
+      ? { access_token: 'access-b', refresh_token: 'refresh-b', expires_in: 600, token_type: 'Bearer' }
+      : String(url).includes('/scores/best') ? []
+        : { id: 7, username: 'standard', avatar_url: '', statistics: { pp: 1 } }));
+    await client.readFresh(new AbortController().signal);
     const state = useSession.getState();
-    expect(state.sessionsByAccountId[standard.id]).toEqual(rotated);
+    expect(state.sessionsByAccountId[standard.id]).toMatchObject({ accessToken: 'access-b', refreshToken: 'refresh-b' });
     expect(state.sessionsByAccountId[mania.id]).toBeUndefined();
-    expect(updateCredentialSession).toHaveBeenCalledWith('osu-shared', rotated, {
-      acceptedRefreshTokens: ['refresh-a'],
+    expect(updateCredentialSession).toHaveBeenCalledWith('osu-shared', state.sessionsByAccountId[standard.id], {
+      expected, assertCurrent: expect.any(Function),
     });
   });
 
@@ -719,30 +689,30 @@ describe('useSession store', () => {
     const standard = createOsuBoundAccount({ gameId: 'osu-standard', userId: 7, displayName: 'old', pp: 1 });
     const mania = createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: 'old', pp: 1 });
     const updatedMania = createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: 'updated', pp: 42 });
-    useSession.getState().finishRestore(null);
-    useSession.getState().setOsuBinding({ accounts: [standard, mania], credentialId: 'osu-shared',
+    useAccountStore.getState().finishRestore(null);
+    useAccountStore.getState().bindAccounts({ accounts: [standard, mania], credentialId: 'osu-shared',
       activeAccountId: standard.id, session: previous });
-    const oldStandardProvider = useSession.getState().protocolScoreProvider;
-    useSession.getState().selectBoundAccount(mania.id);
-    const oldManiaProvider = useSession.getState().protocolScoreProvider;
-    useSession.getState().setOsuBinding({ accounts: [updatedMania], credentialId: 'osu-shared',
+    const oldStandardProvider = useSession.getState().sourceClient;
+    useAccountStore.getState().selectBoundAccount(mania.id);
+    const oldManiaProvider = useSession.getState().sourceClient;
+    useAccountStore.getState().bindAccounts({ accounts: [updatedMania], credentialId: 'osu-shared',
       activeAccountId: mania.id, session: authorized });
     const state = useSession.getState();
-    expect(state.boundAccounts.find(account => account.id === mania.id)).toEqual(updatedMania);
-    expect(state.boundAccounts.find(account => account.id === standard.id)).toBe(standard);
+    expect(state.boundAccounts.find(account => account.id === mania.id)).toMatchObject(updatedMania);
+    expect(state.boundAccounts.find(account => account.id === standard.id)).toMatchObject(standard);
     expect(state.sessionsByAccountId[standard.id]).toBe(authorized);
     expect(state.sessionsByAccountId[mania.id]).toBe(authorized);
     expect(state.session).toBe(authorized);
-    expect(state.protocolScoreProvider).not.toBe(oldManiaProvider);
-    useSession.getState().selectBoundAccount(standard.id);
-    expect(useSession.getState().protocolScoreProvider).not.toBe(oldStandardProvider);
+    expect(state.sourceClient).not.toBe(oldManiaProvider);
+    useAccountStore.getState().selectBoundAccount(standard.id);
+    expect(useSession.getState().sourceClient).not.toBe(oldStandardProvider);
     updateCredentialSession.mockClear();
-    await expect(applyOsuTokenRotation(mania.id, rotated, authorized)).resolves.toBe('applied');
-    expect(updateCredentialSession).toHaveBeenCalledWith('osu-shared', rotated, { acceptedRefreshTokens: ['authorized-refresh'] });
+    await expect(commitCredential({ credentialId: 'osu-shared', providerId: 'osu', next: rotated, expected: authorized })).resolves.toBe('applied');
+    expect(updateCredentialSession).toHaveBeenCalledWith('osu-shared', rotated, { expected: authorized, assertCurrent: expect.any(Function) });
     expect(useSession.getState().sessionsByAccountId[standard.id]).toBe(rotated);
     expect(useSession.getState().sessionsByAccountId[mania.id]).toBe(rotated);
     updateCredentialSession.mockClear();
-    await expect(applyOsuTokenRotation(standard.id, { ...previous, refreshToken: 'late-refresh' }, previous)).resolves.toBe('stale');
+    await expect(commitCredential({ credentialId: 'osu-shared', providerId: 'osu', next: { ...previous, refreshToken: 'late-refresh' }, expected: previous })).resolves.toBe('stale');
     expect(updateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().session).toBe(rotated);
   });
@@ -757,8 +727,8 @@ describe('useSession store', () => {
     };
     const reAuthorized = { ...stale, accessToken: 'access-new', refreshToken: 'refresh-new' };
     const account = createOsuBoundAccount({ gameId: 'osu-standard', userId: 7, displayName: 'osu 玩家', pp: 1 });
-    useSession.getState().finishRestore(null);
-    useSession.getState().setOsuBinding({
+    useAccountStore.getState().finishRestore(null);
+    useAccountStore.getState().bindAccounts({
       accounts: [account],
       credentialId: 'osu-credential',
       activeAccountId: account.id,
@@ -766,7 +736,7 @@ describe('useSession store', () => {
     });
     updateCredentialSession.mockClear();
 
-    await expect(applyOsuTokenRotation(account.id, { ...stale, refreshToken: 'refresh-b' }, stale))
+    await expect(commitCredential({ credentialId: 'osu-credential', providerId: 'osu', next: { ...stale, refreshToken: 'refresh-b' }, expected: stale }))
       .resolves.toBe('stale');
     expect(useSession.getState().sessionsByAccountId[account.id]).toEqual(reAuthorized);
     expect(updateCredentialSession).not.toHaveBeenCalled();
@@ -785,7 +755,7 @@ describe('useSession store', () => {
       accessToken: 'access-new',
       refreshToken: 'refresh-new',
     };
-    useSession.getState().finishRestore({
+    useAccountStore.getState().finishRestore({
       version: 3,
       activeAccountId: 'maimai:lxns:1',
       credentials: [{ id: 'lxns:new', providerId: 'lxns', session: reAuthorized }],
@@ -806,45 +776,31 @@ describe('useSession store', () => {
   });
 
   it('keeps the shared credential rotating after the initiating account was removed', async () => {
-    const shared = {
-      mode: 'lxns-oauth',
-      accessToken: 'access-a',
-      refreshToken: 'refresh-a',
-      expiresAt: Date.now() + 60_000,
-      persistable: true,
-    } as const;
-    useSession.getState().finishRestore({
-      version: 3,
-      activeAccountId: 'chunithm:lxns:2',
-      credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: shared }],
-      accounts: [
-        {
-          id: 'maimai:lxns:1', gameId: 'maimai', providerId: 'lxns',
-          credentialId: 'lxns:shared', displayName: '舞萌玩家', scoreDisplay: '15000',
-        },
-        {
-          id: 'chunithm:lxns:2', gameId: 'chunithm', providerId: 'lxns',
-          credentialId: 'lxns:shared', displayName: '中二玩家', scoreDisplay: '17.25',
-        },
+    const shared = { mode: 'lxns-oauth', accessToken: 'access-a', refreshToken: 'refresh-a',
+      expiresAt: 0, persistable: true } as const;
+    useAccountStore.getState().finishRestore({ version: 3, activeAccountId: 'chunithm:lxns:2',
+      credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: shared }], accounts: [
+        { id: 'maimai:lxns:1', gameId: 'maimai', providerId: 'lxns', credentialId: 'lxns:shared', displayName: '舞萌玩家', scoreDisplay: '15000' },
+        { id: 'chunithm:lxns:2', gameId: 'chunithm', providerId: 'lxns', credentialId: 'lxns:shared', displayName: '中二玩家', scoreDisplay: '17.25' },
       ],
     });
-    useSession.getState().removeBoundAccount('maimai:lxns:1');
-    const rotated = { ...shared, accessToken: 'access-b', refreshToken: 'refresh-b' };
-
-    await expect(applyLxnsTokenRotation('maimai:lxns:1', { previous: shared, next: rotated }))
-      .resolves.toBe('applied');
-
+    const client = resolveAccountClient('maimai:lxns:1') as MaimaiDataSource;
+    useAccountStore.getState().removeBoundAccount('maimai:lxns:1');
+    vi.stubGlobal('fetch', async (url: string) => Response.json(String(url).endsWith('/token')
+      ? { access_token: 'access-b', refresh_token: 'refresh-b', expires_in: 600 }
+      : { success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } }));
+    await client.scoreProvider.getPlayer();
     const state = useSession.getState();
-    expect(state.sessionsByAccountId['chunithm:lxns:2']).toEqual(rotated);
+    expect(state.sessionsByAccountId['chunithm:lxns:2']).toMatchObject({ accessToken: 'access-b', refreshToken: 'refresh-b' });
     expect(state.sessionsByAccountId['maimai:lxns:1']).toBeUndefined();
-    expect(state.boundAccounts.map((account) => account.id)).toEqual(['chunithm:lxns:2']);
-    expect(updateCredentialSession).toHaveBeenCalledWith('lxns:shared', rotated, {
-      acceptedRefreshTokens: ['refresh-a'],
+    expect(state.boundAccounts.map(account => account.id)).toEqual(['chunithm:lxns:2']);
+    expect(updateCredentialSession).toHaveBeenCalledWith('lxns:shared', state.sessionsByAccountId['chunithm:lxns:2'], {
+      expected: shared, assertCurrent: expect.any(Function),
     });
   });
 
   it('reports removed and writes nothing when the account and its credential are gone', async () => {
-    useSession.getState().finishRestore({
+    useAccountStore.getState().finishRestore({
       version: 3,
       activeAccountId: 'maimai:lxns:1',
       credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: lxnsSession }],
@@ -853,7 +809,7 @@ describe('useSession store', () => {
         credentialId: 'lxns:shared', displayName: '舞萌玩家', scoreDisplay: '15000',
       }],
     });
-    useSession.getState().removeBoundAccount('maimai:lxns:1');
+    useAccountStore.getState().removeBoundAccount('maimai:lxns:1');
     updateCredentialSession.mockClear();
 
     await expect(applyLxnsTokenRotation('maimai:lxns:1', {
@@ -877,7 +833,7 @@ describe('useSession store', () => {
       accessToken: 'access-b',
       refreshToken: 'refresh-b',
     };
-    useSession.getState().finishRestore({
+    useAccountStore.getState().finishRestore({
       version: 3,
       activeAccountId: 'maimai:lxns:1',
       credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: originalSession }],
@@ -891,14 +847,7 @@ describe('useSession store', () => {
       }],
     });
 
-    useSession.getState().setSession(refreshedSession, {
-      accountId: 'chunithm:lxns:2',
-      credentialId: 'lxns:shared',
-      displayName: '中二玩家',
-      rating: 17.25,
-      providerId: 'lxns',
-      gameId: 'chunithm',
-    });
+    bindAccount(createChunithmBoundAccount({ accountId: 'chunithm:lxns:2', displayName: '中二玩家', rating: 17.25 }), refreshedSession, 'lxns:shared');
     expect(useSession.getState().sessionsByAccountId).toMatchObject({
       'maimai:lxns:1': refreshedSession,
       'chunithm:lxns:2': refreshedSession,
@@ -950,7 +899,7 @@ describe('useSession store', () => {
     expect(state.activeAccountId).toBe(extra.id);
     expect(state.activeProviderId).toBe('local');
     expect(state.boundAccounts).toEqual(expect.arrayContaining([extra]));
-    await expect(state.scoreProvider.getPlayer()).resolves.toMatchObject({
+    await expect((state.sourceClient as MaimaiDataSource).scoreProvider.getPlayer()).resolves.toMatchObject({
       id: extra.id,
       displayName: '离线二号',
     });
@@ -987,7 +936,7 @@ describe('useSession store', () => {
       activeAccountId: previous.activeAccountId,
     });
     expect(useSession.getState().restoreError).toContain('无法读取');
-    expect(useSession.getState().scoreProvider).toBe(previous.scoreProvider);
+    expect((useSession.getState().sourceClient as MaimaiDataSource).scoreProvider).toBe((previous.sourceClient as MaimaiDataSource).scoreProvider);
     expect(useSession.getState().boundAccounts).toBe(previous.boundAccounts);
   });
 
@@ -998,19 +947,19 @@ describe('useSession store', () => {
     const session = { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh',
       expiresAt: Date.now() + 60_000, persistable: true } as const;
     const rotated = { ...session, accessToken: 'next-access', refreshToken: 'next-refresh' };
-    useSession.getState().finishRestore(null);
-    useSession.getState().setOsuBinding({
+    useAccountStore.getState().finishRestore(null);
+    useAccountStore.getState().bindAccounts({
       accounts: [account],
       credentialId: 'osu-credential',
       activeAccountId: account.id,
       session,
     });
-    useSession.getState().removeBoundAccount(account.id);
-    await expect(applyOsuTokenRotation(account.id, rotated, session)).resolves.toBe('removed');
+    useAccountStore.getState().removeBoundAccount(account.id);
+    await expect(commitCredential({ credentialId: 'osu-credential', providerId: 'osu', next: rotated, expected: session })).resolves.toBe('removed');
     expect(useSession.getState().sessionsByAccountId[account.id]).toBeUndefined();
-    useSession.getState().setOsuBinding({ accounts: [account], credentialId: 'osu-credential', activeAccountId: account.id, session });
-    useSession.getState().clearSession();
-    await expect(applyOsuTokenRotation(account.id, rotated, session)).resolves.toBe('removed');
+    useAccountStore.getState().bindAccounts({ accounts: [account], credentialId: 'osu-credential', activeAccountId: account.id, session });
+    useAccountStore.getState().clearSession();
+    await expect(commitCredential({ credentialId: 'osu-credential', providerId: 'osu', next: rotated, expected: session })).resolves.toBe('removed');
     expect(updateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().session).toBeNull();
   });

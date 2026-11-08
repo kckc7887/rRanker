@@ -1,5 +1,6 @@
-import { fixtureSongs } from '@/fixtures/sanitized';
-import { canonicalizeSearchKana, expandRomajiAliases, filterSongs } from '@/utils/search';
+import { fixtureSongs } from './fixtures/sanitized';
+import { canonicalizeSearchKana, expandRomajiAliases } from '@rranker/sdk/utils/search';
+import { filterSongs } from '@rranker/game-maimai/domain/search';
 
 describe('filterSongs', () => {
   it('returns all songs when the keyword is empty or whitespace', () => {

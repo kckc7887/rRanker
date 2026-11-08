@@ -1,6 +1,6 @@
-import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
-import { resolveChunithmPossessionTheme } from '@/domain/chunithm-rating-theme';
-import { buildChunithmBestImageHtml } from '@/features/chunithm-best-image/build-chunithm-best-image-html';
+import { ChunithmScoreProvider } from '@rranker/provider-lxns/providers/chunithm-score-provider';
+import { resolveChunithmPossessionTheme } from '@rranker/game-chunithm/domain/chunithm-rating-theme';
+import { buildChunithmBestImageHtml } from '@rranker/tool-chunithm/features/chunithm-best-image/build-chunithm-best-image-html';
 import { JSDOM } from 'jsdom';
 
 const session = {

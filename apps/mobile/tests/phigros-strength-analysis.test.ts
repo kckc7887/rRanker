@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
+import type { CatalogSnapshot, ScoreRecord } from '@rranker/game-phigros/domain/models';
 import type {
   PhigrosKyouChartTagIndex,
   PhigrosKyouResolvedTag,
   PhigrosKyouTag,
-} from '@/domain/phigros-kyou';
+} from '@rranker/game-phigros/domain/phigros-kyou';
 import {
   PHIGROS_STRENGTH_POLICY,
   analyzePhigrosStrength,
@@ -14,9 +14,9 @@ import {
   resolvePhigrosStrengthDifficultyCoefficient,
   resolvePhigrosStrengthProfileLabel,
   resolvePhigrosStrengthThreshold,
-} from '@/domain/phigros-strength-analysis';
-import { calculateRks } from '@/domain/phigros';
-import { chartVersionKey } from '@/domain/catalog';
+} from '@rranker/game-phigros/domain/phigros-strength-analysis';
+import { calculateRks } from '@rranker/game-phigros/domain/phigros';
+import { chartVersionKey } from '@rranker/game-phigros/domain/catalog';
 
 const primaryTags: PhigrosKyouTag[] = [
   { id: 1, name: '读谱', type: 'primary', parentIds: [], description: '' },

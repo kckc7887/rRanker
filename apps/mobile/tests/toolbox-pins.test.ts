@@ -1,86 +1,55 @@
-import {
-  emptyHomePinPreferences,
-  type HomePinPreferences,
-} from '@/features/toolbox/pinned-tool-preferences';
-import { createToolboxPinsStore } from '@/state/toolbox-pins';
+import { createPinsStore, type PinsByGame } from '@rranker/sdk/state/pins';
 
 class MemoryPreferences {
-  value: HomePinPreferences = emptyHomePinPreferences();
+  value: PinsByGame<string> = {};
+  failLoad = false;
   failSave = false;
-
-  async load(): Promise<HomePinPreferences> {
-    return structuredClone(this.value);
-  }
-
-  async save(value: HomePinPreferences): Promise<void> {
+  async load() { if (this.failLoad) throw new Error('read failed'); return this.value; }
+  async save(value: PinsByGame<string>) {
     if (this.failSave) throw new Error('database unavailable');
-    this.value = structuredClone(value);
+    this.value = value;
   }
 }
 
-describe('toolbox pin state', () => {
-  it('hydrates, pins and unpins a tool in shared state', async () => {
+describe('置顶状态', () => {
+  it('读取后按游戏新增和取消置顶，保留未安装插件记录', async () => {
     const preferences = new MemoryPreferences();
-    const store = createToolboxPinsStore(preferences);
-    await store.getState().togglePinnedTool('maimai', 'rating');
-    expect(store.getState().pinnedToolIdsByGame.maimai).toEqual(['rating']);
-    expect(preferences.value.pinnedToolIdsByGame.maimai).toEqual(['rating']);
-
-    await store.getState().togglePinnedTool('maimai', 'rating');
-    expect(store.getState().pinnedToolIdsByGame.maimai).toEqual([]);
-    expect(preferences.value.pinnedToolIdsByGame.maimai).toEqual([]);
+    preferences.value = { missing: ['custom'], maimai: ['rating'] };
+    const store = createPinsStore(preferences);
+    await store.getState().toggle('maimai', 'plates');
+    expect(store.getState().pinsByGame).toEqual({ missing: ['custom'], maimai: ['rating', 'plates'] });
+    await store.getState().toggle('maimai', 'rating');
+    expect(preferences.value).toEqual({ missing: ['custom'], maimai: ['plates'] });
   });
 
-  it('hydrates, adds and removes multiple plate cards independently from tools', async () => {
+  it('并行操作顺序保存，跨游戏不覆盖', async () => {
     const preferences = new MemoryPreferences();
-    const store = createToolboxPinsStore(preferences);
-    await store.getState().togglePinnedTool('maimai', 'rating');
-    await store.getState().togglePinnedPlate('maimai', 6101);
-    await store.getState().togglePinnedPlate('maimai', 6102);
-    expect(store.getState().pinnedToolIdsByGame.maimai).toEqual(['rating']);
-    expect(store.getState().pinnedPlateIdsByGame.maimai).toEqual([6101, 6102]);
-
-    await store.getState().togglePinnedPlate('maimai', 6101);
-    expect(store.getState().pinnedPlateIdsByGame.maimai).toEqual([6102]);
-    expect(preferences.value.pinnedPlateIdsByGame.maimai).toEqual([6102]);
+    const store = createPinsStore(preferences);
+    await Promise.all([store.getState().toggle('maimai', 'rating'), store.getState().toggle('chunithm', 'collections'), store.getState().toggle('maimai', 'plates')]);
+    expect(preferences.value).toEqual({ maimai: ['rating', 'plates'], chunithm: ['collections'] });
   });
 
-  it('rolls back the visible state when persistence fails', async () => {
+  it('保存失败恢复当前记录，下一次保存仍可继续', async () => {
     const preferences = new MemoryPreferences();
+    preferences.value = { maimai: ['rating'] };
+    const store = createPinsStore(preferences);
     preferences.failSave = true;
-    const store = createToolboxPinsStore(preferences);
-    await expect(store.getState().togglePinnedTool('maimai', 'versions')).rejects.toThrow('database unavailable');
-    expect(store.getState().pinnedToolIdsByGame.maimai).toEqual([]);
+    await expect(store.getState().toggle('maimai', 'plates')).rejects.toThrow('database unavailable');
+    expect(store.getState().pinsByGame).toEqual({ maimai: ['rating'] });
+    preferences.failSave = false;
+    await store.getState().toggle('maimai', 'versions');
+    expect(preferences.value).toEqual({ maimai: ['rating', 'versions'] });
   });
 
-  it('pins and unpins a chunithm collection by kind and id', async () => {
+  it('读取失败不以空记录覆盖存储，可重试恢复', async () => {
     const preferences = new MemoryPreferences();
-    const store = createToolboxPinsStore(preferences);
-    await store.getState().togglePinnedCollection('chunithm', 'trophy', 866);
-    await store.getState().togglePinnedCollection('chunithm', 'character', 16620);
-    expect(store.getState().pinnedCollectionIdsByGame.chunithm).toEqual([
-      { kind: 'trophy', id: 866 },
-      { kind: 'character', id: 16620 },
-    ]);
-    expect(preferences.value.pinnedCollectionIdsByGame.chunithm).toEqual([
-      { kind: 'trophy', id: 866 },
-      { kind: 'character', id: 16620 },
-    ]);
-
-    await store.getState().togglePinnedCollection('chunithm', 'trophy', 866);
-    expect(store.getState().pinnedCollectionIdsByGame.chunithm).toEqual([
-      { kind: 'character', id: 16620 },
-    ]);
-    expect(preferences.value.pinnedCollectionIdsByGame.chunithm).toEqual([
-      { kind: 'character', id: 16620 },
-    ]);
-  });
-
-  it('rejects collection pins for games without the collections tool', async () => {
-    const preferences = new MemoryPreferences();
-    const store = createToolboxPinsStore(preferences);
-    await store.getState().togglePinnedCollection('maimai', 'trophy', 866);
-    expect(store.getState().pinnedCollectionIdsByGame.maimai).toEqual([]);
-    expect(preferences.value.pinnedCollectionIdsByGame.maimai).toEqual([]);
+    preferences.value = { maimai: ['rating'] };
+    preferences.failLoad = true;
+    const store = createPinsStore(preferences);
+    await expect(store.getState().toggle('maimai', 'plates')).rejects.toThrow('read failed');
+    expect(preferences.value).toEqual({ maimai: ['rating'] });
+    preferences.failLoad = false;
+    await store.getState().hydrate();
+    expect(store.getState().pinsByGame).toEqual({ maimai: ['rating'] });
   });
 });

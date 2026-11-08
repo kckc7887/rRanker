@@ -7,7 +7,7 @@ import {
   minimumScoreForChunithmOverPower,
   minimumScoreForChunithmRating,
   parseChunithmChartInput,
-} from '@/domain/chunithm-rating';
+} from '@rranker/game-chunithm/domain/chunithm-rating';
 
 describe('chunithm rating formula', () => {
   it('computes maximum ratings from chart constants', () => {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryObserver, focusManager, type QueryFunctionContext, type QueryObserverOptions } from '@tanstack/react-query';
-import { queryClient, resumeInterruptedActiveQueries } from '@/state/query-client';
-import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
+import { queryClient, resumeInterruptedActiveQueries } from '@rranker/sdk/state/query-client';
+import { LxnsScoreProvider } from '@rranker/provider-lxns/providers/lxns-score-provider';
 
 const clients: QueryClient[] = [];
 const observers: (() => void)[] = [];

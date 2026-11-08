@@ -1,12 +1,12 @@
-import { fixtureRecords } from '@/fixtures/sanitized';
-import { uploadedRecordsAreVisible } from '@/services/upload-refresh-visibility';
+import { fixtureRecords } from './fixtures/sanitized';
+import { uploadedRecordsAreVisible } from '@rranker/tool-maimai/services/upload-refresh-visibility';
 import {
   compactUploadPhaseLabel,
   formatScoreHubStatsSummary,
   scoreHubSuccessHint,
   scoreProgressMessage,
   type UploadPhase,
-} from '@/services/upload-maimai-from-friend-code';
+} from '@rranker/tool-maimai/services/upload-maimai-from-friend-code';
 
 describe('好友码上传进度', () => {
   it('把 score-hub 的已完成难度转换成详细进度', () => {

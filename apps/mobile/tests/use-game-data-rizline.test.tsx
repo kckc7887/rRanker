@@ -1,32 +1,34 @@
+import type { RizlineSession } from '@rranker/provider-rizline-official/credential';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
-import { useGameData } from '@/hooks/use-game-data';
-import { queryClient } from '@/state/query-client';
-import { useSession } from '@/state/session-store';
-import { createRizlineBoundAccount } from '@/domain/bound-account';
-import type { RizlineCatalogData, RizlineSnapshot } from '@/domain/rizline';
-import type { GameDataBundle } from '@/domain/game-data';
-import type { RizlineSession } from '@/providers/contracts';
-import { gameDataQueryKey } from '@/services/game-data-query';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import { fixtureSource } from '@/fixtures/sanitized';
+import { useGameData } from '@rranker/sdk/hooks/use-game-data';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { createRizlineBoundAccount } from '@rranker/game-rizline/accounts';
+import type { RizlineCatalogData, RizlineSnapshot } from '@rranker/game-rizline/domain/rizline';
+import type { GameDataBundle } from '@rranker/sdk/data';
+
+import { gameDataQueryKey } from '@rranker/sdk/services/game-data-query';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { fixtureSource } from './fixtures/sanitized';
 import { rizlineCatalog, rizlineSave } from './fixtures/rizline';
 
 const mockCached = jest.fn<(id: string) => Promise<RizlineSnapshot | null>>();
 const mockFresh = jest.fn<(id: string, session: RizlineSession, signal: AbortSignal) => Promise<RizlineSnapshot>>();
 const mockCatalog = jest.fn<() => Promise<RizlineCatalogData>>();
-jest.mock('@/services/rizline-service', () => ({
+jest.mock('@rranker/provider-rizline-official/services/rizline-service', () => ({
   loadRizlineCached: (...args: [string]) => mockCached(...args),
   loadRizlineWithFallback: (...args: [string, RizlineSession, AbortSignal]) => mockFresh(...args),
 }));
-jest.mock('@/services/rizline-catalog-query', () => ({
+jest.mock('@rranker/game-rizline/services/rizline-catalog-query', () => ({
   RIZLINE_CATALOG_QUERY_KEY: ['rizline-catalog'], ensureRizlineCatalog: () => mockCatalog(),
 }));
 
 const session: RizlineSession = { mode: 'rizline', token: 'test-token', phone: '13800138000', deviceId: 'device', channelId: '1', persistable: true };
-const initial = useSession.getState();
+const initial = useAccountStore.getState();
 const account = createRizlineBoundAccount(rizlineSave());
 const snapshot = (): RizlineSnapshot => ({ save: rizlineSave(), source: fixtureSource });
 const catalog = (): RizlineCatalogData => ({ snapshot: rizlineCatalog(), source: fixtureSource });
@@ -38,14 +40,15 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks(); queryClient.clear(); queryClient.setDefaultOptions({ queries: { retry: false, gcTime: Infinity } });
   invalidateResourceWrites('rizline');
-  useSession.setState({ ...initial, boundAccounts: [account], activeAccountId: account.id,
-    activeGameId: 'rizline', activeProviderId: 'rizline-official', session });
+  useSession.getState().finishRestore(null);
+  useSession.getState().bindAccounts({ accounts: [account], credentialId: 'rizline-credential',
+    activeAccountId: account.id, session });
   mockCached.mockResolvedValue(snapshot()); mockFresh.mockResolvedValue(snapshot()); mockCatalog.mockResolvedValue(catalog());
 });
 afterEach(async () => {
   await cleanup();
   queryClient.clear();
-  useSession.setState(initial, true);
+  useAccountStore.setState(initial, true);
   jest.useRealTimers();
 });
 
@@ -70,7 +73,7 @@ it('uses a newer catalog that arrives while official score loading is pending', 
 });
 
 it('keeps cached scores when secure credentials are missing and requests another login', async () => {
-  useSession.setState({ session: null });
+  useSession.getState().finishRestore(null, [account]);
   const hook = await renderHook(() => useGameData(), { wrapper });
   await waitFor(() => expect(hook.result.current.data?.payload).toMatchObject({ kind: 'rizline', requiresLogin: true, source: { isStale: true } }));
   expect(mockFresh).not.toHaveBeenCalled();

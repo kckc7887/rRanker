@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
-import { createChunithmBoundAccount } from '@/domain/bound-account';
+import { createChunithmBoundAccount } from '@rranker/game-chunithm/accounts';
 
 const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
 const mockShowNotification = jest.fn();
@@ -58,14 +58,14 @@ const mockBundle = {
 } as const;
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification }),
 }));
-jest.mock('@/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: () => null }));
-jest.mock('@/components/UploadDataSheet', () => ({ UploadDataSheet: () => null }));
-jest.mock('@/components/maimai/MaimaiUploadTabs', () => ({ MaimaiUploadTabs: () => null }));
-jest.mock('@/components/maimai/MaimaiSyncGuideSheet', () => ({ MaimaiSyncGuideContent: () => null }));
-jest.mock('@/components/chunithm/ChunithmSyncGuideSheet', () => ({
+jest.mock('@rranker/sdk/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: () => null }));
+jest.mock('@rranker/tool-maimai/components/UploadDataSheet', () => ({ UploadDataSheet: () => null }));
+jest.mock('@rranker/game-maimai/components/MaimaiUploadTabs', () => ({ MaimaiUploadTabs: () => null }));
+jest.mock('@rranker/tool-maimai/components/MaimaiSyncGuideSheet', () => ({ MaimaiSyncGuideContent: () => null }));
+jest.mock('@rranker/tool-chunithm/components/ChunithmSyncGuideSheet', () => ({
   ChunithmSyncGuideSheet: ({
     visible,
     onSync,
@@ -82,33 +82,33 @@ jest.mock('@/components/chunithm/ChunithmSyncGuideSheet', () => ({
     ) : null;
   },
 }));
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
-jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
-jest.mock('@/components/DxRatingCard', () => ({
-  DxRatingCard: ({ meta }: { meta: string }) => {
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-maimai/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
+jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
+jest.mock('@rranker/sdk/components/RatingCard', () => ({
+  RatingCard: ({ meta }: { meta: string }) => {
     const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
     return <Text>{meta}</Text>;
   },
 }));
-jest.mock('@/components/QueryStateView', () => ({
+jest.mock('@rranker/sdk/components/QueryStateView', () => ({
   QueryStateView: ({ data, renderData }: { data: unknown; renderData: (value: unknown) => unknown }) => (
     renderData(data)
   ),
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/hooks/use-user-library', () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({
   useUserLibrary: () => ({ data: [], isError: false }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({
     data: undefined,
     error: null,
     refetch: jest.fn(async () => ({ data: undefined })),
   }),
 }));
-jest.mock('@/hooks/use-chunithm-catalog', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: {
       currentVersion: { id: 23000, title: 'CHUNITHM VERSE' },
@@ -123,7 +123,7 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
     isError: false,
   }),
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: { ...mockBundle, providerId: mockProviderId },
     isLoading: false,
@@ -133,7 +133,7 @@ jest.mock('@/hooks/use-game-data', () => ({
     profile: { ratingLabel: 'RATING', ratingDigits: 2 },
   }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
   useSession: (selector: (state: unknown) => unknown) => selector({
     boundAccounts: [mockAccount],
@@ -151,15 +151,15 @@ jest.mock('@/state/session-store', () => ({
   }),
 }));
 let mockPinnedCollections: { kind: string; id: number }[] = [];
-jest.mock('@/state/toolbox-pins', () => ({
+jest.mock('@rranker/sdk/state/toolbox-pins', () => ({
   useToolboxPins: (selector: (state: unknown) => unknown) => selector({
-    pinnedToolIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
-    pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
-    pinnedCollectionIdsByGame: { maimai: [], chunithm: mockPinnedCollections, phigros: [], test: [] },
+    pinsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
+
+
     hydrate: jest.fn(async () => undefined),
   }),
 }));
-jest.mock('@/hooks/use-chunithm-collections', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-collections', () => ({
   useChunithmCollections: () => ({
     data: {
       items: [
@@ -183,27 +183,27 @@ jest.mock('@/hooks/use-chunithm-collections', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/state/game-picker-ui', () => ({
+jest.mock('@rranker/sdk/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: unknown) => unknown) => selector({
     expandedGameId: 'chunithm',
     setExpandedGameId: jest.fn(),
     toggleExpandedGameId: jest.fn(),
   }),
 }));
-jest.mock('@/state/query-client', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: {
     cancelQueries: jest.fn(async () => undefined),
     invalidateQueries: jest.fn(),
     getQueryData: jest.fn(() => mockSettledBundle),
   },
 }));
-jest.mock('@/services/invalidate-account-data', () => ({
+jest.mock('@rranker/sdk/services/invalidate-account-data', () => ({
   invalidateAccountDataQueries: jest.fn(async () => undefined),
 }));
-jest.mock('@/services/refresh-diving-fish-accounts', () => ({
+jest.mock('@rranker/tool-maimai/services/refresh-diving-fish-accounts', () => ({
   refreshDivingFishAccounts: jest.fn(),
 }));
-jest.mock('@/domain/chunithm-maintenance', () => ({
+jest.mock('@rranker/game-chunithm/domain/chunithm-maintenance', () => ({
   CHUNITHM_MAINTENANCE_MESSAGE: '维护窗口说明',
   isChunithmMaintenanceWindow: () => mockMaintenance,
 }));
@@ -310,3 +310,9 @@ describe('Chunithm overview', () => {
     expect(screen.getByText('0 / 1 完成')).toBeTruthy();
   });
 });
+
+jest.mock('@rranker/tool-chunithm/state/pins', () => ({
+  useCollectionPins: (selector: (state: object) => unknown) => selector({
+    pinsByGame: { chunithm: mockPinnedCollections }, hydrate: async () => undefined,
+  }),
+}));

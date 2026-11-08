@@ -15,15 +15,15 @@ jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/components/GamePickerSheet', () => ({ GamePickerSheet: () => null }));
-jest.mock('@/components/ProviderLoginSheet', () => ({ ProviderLoginSheet: () => null }));
-jest.mock('@/components/TufPlayerPickerSheet', () => ({ TufPlayerPickerSheet: () => null }));
-jest.mock('@/components/PhiraPlayerPickerSheet', () => ({ PhiraPlayerPickerSheet: () => null }));
-jest.mock('@/components/MuseDashPlayerPickerSheet', () => ({ MuseDashPlayerPickerSheet: () => null }));
-jest.mock('@/components/RenameLocalAccountSheet', () => ({ RenameLocalAccountSheet: () => null }));
-jest.mock('@/components/BoundAccountGroupedList', () => ({ BoundAccountGroupedList: () => null }));
-jest.mock('@/components/osu/OsuRatingTag', () => ({ OsuRatingTag: () => null }));
-jest.mock('@/state/session-store', () => {
+jest.mock('@rranker/sdk/components/GamePickerSheet', () => ({ GamePickerSheet: () => null }));
+jest.mock('@rranker/sdk/components/ProviderLoginSheet', () => ({ ProviderLoginSheet: () => null }));
+jest.mock('@rranker/provider-tuf/components/TufPlayerPickerSheet', () => ({ TufPlayerPickerSheet: () => null }));
+jest.mock('@rranker/provider-phira-community/components/PhiraPlayerPickerSheet', () => ({ PhiraPlayerPickerSheet: () => null }));
+jest.mock('@rranker/provider-musedash-moe/components/MuseDashPlayerPickerSheet', () => ({ MuseDashPlayerPickerSheet: () => null }));
+jest.mock('@rranker/sdk/components/RenameAccountSheet', () => ({ RenameAccountSheet: () => null }));
+jest.mock('@rranker/sdk/components/BoundAccountGroupedList', () => ({ BoundAccountGroupedList: () => null }));
+jest.mock('@rranker/game-osu/components/OsuRatingTag', () => ({ OsuRatingTag: () => null }));
+jest.mock('@rranker/sdk/state/session-store', () => {
   const state = () => ({
     boundAccounts: [],
     activeAccountId: null,
@@ -33,23 +33,23 @@ jest.mock('@/state/session-store', () => {
   useSession.getState = state;
   return { useSession };
 });
-jest.mock('@/state/debug-store', () => {
+jest.mock('@rranker/sdk/state/debug-store', () => {
   const state = () => ({ hydrated: true, testAccountsEnabled: false });
   const useDebugStore = (selector: (value: unknown) => unknown) => selector(state());
   useDebugStore.getState = state;
   return { useDebugStore };
 });
-jest.mock('@/components/AppNotification', () => ({
-  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'),
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'),
   useNotification: () => ({
     showNotification: mockShowNotification,
     showActionNotification: mockShowActionNotification,
   }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({ background: '#fff', accent: '#246BFD' }),
 }));
-jest.mock('@/hooks/use-account-binding-flow', () => ({
+jest.mock('@rranker/sdk/hooks/use-account-binding-flow', () => ({
   useAccountBindingFlow: () => ({
     expandedPickerGameId: null,
     toggleExpandedPickerGameId: jest.fn(),
@@ -57,39 +57,31 @@ jest.mock('@/hooks/use-account-binding-flow', () => ({
     loginVisible: false,
     loginProvider: null,
     loginGame: null,
-    tufPickerVisible: false,
-    museDashPickerVisible: false,
-    phiraPickerVisible: false,
     renameAccount: null,
     setRenameAccount: jest.fn(),
     openPicker: jest.fn(),
     openLogin: jest.fn(),
-    openPublicPlayer: jest.fn(),
     close: jest.fn(),
     closeLogin: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-managed-account-operations', () => ({
+jest.mock('@rranker/sdk/hooks/use-managed-account-operations', () => ({
   useManagedAccountOperations: () => ({
     busy: false,
     message: null,
     onSelectAccount: jest.fn(),
-    addLocalAccount: jest.fn(),
-    addDemoAccount: jest.fn(),
-    bindTufPlayer: jest.fn(),
-    bindPhiraPlayer: jest.fn(),
-    bindMuseDashPlayer: jest.fn(),
+    addAccount: jest.fn(),
     promptRemoveAccount: jest.fn(),
-    saveLocalAccountName: jest.fn(),
+    renameAccount: jest.fn(),
   }),
 }));
-jest.mock('@/services/account-restoration', () => ({
+jest.mock('@rranker/sdk/services/account-restoration', () => ({
   restoreAppAccounts: () => mockRestoreAppAccounts(),
   getAccountSourceStatuses: () => mockSourceStatuses,
   subscribeAccountSourceStatuses: () => () => undefined,
   retryFailedAccountSources: () => mockRetrySources(),
 }));
-jest.mock('@/storage/secure-session-store', () => ({
+jest.mock('@rranker/sdk/storage/secure-session-store', () => ({
   SecureSessionStore: jest.fn(() => ({ clear: mockClearSessions })),
 }));
 

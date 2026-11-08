@@ -1,10 +1,10 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import DebugScreen from '../app/debug';
-import { GamePickerSheet } from '@/components/GamePickerSheet';
-import { useDebugStore } from '@/state/debug-store';
-import { createAppTheme } from '@/theme/theme-tokens';
-import { type GameId, findGame } from '@/domain/game-bind-options';
+import { GamePickerSheet } from '@rranker/sdk/components/GamePickerSheet';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
+import { createAppTheme } from '@rranker/sdk/theme/theme-tokens';
+import { type GameId, findGame } from '@rranker/sdk/domain/game-bind-options';
 
 const mockPush = jest.fn();
 const mockSave = jest.fn(async (_value: unknown) => undefined);
@@ -15,14 +15,14 @@ jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }) }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
-jest.mock('@/components/AppNotification', () => ({
-  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockNotification }) }));
-jest.mock('@/components/game-content/DetailPressable', () => {
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'), useNotification: () => ({ showNotification: mockNotification }) }));
+jest.mock('@rranker/sdk/components/game-content/DetailPressable', () => {
   const RN = jest.requireActual('react-native') as typeof import('react-native');
   return { DetailPressable: RN.Pressable, DetailGestureRoot: RN.View };
 });
-jest.mock('@/storage/debug-preferences-store', () => ({ debugPreferencesStore: {
+jest.mock('@rranker/sdk/storage/debug-preferences-store', () => ({ debugPreferencesStore: {
   load: async () => ({ testAccountsEnabled: false }), save: (value: unknown) => mockSave(value),
 } }));
 

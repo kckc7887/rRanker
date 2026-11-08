@@ -11,9 +11,9 @@ import {
   tufTagIconUrl,
   tufVideoPlatform,
   type TufLevelPass,
-} from '@/domain/tuf';
-import { ProviderError } from '@/providers/errors';
-import { TufProvider } from '@/providers/tuf-provider';
+} from '@rranker/game-adofai/domain/tuf';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { TufProvider } from '@rranker/provider-tuf/providers/tuf-provider';
 
 function response(body: unknown, status = 200, headers?: Record<string, string>) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });

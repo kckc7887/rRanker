@@ -1,10 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { createLocalMaimaiAccount, type BoundAccount } from '@/domain/bound-account';
-import { useManagedAccountOperations } from '@/hooks/use-managed-account-operations';
-import type { useAccountBindingFlow } from '@/hooks/use-account-binding-flow';
-import { addOrSwitchDemoAccount, bindOrSwitchPublicPlayer } from '@/screens/game-accounts-actions';
-import { switchBoundAccount } from '@/services/switch-bound-account';
+import { createLocalMaimaiAccount } from '@rranker/game-maimai/accounts';
+import type { BoundAccount } from '@rranker/sdk/account';
+import { useManagedAccountOperations } from '@rranker/sdk/hooks/use-managed-account-operations';
+import type { useAccountBindingFlow } from '@rranker/sdk/hooks/use-account-binding-flow';
+import { addOrSwitchDemoAccount, bindOrSwitchPublicPlayer } from '@rranker/sdk/screens/game-accounts-actions';
+import { switchBoundAccount } from '@rranker/sdk/services/switch-bound-account';
 
 const mockA = createLocalMaimaiAccount('A', 0, 'maimai:local:a');
 const mockB = createLocalMaimaiAccount('B', 0, 'maimai:local:b');
@@ -15,16 +16,16 @@ const mockSetActive = jest.fn(async (_id: string): Promise<void> => undefined);
 const mockNotify = jest.fn((..._args: unknown[]) => undefined);
 const mockUpsert = jest.fn((account: BoundAccount) => { mockAccounts.push(account); });
 jest.mock('expo-router', () => ({ router: { canDismiss: () => false, navigate: jest.fn() } }));
-jest.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn(() => ({
+jest.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn(() => ({
   setActiveAccountId: (id: string) => mockSetActive(id),
 })) }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({
   showNotification: mockNotify, showActionNotification: jest.fn(),
 }) }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn() }) }));
-jest.mock('@/services/account-management', () => ({}));
-jest.mock('@/state/query-client', () => ({ queryClient: {} }));
-jest.mock('@/state/session-store', () => {
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn() }) }));
+jest.mock('@rranker/sdk/services/account-management', () => ({}));
+jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: {} }));
+jest.mock('@rranker/sdk/state/session-store', () => {
   const state = () => ({ activeAccountId: mockActiveId, boundAccounts: mockAccounts, upsertBoundAccount: mockUpsert,
     selectBoundAccount: (id: string) => { mockActiveId = id; } });
   return { useSession: Object.assign((selector: (value: unknown) => unknown) => selector(state()), { getState: state }) };
@@ -36,7 +37,8 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 function publicInput(existing?: BoundAccount) {
-  return { existing, create: () => mockB, persist: jest.fn(async () => undefined),
+  return { assertCurrent: (): void => undefined, existing, create: () => mockB,
+    persist: jest.fn<(account: BoundAccount, assertCurrent: () => void) => Promise<void>>(async () => undefined),
     existingMessage: () => '选择完成', successMessage: () => '绑定完成',
     onExistingBound: jest.fn(), onCreated: jest.fn(), upsertBoundAccount: mockUpsert,
     setMessage: jest.fn(), showNotification: mockNotify };
@@ -67,7 +69,7 @@ it('public existing selection rejects no caller promise and announces no prematu
 it('a newly persisted binding survives a failed active choice and reports that separate stage', async () => {
   mockAccounts = [mockA, mockC]; mockSetActive.mockRejectedValueOnce(new Error('write failed'));
   const input = publicInput(); await bindOrSwitchPublicPlayer(input);
-  expect(input.persist).toHaveBeenCalledWith(mockB); expect(mockUpsert).toHaveBeenCalledWith(mockB);
+  expect(input.persist).toHaveBeenCalledWith(mockB, expect.any(Function)); expect(mockUpsert).toHaveBeenCalledWith(mockB);
   expect(mockAccounts).toContain(mockB); expect(input.setMessage).not.toHaveBeenCalled();
   expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: '当前账号未保存' }));
 });
@@ -77,6 +79,22 @@ it('public binding failures are caught before selecting or publishing the accoun
   await expect(bindOrSwitchPublicPlayer(input)).resolves.toBeUndefined();
   expect(mockUpsert).not.toHaveBeenCalled(); expect(mockSetActive).not.toHaveBeenCalled();
   expect(mockNotify).toHaveBeenCalledWith({ title: '绑定失败', message: '无法绑定玩家，请重试。', variant: 'error' });
+});
+
+it('a cancelled public binding cannot publish or select its late persistence result', async () => {
+  const pending = deferred<void>();
+  const controller = new AbortController();
+  const input = publicInput();
+  input.assertCurrent = () => controller.signal.throwIfAborted();
+  input.persist.mockReturnValueOnce(pending.promise);
+  const binding = bindOrSwitchPublicPlayer(input);
+  controller.abort();
+  pending.resolve();
+  await binding;
+  expect(mockUpsert).not.toHaveBeenCalled();
+  expect(mockSetActive).not.toHaveBeenCalled();
+  expect(input.onCreated).not.toHaveBeenCalled();
+  expect(mockNotify).not.toHaveBeenCalled();
 });
 
 it('public and managed callers share generation guards for a late B failure after C then B', async () => {

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import type { ExportedConfig, Mod } from 'expo/config-plugins';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import withAndroidAbiSplits from '../plugins/with-android-abi-splits.js';
-import withArcadeMap from '../plugins/with-arcade-map.js';
+import withArcadeMap from '@rranker/tool-arcade-finder/app.plugin.cjs';
 
 const app = { name: 'rRanker', slug: 'rranker' };
 const template = `android {

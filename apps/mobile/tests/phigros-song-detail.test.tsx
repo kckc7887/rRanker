@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import SongDetailScreen from '../app/songs/[songId]';
-import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
-import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
-import type { Song } from '@/domain/models';
-import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
+import SongDetailScreen from '../app/detail';
+import { PhigrosScoreCard } from '@rranker/game-phigros/components/PhigrosScoreCard';
+import { PhigrosSongRow } from '@rranker/game-phigros/components/PhigrosSongRow';
+import type { Song } from '@rranker/game-phigros/domain/models';
+import { resolvePluginPagePayload } from '@rranker/sdk';
 
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
@@ -82,14 +82,14 @@ jest.mock('expo-router', () => ({
   useNavigation: () => ({
     canGoBack: () => mockCanGoBack(),
     goBack: () => mockBack(),
-    getState: () => ({ index: 0, routes: [{ name: 'songs/[songId]' }] }),
+    getState: () => ({ index: 0, routes: [{ name: 'detail' }] }),
   }),
   useLocalSearchParams: () => mockSongRouteParams,
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: string }) => unknown) => selector({ activeGameId: 'phigros' }),
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   NotificationOutlet: () => null,
   useNotification: () => ({
     dismissNotification: mockDismissNotification,
@@ -99,17 +99,17 @@ jest.mock('@/components/AppNotification', () => ({
   }),
   useNotificationModalRequestClose: () => () => false,
 }));
-jest.mock('@/features/phigros-chart-download/chart-package-download', () => ({
+jest.mock('@rranker/tool-chart-json/features/phigros-chart-download/chart-package-download', () => ({
   downloadPhigrosChartAsPhiraPackage: (request: unknown, options: unknown) =>
     mockDownloadPhigrosPackage(request, options),
 }));
-jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+jest.mock('@rranker/sdk/features/chart-download-shared/use-chart-package-download', () => ({
   useChartPackageDownload: () => ({ isRunning: false, start: mockStartChartDownload }),
 }));
 let mockCatalogSongVersion = '3.8.0';
 let mockAliases = ['测试别名一', '测试别名二'];
 let mockBlockCounts: Record<number, number | undefined> = {};
-jest.mock('@/hooks/use-phigros-catalog', () => ({
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({
     data: {
       snapshot: {
@@ -157,7 +157,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-phigros-kyou', () => ({
+jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({
   usePhigrosKyouChartTags: () => ({
     data: {
       songs: [{ songId: 'kyou-song', name: '测试曲', pack: '3.8.0' }],
@@ -199,7 +199,7 @@ jest.mock('@/hooks/use-phigros-kyou', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: {
       gameId: 'phigros',
@@ -220,10 +220,10 @@ jest.mock('@/hooks/use-game-data', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/hooks/use-score-snapshot', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({
   useScoreSnapshot: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
 const mockSetSongFavorite = jest.fn();
@@ -231,9 +231,8 @@ const mockSetChartPractice = jest.fn();
 const mockSetTags = jest.fn();
 const mockSetTagPresets = jest.fn();
 
-jest.mock('@/hooks/use-user-library', () => {
-  const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
-  const state: {
+jest.mock('@rranker/sdk/hooks/use-user-library', () => {
+    const state: {
     data: {
       key: string;
       gameId: 'phigros';
@@ -257,14 +256,13 @@ jest.mock('@/hooks/use-user-library', () => {
       setTags: (...args: unknown[]) => mockSetTags(...args),
       setTagPresets: (...args: unknown[]) => mockSetTagPresets(...args),
       tagPresets: ['爆发', '交互'],
-      songKey: (songId: string | number) => songLibraryKey('phigros', songId),
-      chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('phigros', songId, type, levelIndex),
+      key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
     }),
   };
 });
 
-const libraryMock = jest.requireMock<{ __libraryMockState: { data: unknown[] } }>('@/hooks/use-user-library');
-jest.mock('@/components/TagEditor', () => ({
+const libraryMock = jest.requireMock<{ __libraryMockState: { data: unknown[] } }>('@rranker/sdk/hooks/use-user-library');
+jest.mock('@rranker/sdk/components/TagEditor', () => ({
   TagEditor: ({ onChange }: { onChange?: (tags: string[]) => void }) => {
     const React = jest.requireActual<typeof import('react')>('react');
     const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -275,8 +273,8 @@ jest.mock('@/components/TagEditor', () => ({
     });
   },
 }));
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
   useStackScreenReady: () => true,
 }));
@@ -461,10 +459,10 @@ describe('Phigros song detail', () => {
       />,
     );
     await fireEvent.press(row.getByLabelText('查看歌曲 测试曲'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'Song.A', gameId: 'phigros' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: 'Song.A', gameId: 'phigros' } });
 
     await fireEvent.press(row.getByLabelText('收藏 测试曲'));
-    expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);
+    expect(mockSetSongFavorite).toHaveBeenCalledWith({ gameId: 'phigros', kind: 'song', id: 'Song.A', target: { songId: 'Song.A' } }, true);
 
     mockPush.mockClear();
     const card = await render(
@@ -479,7 +477,7 @@ describe('Phigros song detail', () => {
     );
     await fireEvent.press(card.getByLabelText('查看谱面 测试曲'));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: 'Song.A', levelIndex: '2', gameId: 'phigros' },
     });
   });
@@ -489,13 +487,13 @@ describe('Phigros song detail', () => {
     await waitFor(() => expect(screen.getByText('测试曲')).toBeTruthy());
 
     await fireEvent.press(screen.getByLabelText('收藏 测试曲'));
-    expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);
+    expect(mockSetSongFavorite).toHaveBeenCalledWith({ gameId: 'phigros', kind: 'song', id: 'Song.A', target: { songId: 'Song.A' } }, true);
 
     await fireEvent.press(screen.getAllByLabelText('编辑标签').at(-1)!);
-    expect(mockSetTags).toHaveBeenCalledWith({ kind: 'song', songId: 'Song.A' }, ['测试标签']);
+    expect(mockSetTags).toHaveBeenCalledWith({ gameId: 'phigros', kind: 'song', id: 'Song.A', target: { songId: 'Song.A' } }, ['测试标签']);
 
     await fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
-    expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
+    expect(mockSetChartPractice).toHaveBeenCalledWith({ gameId: 'phigros', kind: 'chart', id: JSON.stringify(['Song.A', 3]), target: { songId: 'Song.A', levelIndex: '3' } }, true);
     const atActions = within(screen.getByLabelText('AT 难度卡片')).getAllByRole('button')
       .map((button) => button.props.accessibilityLabel);
     expect(atActions.indexOf('下载谱面文件：测试曲 AT'))
@@ -503,13 +501,11 @@ describe('Phigros song detail', () => {
 
     await fireEvent.press(screen.getAllByLabelText(/查看谱面确认：/)[0]!);
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
-      pathname: '/songs/phigros-chart-preview',
-      params: { requestId: expect.stringMatching(/^cp-/) },
+      pathname: '/plugins/[pluginId]/[pageId]',
+      params: { pluginId: 'tool.chart-json', pageId: 'chart-preview', gameId: 'phigros', requestId: expect.stringMatching(/^page-/) },
     }));
     const href = mockPush.mock.calls.at(-1)?.[0] as { params: { requestId: string } };
-    expect(resolveChartPreviewNavigation(href.params.requestId)).toEqual({
-      game: 'phigros', songId: 'Song.A', levelIndex: 3, title: '测试曲',
-    });
+    expect(resolvePluginPagePayload(href.params.requestId)).toEqual({ game: 'phigros', songId: 'Song.A', levelIndex: 3, title: '测试曲' });
 
     await fireEvent.press(screen.getAllByLabelText(/下载谱面文件：/)[0]!);
     await waitFor(() => expect(mockDownloadPhigrosPackage).toHaveBeenCalledWith({

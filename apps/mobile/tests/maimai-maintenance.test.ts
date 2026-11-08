@@ -1,4 +1,4 @@
-import { isMaimaiMaintenanceWindow } from '@/domain/maimai-maintenance';
+import { isMaimaiMaintenanceWindow } from '@rranker/game-maimai/domain/maimai-maintenance';
 
 describe('maimai maintenance window', () => {
   it('uses inclusive 04:00 and exclusive 07:00 in UTC+8', () => {

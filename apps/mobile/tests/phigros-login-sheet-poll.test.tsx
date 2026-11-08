@@ -1,10 +1,10 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Linking } from 'react-native';
-import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
-import { findGame } from '@/domain/game-bind-options';
-import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+import { ProviderLoginSheet } from '@rranker/sdk/components/ProviderLoginSheet';
+import { findGame } from '@rranker/sdk/domain/game-bind-options';
+import { PhigrosScoreProvider } from '@rranker/provider-phi-taptap/providers/phigros-score-provider';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
 
 jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 
@@ -13,7 +13,7 @@ let mockLifecycle: AppLifecycleSnapshot = {
   foregroundGeneration: 1, memoryWarningGeneration: 0,
 };
 
-jest.mock('@/state/app-lifecycle', () => ({
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
   useAppLifecycle: () => mockLifecycle,
   getForegroundAbortSignal: () => new AbortController().signal,
   getAppLifecycleSnapshot: () => mockLifecycle,
@@ -42,7 +42,7 @@ const mockSetSession = jest.fn();
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#fff',
     surface: '#fff',
@@ -55,16 +55,16 @@ jest.mock('@/theme/app-theme', () => ({
     accent: '#246BFD',
   }),
 }));
-jest.mock('@/storage/secure-session-store', () => ({
+jest.mock('@rranker/sdk/storage/secure-session-store', () => ({
   SecureSessionStore: jest.fn(() => ({ upsertAccount: (account: unknown, signal?: AbortSignal) => mockSave(account, signal) })),
 }));
-jest.mock('@/storage/chunithm-temp-account-store', () => ({
+jest.mock('@rranker/provider-chunithm-temp/storage/chunithm-temp-account-store', () => ({
   ChunithmTempAccountStore: jest.fn(() => ({ remove: jest.fn(async () => undefined) })),
 }));
-jest.mock('@/state/query-client', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: { invalidateQueries: jest.fn() },
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
     boundAccounts: [],
     sessionsByAccountId: {},
@@ -73,7 +73,7 @@ jest.mock('@/state/session-store', () => ({
     removeBoundAccount: jest.fn(),
   }),
 }));
-jest.mock('@/providers/phigros-score-provider', () => ({
+jest.mock('@rranker/provider-phi-taptap/providers/phigros-score-provider', () => ({
   PhigrosScoreProvider: {
     beginLogin: jest.fn(),
     pollLogin: jest.fn(),

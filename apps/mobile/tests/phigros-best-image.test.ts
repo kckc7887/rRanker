@@ -1,24 +1,24 @@
 import { JSDOM } from 'jsdom';
-import { buildPhigrosBestImageAppHtml, type PhigrosAppImageInput } from '@/features/phigros-best-image/build-phigros-best-image-app-html';
+import { buildPhigrosBestImageAppHtml, type PhigrosAppImageInput } from '@rranker/tool-phigros/features/phigros-best-image/build-phigros-best-image-app-html';
 import { describe, expect, it, vi } from 'vitest';
-import Storage from '@/storage/key-value-storage';
-import type { ScoreRecord } from '@/domain/models';
+import Storage from '@rranker/sdk/storage/key-value-storage';
+import type { ScoreRecord } from '@rranker/game-phigros/domain/models';
 import {
   appendPhigrosOverflowRecords, paginatePhigrosBestImageSections, sortPhigrosBestImageRecords,
-} from '@/features/phigros-best-image/phigros-best-image';
+} from '@rranker/tool-phigros/features/phigros-best-image/phigros-best-image';
 import {
   buildCustomPhigrosBestImageSections, DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS,
   parsePhigrosBestImageAccuracyBound, parsePhigrosBestImageScoreBound,
-} from '@/features/phigros-best-image/phigros-best-image-custom';
+} from '@rranker/tool-phigros/features/phigros-best-image/phigros-best-image-custom';
 import {
   buildPhigrosBestImageHtml, escapePhigrosBestImageHtml,
-} from '@/features/phigros-best-image/build-phigros-best-image-html';
-import { parsePhigrosBestImageStylePreferences, phigrosBestImagePreferencesStore } from '@/features/phigros-best-image/phigros-best-image-preferences';
-import { parsePhigrosUser } from '@/domain/phigros';
+} from '@rranker/tool-phigros/features/phigros-best-image/build-phigros-best-image-html';
+import { parsePhigrosBestImageStylePreferences, phigrosBestImagePreferencesStore } from '@rranker/tool-phigros/features/phigros-best-image/phigros-best-image-preferences';
+import { parsePhigrosUser } from '@rranker/game-phigros/domain/phigros';
 import {
   calculatePhigrosXingAcc, isPhigrosXingAcc, phigrosChartNoteKey,
-} from '@/domain/phigros-xing';
-import { matchesPhigrosScoreRange } from '@/domain/phigros-filters';
+} from '@rranker/game-phigros/domain/phigros-xing';
+import { matchesPhigrosScoreRange } from '@rranker/game-phigros/domain/phigros-filters';
 
 function viewportWidth(html: string): number {
   const dom = new JSDOM(html);

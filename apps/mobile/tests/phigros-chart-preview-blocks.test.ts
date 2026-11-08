@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parsePgrChart } from '@/features/phigros-chart-preview/webview-player/pgr-core';
-import { indexPgrBlocks, parsePgrBlocks, pgrBlockEase, samplePgrBlock } from '@/features/phigros-chart-preview/webview-player/pgr-blocks';
-import { CHART_PREVIEW_MAX_EVENTS, ChartPreviewBudgetExceededError } from '@/features/chart-preview-shared/chart-preview-resource-budget';
+import { parsePgrChart } from '@rranker/chart-json/features/phigros-chart-preview/webview-player/pgr-core';
+import { indexPgrBlocks, parsePgrBlocks, pgrBlockEase, samplePgrBlock } from '@rranker/chart-json/features/phigros-chart-preview/webview-player/pgr-blocks';
+import { CHART_PREVIEW_MAX_EVENTS, ChartPreviewBudgetExceededError } from '@rranker/sdk/features/chart-preview-shared/chart-preview-resource-budget';
 
 const vector = (x: number, y: number) => ({ x, y });
 function block(overrides: Record<string, unknown> = {}) {

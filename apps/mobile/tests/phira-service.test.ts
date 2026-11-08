@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { PhiraBestSnapshot, PhiraPlayerSnapshot, PhiraQueriedBest } from '@/domain/phira';
-import { PhiraChartSchema, PhiraRecordSchema, PhiraUserSchema, PhiraUserStatsSchema } from '@/domain/phira';
-import { phiraProvider } from '@/providers/phira-provider';
-import { phiraCache } from '@/services/phira-cache';
-import { loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraBestTargets, refreshPhiraSeedBests } from '@/services/phira-service';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
+import type { PhiraBestSnapshot, PhiraPlayerSnapshot, PhiraQueriedBest } from '@rranker/game-phira/domain/phira';
+import { PhiraChartSchema, PhiraRecordSchema, PhiraUserSchema, PhiraUserStatsSchema } from '@rranker/game-phira/domain/phira';
+import { phiraProvider } from '@rranker/provider-phira-community/providers/phira-provider';
+import { phiraCache } from '@rranker/provider-phira-community/services/phira-cache';
+import { loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraBestTargets, refreshPhiraSeedBests } from '@rranker/provider-phira-community/services/phira-service';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+vi.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
 
 const chart = (id: number) => PhiraChartSchema.parse({
   id, name: `Chart ${id}`, level: '自由难度名', difficulty: 14.5, uploader: 9,

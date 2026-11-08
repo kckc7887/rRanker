@@ -1,6 +1,6 @@
 import {
   formatAchievement, isNearMissAchievement, normalizeScoreRate, scoreRateEffect, scoreRateLabel,
-} from '@/domain/score-presentation';
+} from '@rranker/sdk/domain/simai-score';
 
 describe('score presentation rules', () => {
   it('maps verified rate codes to labels and effects without guessing unknown values', () => {

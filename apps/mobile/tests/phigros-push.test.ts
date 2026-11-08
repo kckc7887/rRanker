@@ -8,8 +8,8 @@ import {
   parsePhigrosPushDelta,
   resolvePhigrosPushRequest,
   resolvePushExactTarget,
-} from '@/domain/phigros-push';
-import type { PhigrosScoreEntry } from '@/domain/phigros';
+} from '@rranker/game-phigros/domain/phigros-push';
+import type { PhigrosScoreEntry } from '@rranker/game-phigros/domain/phigros';
 
 describe('resolvePushExactTarget', () => {
   it('maps 16.1691 + 0.01 to exact 16.1750 and display 16.18', () => {

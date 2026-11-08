@@ -1,23 +1,19 @@
 import { jest } from '@jest/globals';
 import { fireEvent, render } from '@testing-library/react-native';
-import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
-import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
-import {
-  createChunithmBoundAccount,
-  createMuseDashBoundAccount,
-  createPhigrosBoundAccount,
-  createTufBoundAccount,
-} from '@/domain/bound-account';
+import { AccountSwitchSheet } from '@rranker/sdk/components/AccountSwitchSheet';
+import { BoundAccountGroupedList } from '@rranker/sdk/components/BoundAccountGroupedList';
+import { createChunithmBoundAccount } from '@rranker/game-chunithm/accounts';
+import { createMuseDashBoundAccount } from '@rranker/game-musedash/accounts';
+import { createPhigrosBoundAccount } from '@rranker/game-phigros/accounts';
+import { createTufBoundAccount } from '@rranker/game-adofai/accounts';
+import type { BoundAccount } from '@rranker/sdk/account';
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
-jest.mock('@/services/hydrate-bound-account-avatars', () => ({ hydrateBoundAccountAvatars: jest.fn(async () => undefined) }));
-jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
-jest.mock('@/services/hydrate-chunithm-account-summaries', () => ({ hydrateChunithmAccountSummaries: jest.fn(async () => undefined) }));
-jest.mock('@/services/hydrate-phigros-account-summaries', () => ({ hydratePhigrosAccountSummaries: jest.fn(async () => undefined) }));
-jest.mock('@/components/BoundAccountAvatar', () => {
+jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/components/BoundAccountAvatar', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { BoundAccountAvatar: () => <RN.View /> };
 });
@@ -113,4 +109,19 @@ it('selects an account from the switch sheet, renders its ranked score and close
   expect(onSelectAccount).toHaveBeenCalledWith(account);
   await fireEvent.press(screen.getByText('完成'));
   expect(onClose).toHaveBeenCalled();
+});
+
+it('保留缺席适配器的账号信息与管理入口，并阻止切换', async () => {
+  const account: BoundAccount = { id: 'missing:alice', gameId: 'missing', providerId: 'missing-source',
+    displayName: '保留的玩家', providerTitle: '已保存来源', scoreLabel: 'Score', scoreDisplay: '42' };
+  const onSelectAccount = jest.fn();
+  const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+  const screen = await render(<BoundAccountGroupedList accounts={[account]} expandedGameId="missing"
+    activeAccountId={null} onToggleGame={jest.fn()} onSelectAccount={onSelectAccount}
+    renderActions={() => <Text>管理已有账号</Text>} />);
+  expect(screen.getByText('missing · 适配器未安装')).toBeTruthy();
+  expect(screen.getByText('已保存来源 · 插件不可用')).toBeTruthy();
+  expect(screen.getByText('管理已有账号')).toBeTruthy();
+  await fireEvent.press(screen.getByText('保留的玩家'));
+  expect(onSelectAccount).not.toHaveBeenCalled();
 });

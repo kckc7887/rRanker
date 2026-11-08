@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { PhiraChartSchema, formatPhiraAccuracy } from '@/domain/phira';
-import { TufLevelSchema } from '@/domain/tuf';
-import { buildMaxedPhiraBest, maxedPhiraPlayerSnapshot } from '@/providers/maxed-phira-test-provider';
-import { buildMaxedTufPass, maxedTufPlayerSnapshot } from '@/providers/maxed-tuf-test-provider';
+import { PhiraChartSchema, formatPhiraAccuracy } from '@rranker/game-phira/domain/phira';
+import { TufLevelSchema } from '@rranker/game-adofai/domain/tuf';
+import { buildMaxedPhiraBest, maxedPhiraPlayerSnapshot } from '@rranker/provider-phira-test/providers/maxed-phira-test-provider';
+import { buildMaxedTufPass, maxedTufPlayerSnapshot } from '@rranker/provider-adofai-test/providers/maxed-tuf-test-provider';
 
 describe('Phira 与 ADOFAI 满成绩示例', () => {
   it('固定账号总览，并从实际谱面生成 Phira 满分、满连与准确率', () => {

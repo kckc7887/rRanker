@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it, vi } from 'vitest';
 import { rizlineCatalog, rizlineCatalogAssetFiles } from './fixtures/rizline';
-let RizlineResourceService: typeof import('@/services/rizline-resources')['RizlineResourceService'];
-let invalidateResourceWrites: typeof import('@/services/snapshot-cache-utils')['invalidateResourceWrites'];
+let RizlineResourceService: typeof import('@rranker/game-rizline/services/rizline-resources')['RizlineResourceService'];
+let invalidateResourceWrites: typeof import('@rranker/sdk/services/snapshot-cache-utils')['invalidateResourceWrites'];
 let database: DatabaseSync;
 const transport = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>() }));
 vi.mock('expo/fetch', () => ({ fetch: transport.fetch }));
@@ -16,8 +16,8 @@ beforeEach(async () => {
   database = new DatabaseSync(':memory:');
   transport.fetch.mockReset();
   vi.resetModules();
-  ({ RizlineResourceService } = await import('@/services/rizline-resources'));
-  ({ invalidateResourceWrites } = await import('@/services/snapshot-cache-utils'));
+  ({ RizlineResourceService } = await import('@rranker/game-rizline/services/rizline-resources'));
+  ({ invalidateResourceWrites } = await import('@rranker/sdk/services/snapshot-cache-utils'));
 });
 afterEach(() => database.close());
 

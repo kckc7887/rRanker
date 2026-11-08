@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createSerializedKeyValueStorage, type KeyValueStorage } from '@/storage/key-value-storage';
+import { createSerializedKeyValueStorage, type KeyValueStorage } from '@rranker/sdk/storage/key-value-storage';
 
 function fixture() {
   const values = new Map<string, string>();

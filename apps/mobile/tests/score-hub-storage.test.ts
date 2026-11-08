@@ -1,4 +1,4 @@
-import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
+import { LargeSecureValueStore } from '@rranker/sdk/storage/large-secure-value-store';
 
 const secure = vi.hoisted(() => ({ values: new Map<string, string>() }));
 
@@ -10,9 +10,9 @@ vi.mock('expo-secure-store', () => ({
 }));
 
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { ScoreHubAccountStore } from '@/storage/score-hub-account-store';
+import { ScoreHubAccountStore } from '@rranker/tool-maimai/storage/score-hub-account-store';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { UploadPrefsStore } from '@/storage/upload-prefs-store';
+import { UploadPrefsStore } from '@rranker/tool-maimai/storage/upload-prefs-store';
 
 function createKvStore() {
   const values = new Map<string, string>();

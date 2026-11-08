@@ -10,7 +10,7 @@ import {
   speedHeightAt,
   type RpeEvent,
   type RpeEventLayer,
-} from '@/features/phigros-chart-preview/webview-player/rpe-core';
+} from '@rranker/chart-json/features/phigros-chart-preview/webview-player/rpe-core';
 
 function line(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {

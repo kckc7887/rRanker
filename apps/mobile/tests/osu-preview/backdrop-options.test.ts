@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import type { StageContext } from '../../src/features/chart-preview-shared/webview-player/stage';
-import { StageImages, StageVideo } from '../../src/features/chart-preview-shared/webview-player/stage-media';
-import { createPreviewMedia, type MediaPresentationOptions } from '../../src/features/osu-chart-preview/webview-player/backdrop';
+import type { StageContext } from '@rranker/sdk/features/chart-preview-shared/webview-player/stage';
+import { StageImages, StageVideo } from '@rranker/sdk/features/chart-preview-shared/webview-player/stage-media';
+import { createPreviewMedia, type MediaPresentationOptions } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/backdrop';
 
 type Draw = { type: string; image?: unknown; filter: string; fill?: string };
 class TestContext {

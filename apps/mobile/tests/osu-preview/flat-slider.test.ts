@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseBeatmap } from '../../src/features/osu-chart-preview/webview-player/engine';
+import { parseBeatmap } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine';
 import { fixtureOsu } from './fixtures';
-import { sampleSlider, sliderPointAt } from '../../src/features/osu-chart-preview/webview-player/engine/renderer/SliderGeometry';
+import { sampleSlider, sliderPointAt } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/renderer/SliderGeometry';
 
 describe('flat slider drawing', () => {
   const slider = (curve: string, length: number) => {

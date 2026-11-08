@@ -1,16 +1,20 @@
+import { createClient as createDemoClient } from '@rranker/provider-adofai-test/client';
+import { createCatalogTestAccount } from '@rranker/provider-adofai-test/accounts';
 import { imageDownloads } from './remote-image-native-mock';
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
 import { Dimensions, Linking,} from 'react-native';
-import type { TufLevel, TufLevelPass, TufPass, TufPassPage, TufPlayer, TufVideoDetails } from '@/domain/tuf';
-import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
-import { TufSongRow } from '@/components/adofai/TufSongRow';
-import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
-import { queryClient } from '@/state/query-client';
-import { CachedContentActivityScope } from '@/components/CachedTabScreen';
-import { useTufDemoPasses } from '@/hooks/use-tuf';
+import type { TufLevel, TufLevelPass, TufPass, TufPassPage, TufPlayer, TufVideoDetails } from '@rranker/game-adofai/domain/tuf';
+import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@rranker/game-adofai/screens/TufScreens';
+import { TufSongRow } from '@rranker/game-adofai/components/TufSongRow';
+import { TufRandomChartsScreen } from '@rranker/tool-adofai/screens/TufRandomChartsScreen';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { CachedContentActivityScope } from '@rranker/sdk/components/CachedTabScreen';
+import { useTufDemoPasses } from '@rranker/game-adofai/hooks/use-tuf';
 
+const mockDemoClient = createDemoClient({ account: createCatalogTestAccount('adofai'), credential: null,
+  assertCurrent: () => undefined, commitCredential: async () => 'applied' });
 const mockPush = jest.fn();
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
@@ -20,10 +24,10 @@ const mockRefetch = jest.fn();
 const mockUseTufPasses = jest.fn();
 const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
-const mockGetPasses = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getPasses>();
-const mockGetLevel = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getLevel>();
-const mockSearchLevels = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.searchLevels>();
-const mockGetLevelPasses = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getLevelPasses>();
+const mockGetPasses = jest.fn<typeof import('@rranker/provider-tuf/providers/tuf-provider').tufProvider.getPasses>();
+const mockGetLevel = jest.fn<typeof import('@rranker/provider-tuf/providers/tuf-provider').tufProvider.getLevel>();
+const mockSearchLevels = jest.fn<typeof import('@rranker/provider-tuf/providers/tuf-provider').tufProvider.searchLevels>();
+const mockGetLevelPasses = jest.fn<typeof import('@rranker/provider-tuf/providers/tuf-provider').tufProvider.getLevelPasses>();
 let mockActualPassQueries = false;
 let mockActualLevelQuery = false;
 let mockActualDemoQueries = false;
@@ -64,11 +68,11 @@ jest.mock('expo-router', () => ({
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
   useIsFocused: () => mockFocused,
 }));
-jest.mock('@/state/app-lifecycle', () => ({
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
   useAppLifecycle: () => mockLifecycle,
   getForegroundAbortSignal: () => mockForeground.signal,
 }));
-jest.mock('@/providers/tuf-provider', () => ({ tufProvider: {
+jest.mock('@rranker/provider-tuf/providers/tuf-provider', () => ({ tufProvider: {
   getPasses: (...args: Parameters<typeof mockGetPasses>) => mockGetPasses(...args),
   getLevel: (...args: Parameters<typeof mockGetLevel>) => mockGetLevel(...args),
   searchLevels: (...args: Parameters<typeof mockSearchLevels>) => mockSearchLevels(...args),
@@ -104,13 +108,13 @@ jest.mock('react-native-gesture-handler', () => {
     ),
   };
 });
-jest.mock('@/hooks/use-user-library', () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
     data: [],
     isLoading: false,
     isError: false,
     isUpdating: false,
-    songKey: (songId: string | number) => `song:adofai:${songId}`,
+    key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
     setSongFavorite: jest.fn(async () => []),
     setChartPractice: jest.fn(async () => []),
     setTags: jest.fn(async () => []),
@@ -119,18 +123,18 @@ jest.mock('@/hooks/use-user-library', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: mockDark,
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', border: '#DDD', text: '#111',
   textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF',
 }) }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
-  activeAccountId: mockAccountId, activeGameId: 'adofai',
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
+  activeAccountId: mockAccountId, sourceClient: mockAccountId === 'adofai:test' ? mockDemoClient : undefined, activeGameId: 'adofai',
 }) }));
-jest.mock('@/hooks/use-tuf', () => {
-  const actual = jest.requireActual<typeof import('@/hooks/use-tuf')>('@/hooks/use-tuf');
+jest.mock('@rranker/game-adofai/hooks/use-tuf', () => {
+  const actual = jest.requireActual<typeof import('@rranker/game-adofai/hooks/use-tuf')>('@rranker/game-adofai/hooks/use-tuf');
   return {
     prefetchTufPassPage: (...args: Parameters<typeof actual.prefetchTufPassPage>) => mockActualPassQueries
       ? actual.prefetchTufPassPage(...args) : mockPrefetchTufPassPage(...args),
@@ -151,7 +155,7 @@ jest.mock('@/hooks/use-tuf', () => {
     useTufVideoDetails: () => ({ data: mockVideoDetails, isLoading: !mockVideoDetails, isError: false, error: null, refetch: mockRefetch }),
   };
 });
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: mockProfile ? { payload: { kind: 'adofai', player: mockProfile } } : undefined,
     isLoading: false,
@@ -750,3 +754,8 @@ describe('TUF screens', () => {
     expect(catalog.queryByText('后页加载失败，点此重试')).toBeNull();
   });
 });
+
+jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/state/session-provider-resolver')>('@rranker/sdk/state/session-provider-resolver'),
+  resolveAccountClient: (accountId: string) => accountId === 'adofai:test' ? mockDemoClient : undefined,
+}));

@@ -1,12 +1,13 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import RatingToolScreen from '../app/tools/rating';
-import ToleranceToolScreen from '../app/tools/tolerance';
-import PlatesToolScreen from '../app/tools/plates';
-import VersionsToolScreen from '../app/tools/versions';
-import type { DataSource, PlateSnapshot } from '@/domain/models';
-import { useRecordsFilter } from '@/state/records-filter';
-import { useCatalogFilter } from '@/state/catalog-filter';
+import RatingToolScreen from '@rranker/tool-maimai/pages/rating';
+import ToleranceToolScreen from '@rranker/tool-simai/pages/tolerance';
+import PlatesToolScreen from '@rranker/tool-maimai/pages/plates';
+import VersionsToolScreen from '@rranker/tool-maimai/pages/versions';
+import type { DataSource } from '@rranker/sdk/data';
+import type { PlateSnapshot } from '@rranker/game-maimai/domain/models';
+import { useRecordsFilter } from '@rranker/game-maimai/state/records-filter';
+import { useCatalogFilter } from '@rranker/game-maimai/state/catalog-filter';
 
 let mockToleranceParams: Record<string, string> = {};
 const mockDismissTo = jest.fn();
@@ -22,23 +23,23 @@ let mockPlateQuery: { data?: PlateSnapshot; isLoading: boolean; isError: boolean
   ], source: mockSource },
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 };
-jest.mock('@/hooks/use-plates', () => ({ usePlates: () => mockPlateQuery }));
-jest.mock('@/components/PlateImage', () => ({ PlateImage: () => null }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog, isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
-jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => { const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized'); return { data: { records: fixtures.fixtureRecords, source: fixtures.fixtureSource, best50: { b35: [], b15: [] } }, isLoading: false, isError: false, error: null, refetch: jest.fn() }; } }));
+jest.mock('@rranker/game-maimai/hooks/use-plates', () => ({ usePlates: () => mockPlateQuery }));
+jest.mock('@rranker/game-maimai/components/PlateImage', () => ({ PlateImage: () => null }));
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized').fixtureCatalog, isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => { const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized'); return { data: { records: fixtures.fixtureRecords, source: fixtures.fixtureSource, best50: { b35: [], b15: [] } }, isLoading: false, isError: false, error: null, refetch: jest.fn() }; } }));
 const mockTogglePinnedPlate = jest.fn(async () => undefined);
 let mockPinnedPlateIds: number[] = [];
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: 'maimai' }) => unknown) => selector({ activeGameId: 'maimai' }),
 }));
-jest.mock('@/state/toolbox-pins', () => ({
-  useToolboxPins: (selector: (state: unknown) => unknown) => selector({
-    pinnedPlateIdsByGame: { maimai: mockPinnedPlateIds, phigros: [], test: [] },
+jest.mock('@rranker/tool-maimai/state/pins', () => ({
+  usePlatePins: (selector: (state: unknown) => unknown) => selector({
+    pinsByGame: { maimai: mockPinnedPlateIds, phigros: [], test: [] },
     hydrate: jest.fn(async () => undefined),
-    togglePinnedPlate: mockTogglePinnedPlate,
+    toggle: mockTogglePinnedPlate,
   }),
 }));
 
@@ -124,7 +125,7 @@ describe('M2 tool screens', () => {
     const screen = await render(<PlatesToolScreen />);
     expect(screen.getByLabelText('当前牌子 真神')).toBeTruthy();
     await fireEvent.press(screen.getByText('正常曲目 A'));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/songs/[songId]', params: { songId: '1', gameId: 'maimai' } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/detail', params: { songId: '1', gameId: 'maimai' } });
     await fireEvent.press(screen.getByLabelText('添加到主页 真神'));
     expect(mockTogglePinnedPlate).toHaveBeenCalledWith('maimai', 6102);
   });

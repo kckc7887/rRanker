@@ -1,5 +1,6 @@
-import type { Song } from '@/domain/models';
-import { buildSearchDocument, buildSongSearchIndex, EMPTY_SONG_FILTERS, findMatchedAlias, normalizeSearchText, searchDocumentMatches, searchSongs, songSearchDocument } from '@/utils/search';
+import type { Song } from '@rranker/game-maimai/domain/models';
+import { buildSearchDocument, buildSongSearchIndex, EMPTY_SONG_FILTERS, findMatchedAlias, normalizeSearchText, searchDocumentMatches, songSearchDocument } from '@rranker/sdk/utils/search';
+import { searchSongs } from '@rranker/game-maimai/domain/search';
 
 const songs: Song[] = [{
   id: '1806', title: 'Ｆｒａｑ', artist: 'Team Grimoire', version: '2026', versionId: 25500,

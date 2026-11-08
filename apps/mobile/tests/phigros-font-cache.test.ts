@@ -5,7 +5,7 @@ import {
   PHIGROS_FONT_MANIFEST,
   preparePhigrosFonts,
   type PhigrosFontManifestEntry,
-} from '@/features/phigros-best-image/phigros-font-cache';
+} from '@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache';
 
 const mockFontFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
@@ -169,7 +169,7 @@ describe('Phigros remote font cache', () => {
   });
 });
 
-vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
+vi.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', async () => {
   const { File } = await import('expo-file-system');
   return { downloadChartResource: (directory: import('expo-file-system').Directory, name: string, url: string) => File.downloadFileAsync(url, new File(directory, name)) };
 });

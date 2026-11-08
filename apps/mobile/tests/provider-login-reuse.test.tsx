@@ -1,9 +1,10 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
-import { LxnsLoginPanel } from '@/components/LxnsLoginPanel';
-import { createChunithmBoundAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
-import { findGame } from '@/domain/game-bind-options';
+import { ProviderLoginSheet } from '@rranker/sdk/components/ProviderLoginSheet';
+import { LxnsLoginPanel } from '@rranker/provider-lxns/components/LxnsLoginPanel';
+import { createChunithmBoundAccount } from '@rranker/game-chunithm/accounts';
+import { createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
+import { findGame } from '@rranker/sdk/domain/game-bind-options';
 
 const mockMaimai = createMaimaiBoundAccount({
   providerId: 'lxns',
@@ -18,20 +19,20 @@ const mockOauth = {
   expiresAt: Date.now() + 60_000,
   persistable: true,
 } as const;
-const mockSetSession = jest.fn((..._args: unknown[]): unknown => undefined);
+const mockBindAccounts = jest.fn((..._args: unknown[]): unknown => undefined);
 const mockRemoveBoundAccount = jest.fn();
 const mockInvalidateQueries = jest.fn();
 const mockTempRemove = jest.fn(async () => undefined);
 const mockBind = jest.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
 let mockLifecycle = { phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 1 };
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
-jest.mock('@/services/lxns-account-binding', () => ({ bindLxnsAccount: (...args: unknown[]) => mockBind(...args) }));
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
+jest.mock('@rranker/provider-lxns/services/lxns-account-binding', () => ({ bindLxnsAccount: (...args: unknown[]) => mockBind(...args) }));
 
 jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#fff',
     surface: '#fff',
@@ -44,21 +45,21 @@ jest.mock('@/theme/app-theme', () => ({
     accent: '#246BFD',
   }),
 }));
-jest.mock('@/storage/secure-session-store', () => ({
+jest.mock('@rranker/sdk/storage/secure-session-store', () => ({
   SecureSessionStore: jest.fn(() => ({ upsertAccounts: jest.fn() })),
 }));
-jest.mock('@/storage/chunithm-temp-account-store', () => ({
+jest.mock('@rranker/provider-chunithm-temp/storage/chunithm-temp-account-store', () => ({
   ChunithmTempAccountStore: jest.fn(() => ({ remove: () => mockTempRemove() })),
 }));
-jest.mock('@/state/query-client', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: { invalidateQueries: (...args: unknown[]) => mockInvalidateQueries(...args) },
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
     boundAccounts: [mockMaimai],
     sessionsByAccountId: { [mockMaimai.id]: mockOauth },
     credentialIdsByAccountId: { [mockMaimai.id]: 'lxns:shared' },
-    setSession: mockSetSession,
+    bindAccounts: mockBindAccounts,
     removeBoundAccount: mockRemoveBoundAccount,
   }),
 }));
@@ -75,7 +76,7 @@ const binding = () => ({
 
 beforeEach(() => {
   mockLifecycle = { phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 1 };
-  mockBind.mockReset(); mockSetSession.mockReset(); mockRemoveBoundAccount.mockClear();
+  mockBind.mockReset(); mockBindAccounts.mockReset(); mockRemoveBoundAccount.mockClear();
   mockInvalidateQueries.mockClear(); mockTempRemove.mockClear();
 });
 
@@ -114,7 +115,8 @@ describe('ProviderLoginSheet LXNS account reuse', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(mockBind).toHaveBeenCalledWith({ gameId: 'chunithm', session: mockOauth,
       credentialId: 'lxns:shared', signal: expect.any(AbortSignal), assertCurrent: expect.any(Function) });
-    expect(mockSetSession).toHaveBeenCalledTimes(1);
+    expect(mockBindAccounts).toHaveBeenCalledWith({ accounts: [binding().account], session: mockOauth,
+      credentialId: 'lxns:shared', activeAccountId: binding().account.id });
     expect(mockRemoveBoundAccount).toHaveBeenCalledTimes(1);
     expect(mockTempRemove).toHaveBeenCalledTimes(1);
     expect(mockInvalidateQueries).toHaveBeenCalledTimes(3);
@@ -138,7 +140,7 @@ describe('ProviderLoginSheet LXNS account reuse', () => {
     }
     expect(input.signal.aborted).toBe(true); expect(input.assertCurrent).toThrow();
     await act(async () => pending.resolve(binding()));
-    expect(mockSetSession).not.toHaveBeenCalled(); expect(mockRemoveBoundAccount).not.toHaveBeenCalled();
+    expect(mockBindAccounts).not.toHaveBeenCalled(); expect(mockRemoveBoundAccount).not.toHaveBeenCalled();
     expect(mockTempRemove).not.toHaveBeenCalled(); expect(mockInvalidateQueries).not.toHaveBeenCalled();
     expect(onSuccess).not.toHaveBeenCalled();
   });

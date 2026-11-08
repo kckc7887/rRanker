@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OsuScoreProvider } from '@/providers/osu-score-provider';
+import { OsuScoreProvider } from '@rranker/provider-osu/providers/osu-score-provider';
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('expo/fetch', () => ({ fetch: mocks.fetch }));

@@ -1,10 +1,10 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import RizlineChartPreviewScreen from '../app/songs/rizline-chart-preview';
+import RizlineChartPreviewScreen from '@rranker/tool-chart-json/pages/rizline-chart-preview';
 
 const mockShowActionNotification = jest.fn();
 const mockDismissNotification = jest.fn();
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({
   showActionNotification: mockShowActionNotification, dismissNotification: mockDismissNotification,
 }) }));
 
@@ -43,11 +43,11 @@ jest.mock('expo-sqlite/kv-store', () => ({
     setItem: (key: string, value: string) => mockSaveSettings(key, value),
   },
 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: true, background: '#000000', text: '#ffffff', textMuted: '#cccccc',
   accent: '#5b8cff', surfaceMuted: '#333333', statusBar: 'light',
 }) }));
-jest.mock('@/features/rizline-chart-preview/prepare-rizline-chart-preview-webview', () => ({
+jest.mock('@rranker/tool-chart-json/features/rizline-chart-preview/prepare-rizline-chart-preview-webview', () => ({
   rizlineChartPreviewAllowsFileAccess: () => true,
   prepareRizlineChartPreviewWebViewSource: (...args: unknown[]) => mockPrepare(...args),
 }));

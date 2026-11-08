@@ -1,14 +1,16 @@
+import type { Credential } from '@rranker/sdk/credentials';
 import { act, cleanup, renderHook } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { UploadTaskController, uploadTaskController } from '@/services/upload-task-controller';
-import { useOverviewUpload } from '@/hooks/use-overview-upload';
-import { createMaimaiBoundAccount, type BoundAccount } from '@/domain/bound-account';
-import type { ProviderSession } from '@/providers/contracts';
-import { type UploadResult, type UploadTargetResult } from '@/services/upload-maimai-from-friend-code';
-import type { transferMaimaiFromLxns } from '@/services/transfer-maimai-from-lxns';
-import { fixtureCatalog } from '@/fixtures/sanitized';
-jest.mock('@/services/upload-task-controller', () => {
-  const actual = jest.requireActual<typeof import('@/services/upload-task-controller')>('@/services/upload-task-controller');
+import { UploadTaskController, uploadTaskController } from '@rranker/tool-maimai/services/upload-task-controller';
+import { useOverviewUpload } from '@rranker/tool-maimai/hooks/use-overview-upload';
+import { createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
+import type { BoundAccount } from '@rranker/sdk/account';
+
+import { type UploadResult, type UploadTargetResult } from '@rranker/tool-maimai/services/upload-maimai-from-friend-code';
+import type { transferMaimaiFromLxns } from '@rranker/tool-maimai/services/transfer-maimai-from-lxns';
+import { fixtureCatalog } from './fixtures/sanitized';
+jest.mock('@rranker/tool-maimai/services/upload-task-controller', () => {
+  const actual = jest.requireActual<typeof import('@rranker/tool-maimai/services/upload-task-controller')>('@rranker/tool-maimai/services/upload-task-controller');
   return { ...actual, uploadTaskController: new actual.UploadTaskController() };
 });
 
@@ -17,16 +19,16 @@ const mockTransfer = jest.fn<typeof transferMaimaiFromLxns>();
 const mockInvalidate = jest.fn(async () => undefined);
 const mockUpdateBoundAccountScore = jest.fn();
 
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockNotification }),
 }));
-jest.mock('@/services/transfer-maimai-from-lxns', () => ({
+jest.mock('@rranker/tool-maimai/services/transfer-maimai-from-lxns', () => ({
   transferMaimaiFromLxns: (...args: Parameters<typeof transferMaimaiFromLxns>) => mockTransfer(...args),
 }));
-jest.mock('@/services/invalidate-account-data', () => ({
+jest.mock('@rranker/sdk/services/invalidate-account-data', () => ({
   invalidateAccountDataQueries: () => mockInvalidate(),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
   useSession: (selector: (state: unknown) => unknown) => selector({
     updateBoundAccountScore: mockUpdateBoundAccountScore,
@@ -43,14 +45,14 @@ const waterSecond = createMaimaiBoundAccount({
   providerId: 'diving-fish', displayName: '水鱼二号', rating: 15000, playerId: 'water-2',
 });
 
-const lxnsSession: ProviderSession = {
+const lxnsSession: Credential = {
   mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
   expiresAt: Date.now() + 60_000, persistable: true,
 };
-const importSession: ProviderSession = {
+const importSession: Credential = {
   mode: 'import-token', value: 'import-token', persistable: true,
 };
-const sessionsByAccountId: Record<string, ProviderSession> = {
+const sessionsByAccountId: Record<string, Credential> = {
   [source.id]: lxnsSession,
   [water.id]: importSession,
   [waterSecond.id]: importSession,
@@ -112,7 +114,7 @@ async function transferScore(): Promise<{ ok: boolean | undefined; phase: unknow
 }
 
 beforeEach(() => {
-  jest.requireMock<{ uploadTaskController: UploadTaskController }>('@/services/upload-task-controller').uploadTaskController = new UploadTaskController();
+  jest.requireMock<{ uploadTaskController: UploadTaskController }>('@rranker/tool-maimai/services/upload-task-controller').uploadTaskController = new UploadTaskController();
   jest.clearAllMocks();
   mockInvalidate.mockResolvedValue(undefined);
 });

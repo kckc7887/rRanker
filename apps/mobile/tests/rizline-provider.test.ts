@@ -1,10 +1,11 @@
+import type { RizlineSession } from '@rranker/provider-rizline-official/credential';
 import { createCipheriv } from 'node:crypto';
 import { gcm } from '@noble/ciphers/aes.js';
 import { describe, expect, it, vi } from 'vitest';
-import { decryptRizlineSave, isRizlineNeedsSmsError, isRizlineTokenExpired, RizlineProvider, RizlineSaveSchema } from '@/providers/rizline-provider';
-import { ProviderError } from '@/providers/errors';
-import type { RizlineSession } from '@/providers/contracts';
-import { base64ToBytes, bytesToBase64 } from '@/utils/crypto-subset';
+import { decryptRizlineSave, isRizlineNeedsSmsError, isRizlineTokenExpired, RizlineProvider, RizlineSaveSchema } from '@rranker/provider-rizline-official/providers/rizline-provider';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+
+import { base64ToBytes, bytesToBase64 } from '@rranker/sdk/utils/crypto-subset';
 
 const phone = '13800000000';
 const save = { userId: 'fixture-user', username: '测试玩家', totalRks: 135.4321,

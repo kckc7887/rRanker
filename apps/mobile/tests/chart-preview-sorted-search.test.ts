@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lowerBoundBy, upperBoundBy } from '@/features/chart-preview-shared/webview-player/sorted-search';
+import { lowerBoundBy, upperBoundBy } from '@rranker/sdk/features/chart-preview-shared/webview-player/sorted-search';
 
 describe('chart preview sorted search', () => {
   const items = [{ t: 1 }, { t: 2 }, { t: 2 }, { t: 5 }];

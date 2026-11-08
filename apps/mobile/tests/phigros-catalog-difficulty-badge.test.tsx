@@ -1,13 +1,13 @@
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
-import type { Song } from '@/domain/models';
+import { PhigrosSongRow } from '@rranker/game-phigros/components/PhigrosSongRow';
+import type { Song } from '@rranker/game-phigros/domain/models';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('expo-image', () => ({ Image: () => null }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     surface: '#FFFFFF',
     input: '#F3F4F6',

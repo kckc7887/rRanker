@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NativeModules, Platform } from 'react-native';
-import { acquireArcadeGpsOrigin } from '@/utils/acquire-arcade-gps-origin';
+import { acquireArcadeGpsOrigin } from '@rranker/tool-arcade-finder/utils/acquire-arcade-gps-origin';
 
 const {
   requestForegroundPermissionsAsync,

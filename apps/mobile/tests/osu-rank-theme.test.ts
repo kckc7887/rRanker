@@ -1,4 +1,4 @@
-import { resolveOsuRankTheme } from '@/domain/osu-rank-theme';
+import { resolveOsuRankTheme } from '@rranker/game-osu/domain/osu-rank-theme';
 
 describe('osu! 评价标签主题', () => {
   it.each([

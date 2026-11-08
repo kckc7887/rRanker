@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
-import { phigrosResources } from '@/services/phigros-resources';
+import { PhigrosCatalogProvider } from '@rranker/provider-phi-taptap/providers/phigros-catalog-provider';
+import { phigrosResources } from '@rranker/game-phigros/services/phigros-resources';
 import { releaseFixture } from './fixtures/phigros-release';
 
 beforeEach(() => phigrosResources.clear());

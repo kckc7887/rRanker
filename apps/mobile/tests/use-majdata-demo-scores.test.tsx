@@ -2,9 +2,9 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { jest } from '@jest/globals';
 import type { PropsWithChildren } from 'react';
-import { useMajdataDemoScores, useMajdataRanking } from '@/hooks/use-majdata';
-import { buildMaxedMajdataScore } from '@/providers/maxed-majdata-test-provider';
-import type { MajdataSong } from '@/domain/majdata';
+import { useMajdataDemoScores, useMajdataRanking } from '@rranker/game-majdata-net/hooks/use-majdata';
+import { buildMaxedMajdataScore } from '@rranker/provider-majdata-net-test/providers/maxed-majdata-test-provider';
+import type { MajdataSong } from '@rranker/game-majdata-net/domain/majdata';
 
 type Page = { records: ReturnType<typeof buildMaxedMajdataScore>[]; songCount: number };
 const mockPage = jest.fn<(page: number, signal: AbortSignal) => Promise<Page>>();
@@ -13,14 +13,13 @@ let mockAccountId = 'majdata-net:test';
 let mockProviderId = 'majdata-net-test';
 let mockActive = true;
 const mockClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-jest.mock('@/services/majdata-service', () => ({
-  loadMajdataDemoScoresPage: (page: number, signal: AbortSignal) => mockPage(page, signal),
-}));
-jest.mock('@/providers/majdata-provider', () => ({ majdataProvider: { getRanking: () => mockRanking() } }));
-jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockActive }));
-jest.mock('@/state/query-client', () => ({ queryClient: mockClient }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({
+const mockDemoClient = { readDemoPage: (page: number, signal: AbortSignal) => mockPage(page, signal) };
+const mockPlayerClient = { getRanking: () => mockRanking() };
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockActive }));
+jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: mockClient }));
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({
   activeAccountId: mockAccountId, activeProviderId: mockProviderId,
+  sourceClient: mockProviderId === 'majdata-net-test' ? mockDemoClient : mockPlayerClient,
 }) }));
 
 const song = (id: string): MajdataSong => ({

@@ -7,8 +7,8 @@ import {
   exchangeOsuAuthorizationCode,
   osuRotationAncestors,
   rotateOsuTokens,
-} from '@/providers/osu-oauth';
-import { ProviderError } from '@/providers/errors';
+} from '@rranker/provider-osu/providers/osu-oauth';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 

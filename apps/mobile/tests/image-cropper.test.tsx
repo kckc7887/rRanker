@@ -1,11 +1,11 @@
 import { jest } from '@jest/globals';
-import type { ImageCrop } from '@/components/image-crop';
+import type { ImageCrop } from '@rranker/sdk/components/image-crop';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Image } from 'react-native';
-import { ImageCropper } from '@/components/ImageCropper';
+import { ImageCropper } from '@rranker/sdk/components/ImageCropper';
 
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({ background: '#fff', text: '#111', textMuted: '#777', accent: '#36f', border: '#ddd', surface: '#fff' }) }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({ background: '#fff', text: '#111', textMuted: '#777', accent: '#36f', border: '#ddd', surface: '#fff' }) }));
 
 afterEach(() => { cleanup(); jest.restoreAllMocks(); });
 

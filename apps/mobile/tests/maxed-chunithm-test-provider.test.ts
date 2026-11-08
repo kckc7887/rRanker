@@ -1,10 +1,10 @@
-import type { ChunithmCatalogSnapshot, ChunithmSong } from '@/domain/chunithm';
+import type { ChunithmCatalogSnapshot, ChunithmSong } from '@rranker/game-chunithm/domain/chunithm';
 import {
   buildMaxedChunithmSnapshot,
-  MaxedChunithmTestProvider,
+  buildMaxedChunithmScores,
   maxChunithmChartOverPower,
   maxChunithmChartRating,
-} from '@/providers/maxed-chunithm-test-provider';
+} from '@rranker/provider-chunithm-test/providers/maxed-chunithm-test-provider';
 
 const source = {
   kind: 'lxns' as const,
@@ -147,12 +147,11 @@ describe('中二节奏全满示例账号', () => {
     expect(snapshot.bests.bests.some((score) => score.id === 201)).toBe(false);
   });
 
-  it('实现 CatalogDrivenScoreProvider，统一成绩覆盖全部启用谱面', async () => {
-    const provider = new MaxedChunithmTestProvider();
-    const records = await provider.getRecordsFromCatalog(catalog);
+  it('成绩覆盖全部启用谱面', () => {
+    const records = buildMaxedChunithmScores(catalog);
     const enabledKeys = catalog.songs
       .filter((song) => !song.disabled)
       .flatMap((song) => song.difficulties.map((difficulty) => `${song.id}:${difficulty.difficulty}`));
-    expect(records.map((record) => `${Number(record.songId)}:${record.levelIndex}`)).toEqual(enabledKeys);
+    expect(records.map((record) => `${record.id}:${record.level_index}`)).toEqual(enabledKeys);
   });
 });

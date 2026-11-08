@@ -36,16 +36,16 @@ vi.mock('expo-file-system/legacy', () => ({
 }));
 vi.mock('expo-asset', () => ({ Asset: {} }));
 vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
-vi.mock('@/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'v1' }));
-vi.mock('@/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'v1' }));
-vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'v1' }));
-vi.mock('@/features/phigros-best-image/phigros-ui-cache', () => ({ PHIGROS_UI_CACHE_VERSION: 'v1' }));
-vi.mock('@/services/remote-image-cache', () => ({ pruneRemoteImageCache: vi.fn(async () => undefined) }));
+vi.mock('@rranker/tool-maimai/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'v1' }));
+vi.mock('@rranker/tool-maimai/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'v1' }));
+vi.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'v1' }));
+vi.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache', () => ({ PHIGROS_UI_CACHE_VERSION: 'v1' }));
+vi.mock('@rranker/sdk/services/remote-image-cache', () => ({ pruneRemoteImageCache: vi.fn(async () => undefined) }));
 
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { cleanupOrphanedTemporaryStorage } from '@/features/storage-management/storage-cache-maintenance';
+import { cleanupOrphanedTemporaryStorage } from '@rranker/sdk/features/storage-management/storage-cache-maintenance';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { chartPreviewStageDirectory, createChartPreviewSessionDirectory } from '@/features/chart-preview-shared/chart-preview-assets';
+import { chartPreviewStageDirectory, createChartPreviewSessionDirectory } from '@rranker/sdk/features/chart-preview-shared/chart-preview-assets';
 
 describe('startup cache cleanup', () => {
   beforeEach(() => {

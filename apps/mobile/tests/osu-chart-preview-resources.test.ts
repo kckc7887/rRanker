@@ -4,15 +4,15 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CHART_PREVIEW_MAX_ARCHIVE_ENTRIES,
   CHART_PREVIEW_MAX_ENTRY_UNCOMPRESSED_BYTES,
-} from '@/features/chart-preview-shared/chart-preview-resource-budget';
-import { readOsuChartPreviewArchive } from '@/features/osu-chart-preview/chart-preview-resources';
+} from '@rranker/sdk/features/chart-preview-shared/chart-preview-resource-budget';
+import { readOsuChartPreviewArchive } from '@rranker/chart-osu/features/osu-chart-preview/chart-preview-resources';
 import {
   normalizeOsuChartPreviewSettings,
   parseOsuChartPreviewTarget,
   type OsuChartPreviewTarget,
-} from '@/features/osu-chart-preview/configuration';
-import { applyOsuChartPreviewConfigToHtml, buildOsuChartPreviewAudioScript } from '@/features/osu-chart-preview/osu-chart-preview-inject';
-import { captureResourceWrites, invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+} from '@rranker/chart-osu/features/osu-chart-preview/configuration';
+import { applyOsuChartPreviewConfigToHtml, buildOsuChartPreviewAudioScript } from '@rranker/chart-osu/features/osu-chart-preview/osu-chart-preview-inject';
+import { captureResourceWrites, invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
 const target: OsuChartPreviewTarget = { gameId: 'osu-catch', beatmapsetId: 10, beatmapId: 21 };
 const osu = (id = 21, set = 10) => `osu file format v14

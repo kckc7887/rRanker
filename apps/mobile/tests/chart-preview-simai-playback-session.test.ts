@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseSimaiChart, prepareAudioEvents } from '@/features/simai-chart-preview/engine';
+import { parseSimaiChart, prepareAudioEvents } from '@rranker/chart-simai/features/simai-chart-preview/engine/index';
 import {
   SimaiPlaybackSession,
-} from '@/features/simai-chart-preview/webview-player/playback';
+} from '@rranker/chart-simai/features/simai-chart-preview/webview-player/playback';
 import {
   beatsToMs,
   calculateMusicTime,
@@ -10,7 +10,7 @@ import {
   msToBeats,
   musicTimeToBeats,
   resolvePlaybackRange,
-} from '@/features/simai-chart-preview/webview-player/timeConversion';
+} from '@rranker/chart-simai/features/simai-chart-preview/webview-player/timeConversion';
 
 const MUSIC_DURATION_SECONDS = 30;
 

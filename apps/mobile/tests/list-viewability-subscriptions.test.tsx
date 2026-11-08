@@ -2,16 +2,16 @@ import { jest } from '@jest/globals';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { createContext, type ReactNode, useContext } from 'react';
 import { Text, View, type FlatListProps } from 'react-native';
-import { BestListPage, RemoteImageFlatList } from '@/components/game-content/GameListPages';
-import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { BestListPage, RemoteImageFlatList } from '@rranker/sdk/components/game-content/GameListPages';
+import { useCachedTabActive } from '@rranker/sdk/components/CachedTabScreen';
 
 const mockPersistenceContext = createContext(false);
-jest.mock('@/components/RemoteImage', () => ({
+jest.mock('@rranker/sdk/components/RemoteImage', () => ({
   RemoteImagePersistenceScope: ({ enabled, children }: { enabled: boolean; children: ReactNode }) => (
     <mockPersistenceContext.Provider value={enabled}>{children}</mockPersistenceContext.Provider>
   ),
 }));
-jest.mock('@/components/game-content/GameScoreCard', () => ({ ScoreCardArtworkScope: ({ children }: { children: ReactNode }) => children }));
+jest.mock('@rranker/sdk/components/game-content/GameScoreCard', () => ({ ScoreCardArtworkScope: ({ children }: { children: ReactNode }) => children }));
 
 type Result = { id: string; song: { id: string; title: string; rowKey?: string } };
 

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { DataSource } from '@/domain/models';
-import { ProviderError } from '@/providers/errors';
+import type { DataSource } from '@rranker/sdk/data';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 import {
   cachedSnapshotSource,
   failedRefresh,
   refreshFailureFromError,
   refreshNeedsLogin,
   snapshotMetadataOf,
-} from '@/domain/refresh-result';
+} from '@rranker/sdk/domain/refresh-result';
 
 const source: DataSource = {
   kind: 'lxns', label: '落雪咖啡屋', updatedAt: '2026-07-01T00:00:00.000Z', isStale: false,

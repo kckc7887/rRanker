@@ -1,11 +1,11 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { MajdataBestScreen, MajdataCatalogScreen, MajdataFilter, MajdataRecordsScreen } from '@/screens/MajdataScreens';
-import { MajdataScoreCard, MajdataSongRow } from '@/components/majdata/MajdataCards';
-import type { MajdataSong } from '@/domain/majdata';
-import { majdataRecordCard } from '@/features/game-content/adapters/majdata';
-import { buildMaxedMajdataScore } from '@/providers/maxed-majdata-test-provider';
-import { useMajdataCatalogFilter, useMajdataRecordsFilter } from '@/state/majdata-filters';
+import { MajdataBestScreen, MajdataCatalogScreen, MajdataFilter, MajdataRecordsScreen } from '@rranker/game-majdata-net/screens/MajdataScreens';
+import { MajdataScoreCard, MajdataSongRow } from '@rranker/game-majdata-net/components/MajdataCards';
+import type { MajdataSong } from '@rranker/game-majdata-net/domain/majdata';
+import { majdataRecordCard } from '@rranker/game-majdata-net/presentation';
+import { buildMaxedMajdataScore } from '@rranker/provider-majdata-net-test/providers/maxed-majdata-test-provider';
+import { useMajdataCatalogFilter, useMajdataRecordsFilter } from '@rranker/game-majdata-net/state/majdata-filters';
 
 const mockPush = jest.fn();
 const mockMore = jest.fn();
@@ -30,17 +30,17 @@ let mockFavorites: { kind: 'song'; favorite: boolean; songId: string; tags: stri
 
 jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href) } }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   useCachedTabActive: () => mockTabActive,
 }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({ activeAccountId: 'player', activeGameId: 'majdata-net' }) }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ isLoading: false, isError: false, isRefetching: false, refetch: jest.fn(), data: {
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({ activeAccountId: 'player', activeGameId: 'majdata-net' }) }));
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({ isLoading: false, isError: false, isRefetching: false, refetch: jest.fn(), data: {
   payload: { kind: 'majdata-net', snapshot: { player: { username: 'player' }, records: mockRecords,
     recent: [mockRecent, { ...mockRecent, timestamp: '2026-09-02T00:00:00Z', acc: 97 }] } },
 } }) }));
-jest.mock('@/hooks/use-majdata', () => ({
+jest.mock('@rranker/game-majdata-net/hooks/use-majdata', () => ({
   useMajdataDemoScores: () => ({ bound: mockExample, records: mockDemoRecords,
     hasNextPage: mockHasNextPage, isPending: false, isFetching: false, isError: mockDemoNextError,
     isFetchNextPageError: mockDemoNextError, isRefetching: false, isFetchingNextPage: false,
@@ -49,9 +49,9 @@ jest.mock('@/hooks/use-majdata', () => ({
     isError: false, isRefetching: false, isFetchingNextPage: false, fetchNextPage: mockMore, refetch: jest.fn() }),
   useMajdataRanking: () => ({ data: { hash: 'revision', scores: [[], [], [], [{ player: { username: 'player' } }], []] } }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ data: mockFavorites,
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({ data: mockFavorites,
   setSongFavorite: mockFavorite, isLoading: false, isUpdating: false }) }));
-jest.mock('@/components/RemoteImage', () => {
+jest.mock('@rranker/sdk/components/RemoteImage', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return { RemoteImage: View, RemoteImagePersistenceScope: View, RemoteImageActivityScope: View };
 });

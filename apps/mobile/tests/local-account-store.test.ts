@@ -1,4 +1,4 @@
-import { LocalAccountStore } from '@/storage/local-account-store';
+import { LocalAccountStore } from '@rranker/provider-local/storage/local-account-store';
 class MemoryKeyValueStore {
   values = new Map<string, string>();
   readGate: Promise<void> | null = null;

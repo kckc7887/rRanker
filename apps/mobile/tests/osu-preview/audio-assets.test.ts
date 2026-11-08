@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { loadPreviewAudio } from '../../src/features/osu-chart-preview/webview-player/audio-assets';
-import type { PendingSound } from '../../src/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
+import { loadPreviewAudio } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/audio-assets';
+import type { PendingSound } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
 
 class DecodeContext {
   decoded: number[] = [];

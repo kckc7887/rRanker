@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadChaptersTable } from '@/domain/phigros';
-import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
-import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
-import { phigrosResources } from '@/services/phigros-resources';
+import { loadChaptersTable } from '@rranker/game-phigros/domain/phigros';
+import { PhigrosCatalogProvider } from '@rranker/provider-phi-taptap/providers/phigros-catalog-provider';
+import { PHIGROS_OSS_BASE } from '@rranker/game-phigros/domain/account-avatar';
+import { phigrosResources } from '@rranker/game-phigros/services/phigros-resources';
 import { releaseFixture } from './fixtures/phigros-release';
 
 beforeEach(() => phigrosResources.clear());

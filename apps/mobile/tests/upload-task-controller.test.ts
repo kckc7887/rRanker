@@ -1,9 +1,11 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import type { CatalogSnapshot } from '@/domain/models';
-import { UploadTaskController } from '@/services/upload-task-controller';
-import { getAppLifecycleSnapshot, publishAppLifecycleSnapshot } from '@/state/app-lifecycle-core';
+import { getDataSource, setDisabledPlugins } from '@rranker/sdk/registry';
+import { createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
+import type { CatalogSnapshot } from '@rranker/game-maimai/domain/models';
+import { UploadTaskController } from '@rranker/tool-maimai/services/upload-task-controller';
+import { getAppLifecycleSnapshot, publishAppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle-core';
 
-vi.mock('@/services/runtime-diagnostics-recorder', () => ({ recordRuntimeDiagnostic: vi.fn() }));
+vi.mock('@rranker/sdk/services/runtime-diagnostics-recorder', () => ({ recordRuntimeDiagnostic: vi.fn() }));
 let controller: UploadTaskController;
 beforeEach(() => { controller = new UploadTaskController(); });
 const foreground = getAppLifecycleSnapshot();
@@ -13,9 +15,22 @@ function deferred<T>() {
   const promise = new Promise<T>(yes => { resolve = yes; });
   return { promise, resolve };
 }
-afterEach(() => { controller.cancel(); publishAppLifecycleSnapshot(foreground); vi.useRealTimers(); });
+afterEach(() => { controller.cancel(); setDisabledPlugins([]); publishAppLifecycleSnapshot(foreground); vi.useRealTimers(); });
 
 describe('upload task ownership', () => {
+  it('cancels only when a selected upload source becomes unavailable and leaves the old task canceled after re-enabling', () => {
+    const account = createMaimaiBoundAccount({ providerId: 'lxns', playerId: 'source', displayName: '来源', rating: 0 });
+    const signal = controller.begin(false, [account]);
+    const canceled = vi.fn(); signal.onCancel!(canceled);
+    setDisabledPlugins([getDataSource('diving-fish')!.id]);
+    expect(signal.aborted).toBe(false);
+    setDisabledPlugins([getDataSource('lxns')!.id]);
+    expect(signal.aborted).toBe(true);
+    expect(canceled).toHaveBeenCalledOnce();
+    setDisabledPlugins([]);
+    expect(controller.isCurrent(signal)).toBe(false);
+  });
+
   it('keeps a canceled native task occupied until cleanup settles', () => {
     const first = controller.begin(true);
     controller.cancel();

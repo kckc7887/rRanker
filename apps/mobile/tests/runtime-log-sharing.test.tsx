@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { Share } from 'react-native';
-import { runtimeLogs, shareRuntimeLog } from '@/services/runtime-logs';
+import { runtimeLogs, shareRuntimeLog } from '@rranker/sdk/services/runtime-logs';
 
 const mockFiles = new Map<string, string>();
 const mockWrites = new Map<string, string>();
@@ -10,13 +10,13 @@ const mockShare = jest.fn(async (_uri: string, _options: unknown) => undefined);
 const diagnostics = { sessions: [{ startedAt: '2026-09-06T10:00:00Z', events: [] }] };
 const mockDiagnostics = jest.fn(async () => diagnostics);
 const log = { formatVersion: 1, session: { id: 7 }, context: {}, entries: [], summary: { retainedCount: 0 }, snapshotAt: '2026-09-06T10:00:00Z' };
-jest.mock('@/services/runtime-diagnostics', () => ({ snapshotRuntimeDiagnosticsForExport: async () => {
+jest.mock('@rranker/sdk/services/runtime-diagnostics', () => ({ snapshotRuntimeDiagnosticsForExport: async () => {
   try { return { ...await mockDiagnostics(), emergency: [], storageAvailable: true }; }
   catch { return { sessions: [], emergency: [], storageAvailable: false }; }
 } }));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '0.0.0-test' } } }));
-jest.mock('@/storage/rranker-database', () => ({}));
-jest.mock('@/storage/runtime-log-preferences-store', () => ({ runtimeLogPreferencesStore: {} }));
+jest.mock('@rranker/sdk/storage/rranker-database', () => ({}));
+jest.mock('@rranker/sdk/storage/runtime-log-preferences-store', () => ({ runtimeLogPreferencesStore: {} }));
 jest.mock('expo-file-system', () => ({
   File: class {
     uri: string;

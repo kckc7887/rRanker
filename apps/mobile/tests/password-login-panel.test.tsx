@@ -1,13 +1,13 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { PasswordLoginPanel } from '@/components/game-content/PasswordLoginPanel';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
-import { createAppTheme } from '@/theme/theme-tokens';
+import { PasswordLoginPanel } from '@rranker/sdk/components/game-content/PasswordLoginPanel';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
+import { createAppTheme } from '@rranker/sdk/theme/theme-tokens';
 
 let mockLifecycle: AppLifecycleSnapshot = { appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 1, memoryWarningGeneration: 0 };
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
 let mockTheme = createAppTheme('light', '#246BFD');
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
 
 const login = jest.fn<(credentials: { username: string; password: string }, signal: AbortSignal) => Promise<void>>();
 

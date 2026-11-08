@@ -1,16 +1,16 @@
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated } from 'react-native';
-import { RizlineScoreCard } from '@/components/rizline/RizlineScoreCard';
-import { RizlineSongDetail } from '@/components/rizline/RizlineSongDetail';
-import { RizlineSongRow } from '@/components/rizline/RizlineSongRow';
-import { type RizlineRecord } from '@/domain/rizline';
-import { METRIC_GRADIENT_THEMES } from '@/domain/metric-gradient-theme';
-import { RizlineBestScreen, RizlineCatalogScreen, RizlineRecordsScreen } from '@/screens/RizlineScreens';
-import { RizlineRandomChartsScreen } from '@/screens/RizlineRandomChartsScreen';
-import { useRizlineCatalogFilter } from '@/state/rizline-catalog-filter';
+import { RizlineScoreCard } from '@rranker/game-rizline/components/RizlineScoreCard';
+import { RizlineSongDetail } from '@rranker/game-rizline/components/RizlineSongDetail';
+import { RizlineSongRow } from '@rranker/game-rizline/components/RizlineSongRow';
+import { type RizlineRecord } from '@rranker/game-rizline/domain/rizline';
+import { METRIC_GRADIENT_THEMES } from '@rranker/sdk/domain/metric-gradient-theme';
+import { RizlineBestScreen, RizlineCatalogScreen, RizlineRecordsScreen } from '@rranker/game-rizline/screens/RizlineScreens';
+import { RizlineRandomChartsScreen } from '@rranker/tool-rizline/screens/RizlineRandomChartsScreen';
+import { useRizlineCatalogFilter } from '@rranker/game-rizline/state/rizline-catalog-filter';
 import UserLibraryScreen from '../app/library/index';
-import type { UserLibraryItem } from '@/domain/user-library';
+import type { UserLibraryItem } from '@rranker/sdk/domain/user-library';
 import { rizlineChart, rizlineRecord, rizlineSong } from './rizline-ui-fixtures';
 
 const mockPush = jest.fn(); const mockSetPractice = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
@@ -29,8 +29,8 @@ jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push:
   useNavigation: () => ({ canGoBack: () => true, goBack: jest.fn(), getState: () => ({ index: 0, routes: [] }) }) }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-image', () => ({ Image: () => null }));
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
 }));
 jest.mock('react-native-gesture-handler', () => {
@@ -41,32 +41,32 @@ jest.mock('react-native-safe-area-context', () => ({
   ...(jest.requireActual('react-native-safe-area-context') as object),
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeGameId: 'rizline', activeAccountId: 'rizline:1' }) }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn() }), useNotificationModalRequestClose: () => () => false }));
-jest.mock('@/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => {
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeGameId: 'rizline', activeAccountId: 'rizline:1' }) }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn() }), useNotificationModalRequestClose: () => () => false }));
+jest.mock('@rranker/game-rizline/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => {
   if (mockSongs[0] !== mockSong) mockSongs = [mockSong];
   return {
   data: mockCatalogState.hasData ? { snapshot: { schemaVersion: 1, resourceVersion: 'v1', gameVersion: '2.7.1', songs: mockSongs } } : undefined,
   isLoading: mockCatalogState.isLoading, isPending: mockCatalogState.isPending ?? mockCatalogState.isLoading,
   isError: mockCatalogState.isError, isFetching: mockCatalogState.isFetching ?? false, error: null, refetch: mockCatalogRefetch,
 } } }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({
   data: mockGameDataState.hasData ? { payload: { kind: 'rizline', records: mockRecords, best: { ah5: mockRecords, b35: mockRecords, ah5Contribution: 1, b35Contribution: 2, hasUnknownCandidates: mockUnknownCandidates } } } : undefined,
   isLoading: mockGameDataState.isLoading, isPending: mockGameDataState.isPending ?? mockGameDataState.isLoading,
   isError: mockGameDataState.isError, isFetching: mockGameDataState.isFetching ?? false, error: null, refetch: mockGameDataRefetch,
 }) }));
-jest.mock('@/state/rizline-random-charts-filter', () => ({ useRizlineRandomChartsFilter: () => ({
+jest.mock('@rranker/tool-rizline/state/rizline-random-charts-filter', () => ({ useRizlineRandomChartsFilter: () => ({
   count: 1, difficulty: 'IN', packId: 'all', constantMin: '12', constantMax: '12', collapsed: true,
   hydrate: jest.fn(async () => undefined), setCount: jest.fn(), setCollapsed: jest.fn(), setDifficulty: jest.fn(),
   setPackId: jest.fn(), setConstantMin: jest.fn(), setConstantMax: jest.fn(), clearFilters: jest.fn(),
 }) }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: mockLibraryItems, isLoading: false, isError: false, isUpdating: false, tagPresets: [], refetch: jest.fn(),
   setSongFavorite: (...args: unknown[]) => mockSetFavorite(...args),
   setChartPractice: (...args: unknown[]) => mockSetPractice(...args),
   setTags: (...args: unknown[]) => mockSetTags(...args), setTagPresets: jest.fn(),
-  songKey: (songId: string) => `song:rizline:${songId}`, chartKey: (songId: string, type: string, index: number) => `chart:rizline:${songId}:${type}:${index}`,
+  key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
 }) }));
 
 describe('Rizline UI', () => {
@@ -83,7 +83,7 @@ describe('Rizline UI', () => {
   it('opens the shared score-image page from Best40', async () => {
     const screen = await render(<RizlineBestScreen />);
     await fireEvent.press(screen.getByText('生成B40图片'));
-    expect(mockPush).toHaveBeenCalledWith('/best-image');
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.rizline', pageId: 'best-image', gameId: 'rizline' } });
   });
 
   it('waits for the catalog first result and preserves a loaded detail during refresh', async () => {
@@ -103,7 +103,7 @@ describe('Rizline UI', () => {
     expect(screen.getByText('119.1235%')).toBeTruthy(); expect(screen.getByText('139.1235')).toBeTruthy();
     expect(screen.queryByText('AP')).toBeNull();
     await fireEvent.press(screen.getByTestId('rizline-score-song.a.IN'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'song.a', levelIndex: '2', gameId: 'rizline' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: 'song.a', levelIndex: '2', gameId: 'rizline' } });
   });
 
   it('shows both inferred best sections and orders records by RKS', async () => {
@@ -238,22 +238,22 @@ describe('Rizline UI', () => {
     await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: carousel.props.snapToInterval } } });
     chart = within(screen.getByTestId('rizline-chart-IN'));
     await fireEvent.press(chart.getByLabelText('加入练习清单'));
-    expect(mockSetPractice).toHaveBeenCalledWith('song.a', 'SD', 2, true);
+    expect(mockSetPractice).toHaveBeenCalledWith({ gameId: 'rizline', kind: 'chart', id: JSON.stringify(['song.a', 2]), target: { songId: 'song.a', levelIndex: '2' } }, true);
     const preview = chart.getByLabelText('查看谱面确认：测试歌曲 IN');
     const inActions = chart.getAllByRole('button').map((button) => button.props.accessibilityLabel);
     expect(inActions.indexOf('查看谱面确认：测试歌曲 IN'))
       .toBe(inActions.indexOf('加入练习清单') + 1);
     await fireEvent.press(preview);
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/rizline-chart-preview',
-      params: { songId: 'song.a', levelIndex: '2', title: '测试歌曲' },
+      pathname: '/plugins/[pluginId]/[pageId]',
+      params: { pluginId: 'tool.chart-json', pageId: 'chart-preview', gameId: 'rizline', songId: 'song.a', levelIndex: '2', title: '测试歌曲' },
     });
     await fireEvent.changeText(within(screen.getByTestId('rizline-chart-tags-IN')).getByLabelText('新标签'), '交互');
     await fireEvent.press(within(screen.getByTestId('rizline-chart-tags-IN')).getByLabelText('添加标签'));
-    expect(mockSetTags).toHaveBeenCalledWith({ kind: 'chart', songId: 'song.a', type: 'SD', levelIndex: 2 }, ['交互']);
+    expect(mockSetTags).toHaveBeenCalledWith({ gameId: 'rizline', kind: 'chart', id: JSON.stringify(['song.a', 2]), target: { songId: 'song.a', levelIndex: '2' } }, ['交互']);
     await fireEvent.changeText(within(screen.getByTestId('rizline-song-tags')).getByLabelText('新标签'), '喜欢');
     await fireEvent.press(within(screen.getByTestId('rizline-song-tags')).getByLabelText('添加标签'));
-    expect(mockSetTags).toHaveBeenCalledWith({ kind: 'song', songId: 'song.a' }, ['喜欢']);
+    expect(mockSetTags).toHaveBeenCalledWith({ gameId: 'rizline', kind: 'song', id: 'song.a', target: { songId: 'song.a' } }, ['喜欢']);
   });
 
   it('preserves independent SP ids in practice and leaves unavailable scores blank', async () => {
@@ -264,7 +264,7 @@ describe('Rizline UI', () => {
     expect(chart.queryByText('AP')).toBeNull();
     expect(chart.queryByText('AH')).toBeNull();
     await fireEvent.press(chart.getByLabelText('加入练习清单'));
-    expect(mockSetPractice).toHaveBeenCalledWith('song.a.sp', 'SD', 4, true);
+    expect(mockSetPractice).toHaveBeenCalledWith({ gameId: 'rizline', kind: 'chart', id: JSON.stringify(['song.a.sp', 4]), target: { songId: 'song.a.sp', levelIndex: '4' } }, true);
   });
 
   it('shows catalog song-row badges as constants without difficulty names', async () => {
@@ -328,13 +328,12 @@ describe('Rizline UI', () => {
 
   it('opens an independent SP practice entry from my library at its stable index', async () => {
     mockSong = rizlineSong({ id: 'song.a.sp', title: '独立 SP 歌曲', charts: [rizlineChart('SP', null, 'song.a.sp')] });
-    mockLibraryItems = [{ key: 'chart:rizline:song.a.sp:SD:4', gameId: 'rizline', kind: 'chart', songId: 'song.a.sp', type: 'SD', levelIndex: 4,
-      practice: true, tags: ['交互'], createdAt: '2026-09-13', updatedAt: '2026-09-13' }];
+    mockLibraryItems = [{ key: JSON.stringify(['rizline', 'chart', JSON.stringify(['song.a.sp', 4])]), gameId: 'rizline', kind: 'chart', id: JSON.stringify(['song.a.sp', 4]), target: { songId: 'song.a.sp', levelIndex: '4' }, practice: true, tags: ['交互'], createdAt: '2026-09-13', updatedAt: '2026-09-13' }];
     const screen = await render(<UserLibraryScreen />);
     expect(screen.getByText('练习谱面 · SP ?')).toBeTruthy();
     expect(screen.queryByText(/曲库暂不可用/)).toBeNull();
     await fireEvent.press(screen.getByText('独立 SP 歌曲'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'song.a.sp', levelIndex: '4', gameId: 'rizline' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: 'song.a.sp', levelIndex: '4', gameId: 'rizline' } });
   });
 
   it('waits for scores then preserves random draws with unknown metrics after a read failure', async () => {
@@ -350,3 +349,5 @@ describe('Rizline UI', () => {
     expect(screen.queryByText('未游玩')).toBeNull();
   });
 });
+
+jest.mock('@/services/user-data-file-service', () => ({ pickUserDataBackup: jest.fn(), shareUserDataBackup: jest.fn() }));

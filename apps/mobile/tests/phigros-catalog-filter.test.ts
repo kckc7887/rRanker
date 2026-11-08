@@ -1,4 +1,4 @@
-import { usePhigrosCatalogFilter } from '@/state/phigros-catalog-filter';
+import { usePhigrosCatalogFilter } from '@rranker/game-phigros/state/phigros-catalog-filter';
 
 describe('usePhigrosCatalogFilter store', () => {
   beforeEach(() => usePhigrosCatalogFilter.getState().reset());

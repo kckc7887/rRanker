@@ -1,7 +1,7 @@
-import { createAppTheme, resolveAccentHex, resolveAppearance } from '@/theme/theme-tokens';
-import { DEFAULT_THEME_PREFERENCES, parseThemePreferences, ThemePreferencesStore } from '@/storage/theme-preferences-store';
-import { hslToHex, normalizeAccentHex } from '@/theme/accent-color';
-import { createSerializedKeyValueStorage } from '@/storage/key-value-storage';
+import { createAppTheme, resolveAccentHex, resolveAppearance } from '@rranker/sdk/theme/theme-tokens';
+import { DEFAULT_THEME_PREFERENCES, parseThemePreferences, ThemePreferencesStore } from '@rranker/sdk/storage/theme-preferences-store';
+import { hslToHex, normalizeAccentHex } from '@rranker/sdk/theme/accent-color';
+import { createSerializedKeyValueStorage } from '@rranker/sdk/storage/key-value-storage';
 
 describe('theme preferences', () => {
   it('does not overwrite a new preference while rebuilding unsupported data', async () => {

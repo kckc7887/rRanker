@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadPhigrosAvatarCatalog, resolvePhigrosAvatarUrl } from '@/services/phigros-avatar-resolver';
-import { phigrosResources } from '@/services/phigros-resources';
-import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
+import { loadPhigrosAvatarCatalog, resolvePhigrosAvatarUrl } from '@rranker/game-phigros/services/phigros-avatar-resolver';
+import { phigrosResources } from '@rranker/game-phigros/services/phigros-resources';
+import { PHIGROS_OSS_BASE } from '@rranker/game-phigros/domain/account-avatar';
 import { releaseFixture } from './fixtures/phigros-release';
 
 let release: ReturnType<typeof releaseFixture>;

@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
-import { exampleTestPayload } from '@/providers/example-test-provider';
-import { presentExampleRecord } from '@/features/game-content/adapters/example';
-import { decodeDetailTarget, detailTargetHref } from '@/domain/detail-target';
-import { pickRandomItems } from '@/domain/random-charts';
+import { exampleTestPayload } from '@rranker/provider-example-test/providers/example-test-provider';
+import { presentExampleRecord } from '@rranker/game-example/presentation';
+import { detailHref } from '@rranker/sdk';
+import { pickRandomItems } from '@rranker/sdk/domain/random-charts';
 
 it('generates 40 independent songs and consistent Best 30 and Ranked 10 totals', () => {
   const payload = exampleTestPayload();
@@ -17,7 +17,7 @@ it('generates 40 independent songs and consistent Best 30 and Ranked 10 totals',
     expect(record).toMatchObject({ score: 1000000, rating: 475, song: { title: 'EXAMPLE SONG', artist: '颍川ホコリ', genre: '流行', bpm: 120, version: 'EXAMPLE' } });
     const presentation = presentExampleRecord(record);
     expect(presentation.primaryMetric).toMatchObject({ label: 'Score', text: '1000000', effect: 'flowing-gradient' });
-    expect(decodeDetailTarget(detailTargetHref(presentation.route).params)).toEqual({ ok: true, target: { game: 'example', songId: record.song.id, levelIndex: 0 } });
+    expect(detailHref(presentation.route)).toEqual({ pathname: '/detail', params: { gameId: 'example', songId: record.song.id, levelIndex: '0' } });
   }
 });
 

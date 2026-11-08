@@ -2,10 +2,10 @@ import { jest } from '@jest/globals';
 import React, { type ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider, QueryObserver } from '@tanstack/react-query';
-import { queryClient } from '@/state/query-client';
-import { ensurePhigrosCatalog, refreshPhigrosCatalog } from '@/services/phigros-catalog-query';
-import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
-import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { ensurePhigrosCatalog, refreshPhigrosCatalog } from '@rranker/game-phigros/services/phigros-catalog-query';
+import { usePhigrosCatalog } from '@rranker/game-phigros/hooks/use-phigros-catalog';
+import { PhigrosCatalogProvider } from '@rranker/provider-phi-taptap/providers/phigros-catalog-provider';
 
 let mockRevision = 'r1';
 let mockRelease: { revision: string } | undefined;
@@ -13,13 +13,13 @@ const mockLoad = jest.fn(async (..._args: unknown[]) => {
   if (mockRelease?.revision !== mockRevision) mockRelease = { revision: mockRevision };
   return mockRelease;
 });
-jest.mock('@/services/phigros-resources', () => ({ phigrosResources: {
+jest.mock('@rranker/game-phigros/services/phigros-resources', () => ({ phigrosResources: {
   peek: () => mockRelease,
   load: (...args: unknown[]) => mockLoad(...args),
 } }));
-jest.mock('@/services/phigros-kyou-cache', () => ({ loadPhigrosKyouAliases: async () => { throw new Error('offline aliases'); } }));
-jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
-jest.mock('@/providers/phigros-catalog-provider', () => ({ PhigrosCatalogProvider: class {
+jest.mock('@rranker/provider-phi-taptap/services/phigros-kyou-cache', () => ({ loadPhigrosKyouAliases: async () => { throw new Error('offline aliases'); } }));
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
+jest.mock('@rranker/provider-phi-taptap/providers/phigros-catalog-provider', () => ({ PhigrosCatalogProvider: class {
   async getCatalog() {
     return { songs: mockRevision === 'r1' ? [{ id: 'old' }] : [{ id: 'old' }, { id: 'new' }],
       source: { kind: 'generated', label: 'Phigros', updatedAt: mockRevision, isStale: false } };

@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import { invalidateMajdataCatalog, invalidateTufDifficulties } from '@/services/infinite-query-refresh';
+import { invalidateMajdataCatalog } from '@rranker/game-majdata-net/services/game-data';
+import { invalidateTufDifficulties } from '@rranker/game-adofai/services/game-data';
 
 describe('infinite query refresh', () => {
   it.each([

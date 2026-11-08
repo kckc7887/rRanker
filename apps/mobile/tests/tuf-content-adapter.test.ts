@@ -5,8 +5,8 @@ import {
   filterTufPasses, selectTufTopPasses, tufDifficultyBounds, tufPguRange, TufLevelPageSchema, TufPassPageSchema,
   uniqueTufPassesByLevel,
   type TufPass,
-} from '@/domain/tuf';
-import { presentTufChart, presentTufLevel, presentTufScore } from '@/features/game-content/adapters';
+} from '@rranker/game-adofai/domain/tuf';
+import { presentTufChart, presentTufLevel, presentTufScore } from '@rranker/game-adofai/presentation';
 
 describe('ADOFAI TUF content adapter', () => {
   const pass = TufPassPageSchema.parse(passPage).passes[0];
@@ -15,7 +15,7 @@ describe('ADOFAI TUF content adapter', () => {
   it('builds dynamic note and presentation contracts for full and missing level fields', () => {
     expect(presentTufChart(level).notes[0].values).toEqual([{ key: 'tiles', label: '物量', value: 421 }]);
     expect(presentTufScore(pass).primaryMetric.text).toBe('101.25');
-    expect(presentTufLevel(level).route.songId).toBe('11372');
+    expect(presentTufLevel(level).route.params.songId).toBe('11372');
     expect(presentTufChart(level, pass).achievementRows.flat().some((badge) => badge.key === 'wf')).toBe(true);
     const sparse = TufLevelPageSchema.parse(levelPage).results[0];
     expect(presentTufChart(sparse).notes).toEqual([]);

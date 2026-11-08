@@ -5,7 +5,7 @@ import {
   buildOsuCatalogFilterSummary,
   OsuCatalogFilterBar,
   osuGeneralValueLabel,
-} from '@/components/osu/OsuCatalogFilterBar';
+} from '@rranker/game-osu/components/OsuCatalogFilterBar';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
@@ -16,7 +16,7 @@ jest.mock('react-native-gesture-handler', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     surface: '#FFFFFF',
     input: '#F3F4F6',

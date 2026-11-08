@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { constrainCrop, cropFromTransform, cropPixels, transformFromCrop } from '@/components/image-crop';
+import { constrainCrop, cropFromTransform, cropPixels, transformFromCrop } from '@rranker/sdk/components/image-crop';
 
 describe('头像裁剪区域', () => {
   it.each([{ width: 1200, height: 600 }, { width: 600, height: 1200 }, { width: 800, height: 800 }])('centers a square on $width × $height and restores the selected crop', size => {

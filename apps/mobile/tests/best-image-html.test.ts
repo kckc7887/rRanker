@@ -2,15 +2,15 @@ import { vi } from 'vitest';
 import {
   buildBestImageHtml,
   ratingFrameIndex,
-} from '@/features/maimai-best-image/build-maimai-best-image-html';
+} from '@rranker/tool-maimai/features/maimai-best-image/build-maimai-best-image-html';
 import {
   bestImageWebViewVersion,
   minimumBestImageHeight,
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
   parseBestImageRuntimeMessage,
-} from '@/features/best-image/build-best-image-html';
-import type { ScoreRecord } from '@/domain/models';
+} from '@rranker/sdk/features/best-image/build-best-image-html';
+import type { ScoreRecord } from '@rranker/game-maimai/domain/models';
 import { JSDOM } from 'jsdom';
 
 function viewportWidth(html: string): number {

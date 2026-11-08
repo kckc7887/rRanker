@@ -1,17 +1,12 @@
-import {
-  boundModesOfCredential,
-  familyForGameId,
-  familyForId,
-  isOsuGameId,
-  OSU_FAMILY,
-} from '@/domain/game-mode-family';
+import { boundModesOfCredential, familyForGameId, familyForId } from '@rranker/sdk/domain/game-mode-family';
+import { isOsuGameId, OSU_FAMILY } from '@rranker/game-osu';
 import {
   reusablePartiallyBoundAccounts,
   reusableSharedCredentialAccounts,
-} from '@/domain/shared-credential-account-reuse';
-import { createOsuBoundAccount } from '@/domain/bound-account';
-import { reusableLxnsAccounts } from '@/domain/lxns-account-reuse';
-import type { BoundAccount } from '@/domain/bound-account';
+} from '@rranker/sdk/domain/shared-credential-account-reuse';
+import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
+import { reusableLxnsAccounts } from '@rranker/provider-lxns/domain/lxns-account-reuse';
+import type { BoundAccount } from '@rranker/sdk/account';
 
 const osuSession = {
   mode: 'osu-oauth',

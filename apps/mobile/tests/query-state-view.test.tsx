@@ -2,11 +2,11 @@ import type { ReactElement } from 'react';
 import { jest } from '@jest/globals';
 import { Text } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
-import { QueryStateView } from '@/components/QueryStateView';
-import { createAppTheme } from '@/theme/theme-tokens';
+import { QueryStateView } from '@rranker/sdk/components/QueryStateView';
+import { createAppTheme } from '@rranker/sdk/theme/theme-tokens';
 
 let mockTheme = createAppTheme('light', '#FFFFFF');
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
 jest.mock('react-native/Libraries/Components/ActivityIndicator/ActivityIndicator', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { __esModule: true, default: () => <RN.Text>native-loading</RN.Text> };

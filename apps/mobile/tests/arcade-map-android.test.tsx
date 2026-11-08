@@ -1,10 +1,10 @@
 import { jest } from '@jest/globals';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { Platform, View, type NativeSyntheticEvent } from 'react-native';
-import type { ArcadeCoordinate } from '@/domain/arcade-coordinates';
-import type { ArcadeShop } from '@/domain/arcade-shops';
-import { NativeArcadeMap } from '@/components/NativeArcadeMap.android';
-import { acceptArcadeMapPrivacy, getArcadeMapAvailability } from '@/services/arcade-map-platform';
+import type { ArcadeCoordinate } from '@rranker/tool-arcade-finder/domain/arcade-coordinates';
+import type { ArcadeShop } from '@rranker/tool-arcade-finder/domain/arcade-shops';
+import { NativeArcadeMap } from '@rranker/tool-arcade-finder/components/NativeArcadeMap.android';
+import { acceptArcadeMapPrivacy, getArcadeMapAvailability } from '@rranker/tool-arcade-finder/services/arcade-map-platform';
 
 const mockPrivacy = jest.fn(() => false);
 const mockAccept = jest.fn(() => { mockPrivacy.mockReturnValue(true); });

@@ -3,10 +3,10 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import StrengthAnalysisToolScreen from '../app/tools/strength-analysis';
-import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
-import { useThemeStore } from '@/state/theme-store';
-import { getGameToolbox } from '@/domain/game-toolbox';
+import { MaimaiStrengthAnalysisScreen as StrengthAnalysisToolScreen } from '@rranker/tool-maimai/screens/MaimaiStrengthAnalysisScreen';
+import type { CatalogSnapshot, ScoreRecord } from '@rranker/game-maimai/domain/models';
+import { useThemeStore } from '@rranker/sdk/state/theme-store';
+import { getGameToolbox } from '@rranker/sdk/domain/game-toolbox';
 
 const mockPush = jest.fn();
 const mockFetch = jest.fn<(url: string, init?: RequestInit) => Promise<Response>>();
@@ -18,9 +18,9 @@ let mockScoreQuery: Record<string, unknown>;
 let mockCatalogQuery: Record<string, unknown>;
 
 jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockPush(...args) }, Stack: { Screen: () => null }, useIsFocused: () => mockFocused }));
-jest.mock('@/state/session-store', () => ({ useSession: (select: (state: typeof mockSession) => unknown) => select(mockSession) }));
-jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => mockScoreQuery }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => mockCatalogQuery }));
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (select: (state: typeof mockSession) => unknown) => select(mockSession) }));
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => mockScoreQuery }));
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => mockCatalogQuery }));
 jest.mock('expo/fetch', () => ({ fetch: (url: string, init?: RequestInit) => mockFetch(url, init) }));
 jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
 jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
@@ -28,7 +28,7 @@ jest.mock('expo-image', () => {
   const { Image } = jest.requireActual<typeof import('react-native')>('react-native');
   return { Image: (props: React.ComponentProps<typeof Image>) => <Image {...props} /> };
 });
-jest.mock('@/storage/sqlite-snapshot-repository', () => {
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => {
   const values = new Map<string, unknown>();
   return { values, SqliteSnapshotRepository: class {
     async getResource(key: string) { return values.get(key) ?? null; }
@@ -38,7 +38,7 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/components/AppModal', () => {
+jest.mock('@rranker/sdk/components/AppModal', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return { AppModal: ({ visible, children }: { visible: boolean; children: ReactNode }) => visible ? <View>{children}</View> : null };
 });
@@ -73,7 +73,7 @@ beforeEach(() => {
       difficulty: item.difficulty, difficultyConstant: item.difficultyConstant }] })) };
   mockScoreQuery = { data: { records: mockRecords }, isLoading: false, isError: false, refetch: jest.fn() };
   mockCatalogQuery = { data: mockCatalog, isLoading: false, isError: false, refetch: jest.fn() };
-  (jest.requireMock('@/storage/sqlite-snapshot-repository') as { values: Map<string, unknown> }).values.clear();
+  (jest.requireMock('@rranker/sdk/storage/sqlite-snapshot-repository') as { values: Map<string, unknown> }).values.clear();
   mockFetch.mockImplementation(async () => response());
 });
 afterEach(() => { for (const client of clients.splice(0)) client.clear(); });
@@ -81,7 +81,7 @@ afterEach(() => { for (const client of clients.splice(0)) client.clear(); });
 it('opens from the toolbox, shows recommendations and navigates from supporting scores with chart identity', async () => {
   useThemeStore.setState({ scoreCardArtworkEnabled: true });
   mockScoreQuery = { ...mockScoreQuery, isDataStale: true };
-  expect(getGameToolbox('maimai').tools.find(tool => tool.title === '实力分析')?.href).toBe('/tools/strength-analysis');
+  expect(getGameToolbox('maimai').tools.find(tool => tool.title === '实力分析')?.href).toEqual({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.maimai', pageId: 'strength-analysis', gameId: 'maimai' } });
   const { screen } = await mount();
   await waitFor(() => expect(screen.getByText('Song 4')).toBeTruthy());
   expect(screen.getAllByText('-')).toHaveLength(2);
@@ -90,14 +90,14 @@ it('opens from the toolbox, shows recommendations and navigates from supporting 
   await waitFor(() => expect(imageDownloads.get(screen.getByTestId('score-card-artwork').props.source?.uri))
     .toBe('https://assets2.lxns.net/maimai/jacket/4.png'));
   await fireEvent.press(screen.getByText('Song 4'));
-  expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '4', gameId: 'maimai', chartType: 'DX', levelIndex: '3' } });
+  expect(mockPush).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: '4', gameId: 'maimai', chartType: 'DX', levelIndex: '3' } });
   expect(screen.getByText('分析：爆发倾向型')).toBeTruthy();
   await fireEvent.press(screen.getByTestId('simai-difficulty-radar-axis-strength-0'));
   expect(screen.getByText('完成')).toBeTruthy();
   expect(screen.getByText('Song 2')).toBeTruthy();
   expect(screen.getByText('Song 3')).toBeTruthy();
   await fireEvent.press(screen.getByText('Song 1'));
-  expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '1', gameId: 'maimai', chartType: 'DX', levelIndex: '3' } });
+  expect(mockPush).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: '1', gameId: 'maimai', chartType: 'DX', levelIndex: '3' } });
   expect(screen.queryByText('完成')).toBeNull();
   expect(screen.queryByText(/SSS?[+]?[ ·]/)).toBeNull();
   expect(screen.queryByText(/计算说明|特征文件|样本较少|支撑成绩/)).toBeNull();

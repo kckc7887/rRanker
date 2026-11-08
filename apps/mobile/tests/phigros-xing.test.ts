@@ -4,7 +4,7 @@ import {
   matchesPhigrosXingFilter,
   phigrosChartNoteKey,
   resolvePhigrosXingKind,
-} from '@/domain/phigros-xing';
+} from '@rranker/game-phigros/domain/phigros-xing';
 
 describe('phigros-xing resolve / filter', () => {
   it('resolvePhigrosXingKind 按 Acc 精确匹配 good / miss，FC 不算 miss', () => {

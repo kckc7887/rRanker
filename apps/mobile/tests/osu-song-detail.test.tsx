@@ -1,14 +1,15 @@
+import { setDisabledPlugins } from '@rranker/sdk';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { CachedContentActivityScope } from '@/components/CachedTabScreen';
-import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
-import { buildOsuBeatmapMetricRows, OsuSongDetail } from '@/components/osu/OsuSongDetail';
-import { OsuSongRow } from '@/components/osu/OsuSongRow';
-import type { OsuBeatmapsetDetail, OsuBeatmapsetLookupRaw, OsuBestScore } from '@/domain/osu';
-import type { UserLibraryItem } from '@/domain/user-library';
-import { ProviderError } from '@/providers/errors';
-import { OsuScoreProvider } from '@/providers/osu-score-provider';
+import { CachedContentActivityScope } from '@rranker/sdk/components/CachedTabScreen';
+import { OsuScoreCard } from '@rranker/game-osu/components/OsuScoreCard';
+import { buildOsuBeatmapMetricRows, OsuSongDetail } from '@rranker/game-osu/components/OsuSongDetail';
+import { OsuSongRow } from '@rranker/game-osu/components/OsuSongRow';
+import type { OsuBeatmapsetDetail, OsuBeatmapsetLookupRaw, OsuBestScore } from '@rranker/game-osu/domain/osu';
+import type { UserLibraryItem } from '@rranker/sdk/domain/user-library';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { OsuScoreProvider } from '@rranker/provider-osu/providers/osu-score-provider';
 
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
@@ -134,6 +135,7 @@ let mockBoundAccount = true;
 let mockDemoAccount = false;
 let mockLibraryItems: UserLibraryItem[] = [];
 
+const mockSourceClients = new Map<string, unknown>();
 jest.mock('expo-router', () => ({
   router: {
     replace: (href: unknown) => mockReplace(href),
@@ -154,10 +156,7 @@ jest.mock('expo-image', () => {
 });
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@/providers/osu-config', () => ({
-  ...jest.requireActual<typeof import('@/providers/osu-config')>('@/providers/osu-config'),
-  OSU_MOD_ICONS_ROOT: '',
-}));
+jest.mock('expo/fetch', () => ({ fetch: jest.fn(async () => ({ ok: false })) }));
 jest.mock('expo-file-system', () => ({
   Directory: class {},
   File: class {},
@@ -178,7 +177,7 @@ jest.mock('react-native-gesture-handler', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     dark: false,
     accent: '#246BFD',
@@ -194,32 +193,47 @@ jest.mock('@/theme/app-theme', () => ({
     danger: '#B42318',
   }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
+    get sourceClient() { return jest.requireMock<typeof import('@rranker/sdk/state/session-provider-resolver')>('@rranker/sdk/state/session-provider-resolver').resolveAccountClient('test'); },
     activeGameId: mockActiveGameId,
     activeAccountId: `${mockActiveGameId}:osu:2`,
     activeProviderId: mockDemoAccount ? 'osu-test' : mockBoundAccount ? 'osu' : null,
     session: mockBoundAccount ? { mode: 'osu-oauth', accessToken: 'test-access', refreshToken: 'test-refresh', expiresAt: Number.MAX_SAFE_INTEGER, persistable: true } : null,
   }),
 }));
-jest.mock('@/hooks/use-osu-beatmapset-detail', () => ({
-  useOsuBeatmapsetDetail: (...args: Parameters<typeof import('@/hooks/use-osu-beatmapset-detail').useOsuBeatmapsetDetail>) => mockActualDetailQuery
-    ? jest.requireActual<typeof import('@/hooks/use-osu-beatmapset-detail')>('@/hooks/use-osu-beatmapset-detail').useOsuBeatmapsetDetail(...args)
+jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
+  resolveAccountClient: () => {
+    const key = mockActiveGameId + ':' + mockDemoAccount + ':' + mockBoundAccount;
+    if (mockSourceClients.has(key)) return mockSourceClients.get(key);
+    const value = (() => mockDemoAccount ? jest.requireActual<typeof import('@rranker/provider-osu-test/client')>('@rranker/provider-osu-test/client').createClient({ account: { id: 'osu-standard:test', gameId: mockActiveGameId, providerId: 'osu-test' }, credential: null, assertCurrent() {}, commitCredential: async () => 'applied' } as import('@rranker/sdk/credentials').SourceClientContext) : !mockBoundAccount ? undefined
+    : jest.requireActual<typeof import('@rranker/provider-osu/client')>('@rranker/provider-osu/client').createClient({
+      account: { id: mockActiveGameId + ':osu:2', gameId: mockActiveGameId, providerId: 'osu', displayName: 'peppy' },
+      credential: { mode: 'osu-oauth', accessToken: 'test-access', refreshToken: 'test-refresh', expiresAt: Number.MAX_SAFE_INTEGER, persistable: true },
+      assertCurrent() {}, commitCredential: async () => 'applied',
+    } as import('@rranker/sdk/credentials').SourceClientContext))();
+    mockSourceClients.set(key, value);
+    return value;
+  },
+}));
+jest.mock('@rranker/game-osu/hooks/use-osu-beatmapset-detail', () => ({
+  useOsuBeatmapsetDetail: (...args: Parameters<typeof import('@rranker/game-osu/hooks/use-osu-beatmapset-detail').useOsuBeatmapsetDetail>) => mockActualDetailQuery
+    ? jest.requireActual<typeof import('@rranker/game-osu/hooks/use-osu-beatmapset-detail')>('@rranker/game-osu/hooks/use-osu-beatmapset-detail').useOsuBeatmapsetDetail(...args)
     : ({ ...mockDetailState, bound: true, isPending: mockDetailState.isLoading, refetch: mockDetailRefetch }),
 }));
-jest.mock('@/components/AppNotification', () => ({
-  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'),
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'),
   useNotification: () => ({ showActionNotification: mockShowActionNotification }),
 }));
-jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+jest.mock('@rranker/sdk/features/chart-download-shared/use-chart-package-download', () => ({
   useChartPackageDownload: () => ({ isRunning: false, start: mockStartDownload }),
 }));
-jest.mock('@/features/osu-beatmapset-download/osu-beatmapset-download', () => ({
+jest.mock('@rranker/tool-osu/features/osu-beatmapset-download/osu-beatmapset-download', () => ({
   downloadOsuBeatmapsetPackage: (request: unknown, options: unknown) => (
     mockDownloadOsuBeatmapsetPackage(request, options)
   ),
 }));
-jest.mock('@/hooks/use-osu-known-scores', () => ({
+jest.mock('@rranker/game-osu/hooks/use-osu-known-scores', () => ({
   useOsuKnownScores: (_gameId: unknown, seedScores: OsuBestScore[] = []) => ({
     data: mockRecentScores.length > 0 ? mockRecentScores : seedScores,
     bound: true,
@@ -227,7 +241,7 @@ jest.mock('@/hooks/use-osu-known-scores', () => ({
   }),
   useOsuBeatmapsetUserScores: () => ({ data: [], isLoading: false }),
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: mockGameData.data,
     isLoading: false,
@@ -236,15 +250,12 @@ jest.mock('@/hooks/use-game-data', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
     data: mockLibraryItems,
     isLoading: false,
     isUpdating: false,
-    songKey: (songId: string) => `song:osu:${songId}`,
-    chartKey: (songId: string, type: string, levelIndex: number) => (
-      `chart:osu:${songId}:${type}:${levelIndex}`
-    ),
+    key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
     setSongFavorite: mockSetSongFavorite,
     setChartPractice: mockSetChartPractice,
     setTags: mockSetTags,
@@ -406,7 +417,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
     await fireEvent.press(screen.getByLabelText('返回'));
     expect(mockBack).toHaveBeenCalled();
     await fireEvent.press(screen.getByLabelText('收藏 鳥の詩'));
-    expect(mockSetSongFavorite).toHaveBeenCalledWith('3720', true);
+    expect(mockSetSongFavorite).toHaveBeenCalledWith({ gameId: 'osu-standard', kind: 'song', id: '3720', target: { songId: '3720' } }, true);
   });
 
   it('pp=5000 默认定位到推荐星级最近的 5.5★ 卡片（次序与偏移）', async () => {
@@ -545,6 +556,19 @@ describe('OsuSongDetail 歌曲详情页', () => {
     expect(screen.getByText('暂无可用难度')).toBeTruthy();
   });
 
+  it('停用工具隐藏谱面确认并保留成绩，重新启用后恢复入口', async () => {
+    const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
+    try {
+      await act(async () => setDisabledPlugins(['tool.osu']));
+      expect(screen.queryByTestId('osu-detail-preview-22423')).toBeNull();
+      expect(screen.getByTestId('osu-detail-difficulty-22423')).toBeTruthy();
+      await act(async () => setDisabledPlugins([]));
+      expect(screen.getByTestId('osu-detail-preview-22423')).toBeTruthy();
+    } finally {
+      await act(async () => setDisabledPlugins([]));
+    }
+  });
+
   it('打开目标谱面确认并提供下载内容选择', async () => {
     const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
     const card = within(screen.getByTestId('osu-detail-difficulty-22423'));
@@ -553,8 +577,8 @@ describe('OsuSongDetail 歌曲详情页', () => {
 
     await fireEvent.press(preview);
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/osu-chart-preview',
-      params: { gameId: 'osu-standard', beatmapsetId: '3720', beatmapId: '22423', title: '鳥の詩', star: '5.5', difficultyName: 'Hard' },
+      pathname: '/plugins/[pluginId]/[pageId]',
+      params: { pluginId: 'tool.osu', pageId: 'chart-preview', gameId: 'osu-standard', beatmapsetId: '3720', beatmapId: '22423', title: '鳥の詩', star: '5.5', difficultyName: 'Hard' },
     });
 
     await fireEvent.press(download);
@@ -585,7 +609,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
     }, {}));
 
     await fireEvent.press(card.getByTestId('osu-detail-practice-22423'));
-    expect(mockSetChartPractice).toHaveBeenCalledWith('3720', 'SD', 22423, true);
+    expect(mockSetChartPractice).toHaveBeenCalledWith({ gameId: 'osu-standard', kind: 'chart', id: '22423', target: { songId: '3720', beatmapId: '22423' } }, true);
   });
 
   it.each(['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'])(
@@ -594,8 +618,8 @@ describe('OsuSongDetail 歌曲详情页', () => {
       const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
       await fireEvent.press(screen.getByTestId('osu-detail-preview-22427'));
       expect(mockPush).toHaveBeenCalledWith({
-        pathname: '/songs/osu-chart-preview',
-        params: { gameId, beatmapsetId: '3720', beatmapId: '22427', title: '鳥の詩', star: '4.3', difficultyName: 'Normal' },
+        pathname: '/plugins/[pluginId]/[pageId]',
+        params: { pluginId: 'tool.osu', pageId: 'chart-preview', gameId, beatmapsetId: '3720', beatmapId: '22427', title: '鳥の詩', star: '4.3', difficultyName: 'Normal' },
       });
     },
   );
@@ -636,23 +660,12 @@ describe('OsuSongDetail 歌曲详情页', () => {
   });
 
   it('已加入的谱面显示移出状态，并按原参数移除', async () => {
-    mockLibraryItems = [{
-      kind: 'chart',
-      key: 'chart:osu:3720:SD:22423',
-      gameId: 'osu-standard',
-      songId: '3720',
-      type: 'SD',
-      levelIndex: 22423,
-      practice: true,
-      tags: [],
-      createdAt: '2026-08-20T00:00:00.000Z',
-      updatedAt: '2026-08-20T00:00:00.000Z',
-    }];
+    mockLibraryItems = [{ key: JSON.stringify(['osu-standard', 'chart', '22423']), gameId: 'osu-standard', kind: 'chart', id: '22423', target: { songId: '3720', beatmapId: '22423' }, practice: true, tags: [], createdAt: '2026-08-20T00:00:00.000Z', updatedAt: '2026-08-20T00:00:00.000Z' }];
     const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
     const button = screen.getByLabelText('移出练习清单');
 
     fireEvent.press(button);
-    expect(mockSetChartPractice).toHaveBeenCalledWith('3720', 'SD', 22423, false);
+    expect(mockSetChartPractice).toHaveBeenCalledWith({ gameId: 'osu-standard', kind: 'chart', id: '22423', target: { songId: '3720', beatmapId: '22423' } }, false);
   });
 });
 
@@ -674,7 +687,7 @@ describe('osu! 详情入口解锁', () => {
     );
     const row = screen.getByLabelText('歌曲 鳥の詩');
     await fireEvent.press(row);
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '3720', gameId: 'osu-standard' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: '3720', gameId: 'osu-standard' } });
   });
 
   it('OsuScoreCard 可按压，点击进入歌曲详情并定位该成绩的 beatmap', async () => {
@@ -682,7 +695,7 @@ describe('osu! 详情入口解锁', () => {
     const card = screen.getByTestId('osu-score-card-166715063');
     await fireEvent.press(card);
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '3720', beatmapId: '22423', gameId: 'osu-standard' },
     });
   });

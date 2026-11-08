@@ -1,10 +1,14 @@
+import { createClient as createDemoClient } from '@rranker/provider-majdata-net-test/client';
+import { createCatalogTestAccount } from '@rranker/provider-majdata-net-test/accounts';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { Animated, Dimensions, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
 import { jest } from '@jest/globals';
-import { MajdataSongDetail } from '@/components/majdata/MajdataSongDetail';
-import type { MajdataSong, MajdataScore } from '@/domain/majdata';
-import { ProviderError } from '@/providers/errors';
+import { MajdataSongDetail } from '@rranker/game-majdata-net/components/MajdataSongDetail';
+import type { MajdataSong, MajdataScore } from '@rranker/game-majdata-net/domain/majdata';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
+const mockDemoClient = createDemoClient({ account: createCatalogTestAccount('majdata-net'), credential: null,
+  assertCurrent: () => undefined, commitCredential: async () => 'applied' });
 const mockSong: MajdataSong = {
   id: '0dff2974-9419-4290-bea9-307caa5825b7', title: '长歌曲名称 '.repeat(8), artist: '真实曲师', designer: '真实谱师', uploader: '不应展示的上传者',
   description: '真实简介', timestamp: '2026-09-01T00:00:00Z', hash: 'revision',
@@ -32,7 +36,7 @@ const mockParsed = jest.fn((song: MajdataSong | undefined, _level: number) => ({
 }));
 const mockLibrary = {
   data: [], tagPresets: [], isLoading: false, isUpdating: false,
-  songKey: (id: string) => `song:${id}`, chartKey: (id: string, type: string, level: number) => `chart:${id}:${type}:${level}`,
+  key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
   setSongFavorite: mockFavorite, setChartPractice: mockPractice, setTags: mockTags, setTagPresets: jest.fn(async () => undefined),
 };
 
@@ -62,8 +66,8 @@ jest.mock('react-native-gesture-handler', () => {
   });
   return { GestureHandlerRootView: RN.View, ScrollView, Pressable: RN.Pressable };
 });
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => jest.requireActual<typeof import('@/theme/theme-tokens')>('@/theme/theme-tokens').createAppTheme(mockDark ? 'dark' : 'light', '#246BFD') }));
-jest.mock('@/hooks/use-majdata', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => jest.requireActual<typeof import('@rranker/sdk/theme/theme-tokens')>('@rranker/sdk/theme/theme-tokens').createAppTheme(mockDark ? 'dark' : 'light', '#246BFD') }));
+jest.mock('@rranker/game-majdata-net/hooks/use-majdata', () => ({
   useMajdataSong: () => ({
     data: mockSongState === 'success' ? mockSong : undefined,
     isPending: mockSongState === 'pending' || mockSongState === 'loading',
@@ -72,18 +76,18 @@ jest.mock('@/hooks/use-majdata', () => ({
     error: mockSongState === 'missing' ? mockNoDataError : null, refetch: mockRefetch,
   }),
   useMajdataParsedChart: (song: MajdataSong | undefined, level: number) => {
-    const { useCachedTabActive } = jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen');
+    const { useCachedTabActive } = jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen');
     return mockParsed(useCachedTabActive() ? song : undefined, level);
   }, useMajdataRanking: () => ({}),
 }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ data: { providerId: mockExample ? 'majdata-net-test' : 'majdata-net', payload: { kind: 'majdata-net', snapshot: { records: mockRecords } } } }) }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => mockLibrary }));
-jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({ useChartPackageDownload: () => ({ isRunning: mockDownloadRunning, start: mockStart }) }));
-jest.mock('@/features/chart-download-shared/simai-package', () => ({ downloadSimaiPackage: jest.fn() }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({ data: { providerId: mockExample ? 'majdata-net-test' : 'majdata-net', payload: { kind: 'majdata-net', snapshot: { records: mockRecords } } } }) }));
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => mockLibrary }));
+jest.mock('@rranker/sdk/features/chart-download-shared/use-chart-package-download', () => ({ useChartPackageDownload: () => ({ isRunning: mockDownloadRunning, start: mockStart }) }));
+jest.mock('@rranker/sdk/features/chart-download-shared/simai-package', () => ({ downloadSimaiPackage: jest.fn() }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }), useNotificationModalRequestClose: () => () => false,
 }));
-jest.mock('@/components/RemoteImage', () => {
+jest.mock('@rranker/sdk/components/RemoteImage', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { RemoteImage: RN.View, RemoteImagePersistenceScope: RN.View, RemoteImageActivityScope: RN.View };
 });
@@ -311,10 +315,10 @@ it('keeps six grid columns and full UUID/index for tolerance, practice, preview 
   const current = within(screen.getByTestId('majdata-chart-card-5'));
   for (const text of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK', 'MINE']) expect(current.getByText(text)).toBeTruthy();
   await fireEvent.press(current.getByLabelText('使用此谱面物量计算容错'));
-  expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/tools/tolerance', params: { gameId: 'majdata-net', songId: mockSong.id, hash: 'revision', levelIndex: '5' } });
+  expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.simai', pageId: 'tolerance', gameId: 'majdata-net', songId: mockSong.id, hash: 'revision', levelIndex: '5' } });
   await fireEvent.press(current.getByText('加入练习清单')); expect(mockPractice).toHaveBeenCalledWith(mockSong.id, 'SD', 5, true);
   await fireEvent.press(current.getByText('查看谱面确认'));
-  expect(mockPush).toHaveBeenLastCalledWith(expect.objectContaining({ pathname: '/songs/chart-preview', params: expect.objectContaining({ songId: mockSong.id, levelIndex: '5', hash: 'revision' }) }));
+  expect(mockPush).toHaveBeenLastCalledWith(expect.objectContaining({ pathname: '/plugins/[pluginId]/[pageId]', params: expect.objectContaining({ songId: mockSong.id, levelIndex: '5', hash: 'revision' }) }));
   await fireEvent.press(current.getByText('下载谱面文件'));
   expect(mockStart).toHaveBeenCalledWith(expect.any(Function), { optionalVideoUrl: `https://majdata.net/api3/api/maichart/${mockSong.id}/video` });
   await screen.unmount();
@@ -324,14 +328,19 @@ it('saves chart tags and song tags through separate existing library identities'
   const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
   const chart = within(screen.getByTestId('majdata-chart-local-tags-5'));
   await fireEvent.changeText(chart.getByLabelText('新标签'), '练习滑条'); await fireEvent.press(chart.getByLabelText('添加标签'));
-  expect(mockTags).toHaveBeenLastCalledWith({ kind: 'chart', songId: mockSong.id, type: 'SD', levelIndex: 5 }, ['练习滑条']);
+  expect(mockTags).toHaveBeenLastCalledWith({ gameId: 'majdata-net', kind: 'chart', id: JSON.stringify([String(mockSong.id), 5]), target: { songId: String(mockSong.id), levelIndex: String(5) } }, ['练习滑条']);
   const song = within(screen.getByTestId('majdata-song-local-tags'));
   await fireEvent.changeText(song.getByLabelText('新标签'), '喜欢'); await fireEvent.press(song.getByLabelText('添加标签'));
-  expect(mockTags).toHaveBeenLastCalledWith({ kind: 'song', songId: mockSong.id }, ['喜欢']);
+  expect(mockTags).toHaveBeenLastCalledWith({ gameId: 'majdata-net', kind: 'song', id: String(mockSong.id), target: { songId: String(mockSong.id) } }, ['喜欢']);
   await screen.unmount();
 });
 
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   useStackScreenReady: () => mockReady,
 }));
+
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({
+  activeAccountId: mockExample ? 'majdata-net:test' : 'majdata-net:account:player',
+  sourceClient: mockExample ? mockDemoClient : undefined,
+}) }));

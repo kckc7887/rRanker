@@ -1,21 +1,22 @@
 import { runInNewContext } from 'node:vm';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { getDataSource, setDisabledPlugins } from '@rranker/sdk/registry';
 import { BackHandler } from 'react-native';
-import MaimaiChartPreviewScreen from '../app/songs/chart-preview';
+import MaimaiChartPreviewScreen from '@rranker/tool-simai/pages/chart-preview';
 import {
   resolveInitialBackgroundState,
-} from '@/features/simai-chart-preview/webview-player/interactionScheduler';
+} from '@rranker/chart-simai/features/simai-chart-preview/webview-player/interactionScheduler';
 import {
   getAvailableDifficulties,
   parseSimaiChart,
-} from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+} from '@rranker/chart-simai/features/simai-chart-preview/engine/core/parser/SimaiParser';
 
 const defaultParams = { songId: '834', chartType: 'DX', levelIndex: '3', title: '测试曲', constant: '14.7' };
 let mockParams: Record<string, string> = defaultParams;
 const mockMajdataSong = jest.fn(async () => ({ id: 'chart-id', hash: 'hash-1', title: '自制曲', levels: ['', '', '', '', '14'], designers: [] }));
 const mockMajdataChart = jest.fn(async () => '&inote_5=(120)1,');
-jest.mock('@/services/majdata-service', () => ({
+jest.mock('@rranker/provider-majdata-net/services/majdata-service', () => ({
   loadMajdataSong: () => mockMajdataSong(), loadMajdataChart: () => mockMajdataChart(),
 }));
 
@@ -60,7 +61,7 @@ jest.mock('expo-sqlite/kv-store', () => ({
   },
 }));
 
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     dark: false,
     statusBar: 'dark',
@@ -72,14 +73,14 @@ jest.mock('@/theme/app-theme', () => ({
   }),
 }));
 
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({
     showNotification: jest.fn(),
     showActionNotification: mockShowActionNotification,
   }),
 }));
 
-jest.mock('@/features/simai-chart-preview/prepare-chart-preview-webview', () => ({
+jest.mock('@rranker/tool-simai/features/simai-chart-preview/prepare-chart-preview-webview', () => ({
   buildChartPreviewInjectedJavaScript: () => 'true;',
   chartPreviewAllowsFileAccess: () => true,
   prepareChartPreviewWebViewSource: (input: unknown) => mockPrepareChartPreview(input),
@@ -104,6 +105,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
   });
 
   afterEach(() => {
+    setDisabledPlugins([]);
     jest.restoreAllMocks();
   });
 
@@ -114,6 +116,19 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(mockPrepareChartPreview).toHaveBeenCalledWith(expect.objectContaining({
       simaiText: '&inote_5=(120)1,', difficulty: 5,
     }));
+  });
+
+  it('disposes a late player result after its resource source is disabled', async () => {
+    mockParams = { songId: 'chart-id', gameId: 'majdata-net', hash: 'hash-1', levelIndex: '4' };
+    let resolve!: (source: { uri: string; allowingReadAccessToURL: string; dispose: () => void }) => void;
+    const dispose = jest.fn();
+    mockPrepareChartPreview.mockImplementationOnce(() => new Promise(yes => { resolve = yes; }));
+    await render(<MaimaiChartPreviewScreen />);
+    await waitFor(() => expect(mockPrepareChartPreview).toHaveBeenCalled());
+    await act(async () => { setDisabledPlugins([getDataSource('majdata-net')!.id]); });
+    await act(async () => { resolve({ uri: 'file:///late.html', allowingReadAccessToURL: 'file:///', dispose }); });
+    expect(dispose).toHaveBeenCalled();
+    expect(screen.queryByTestId('maimai-chart-preview-webview')).toBeNull();
   });
 
   it('rejects a replaced Majdata revision before preparing the player', async () => {

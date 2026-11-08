@@ -7,7 +7,7 @@ import {
   parseChartPreviewBridgeMessage,
   parseChartPreviewHostCommand,
   type ChartPreviewPlayerHandlers,
-} from '@/features/chart-preview-shared/chart-preview-bridge';
+} from '@rranker/sdk/features/chart-preview-shared/chart-preview-bridge';
 
 describe('谱面确认宿主命令', () => {
   it('将宿主命令交给播放器并拒绝未知消息', () => {

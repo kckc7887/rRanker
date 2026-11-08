@@ -1,11 +1,12 @@
+import { setDisabledPlugins } from '@rranker/sdk';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { AppState, Platform, type AppStateStatus } from 'react-native';
-import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
-import { saveChartPackage } from '@/features/chart-download-shared/chart-download-shared';
-import type { ActionNotificationInput } from '@/components/AppNotification';
-import { AppLifecycleProvider, type AppLifecycleSnapshot } from '@/state/app-lifecycle';
-import { ProviderError } from '@/providers/errors';
+import { useChartPackageDownload } from '@rranker/sdk/features/chart-download-shared/use-chart-package-download';
+import { saveChartPackage } from '@rranker/sdk/features/chart-download-shared/chart-download-shared';
+import type { ActionNotificationInput } from '@rranker/sdk/components/AppNotification';
+import { AppLifecycleProvider, type AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
 const originalPlatform = Platform.OS;
 const originalAppState = AppState.currentState;
@@ -26,8 +27,8 @@ const mockPickDirectory = jest.fn<() => Promise<unknown>>();
 const mockWritePackage = jest.fn();
 let mockUseNativeLifecycle = false;
 
-jest.mock('@/state/app-lifecycle', () => {
-  const actual = jest.requireActual<typeof import('@/state/app-lifecycle')>('@/state/app-lifecycle');
+jest.mock('@rranker/sdk/state/app-lifecycle', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/state/app-lifecycle')>('@rranker/sdk/state/app-lifecycle');
   return { ...actual, useAppLifecycle: () => {
     const native = actual.useAppLifecycle();
     return mockUseNativeLifecycle ? native : mockLifecycle;
@@ -38,7 +39,7 @@ jest.mock('expo-file-system', () => ({
   File: jest.fn(),
   Paths: { cache: 'file:///cache' },
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({
     dismissNotification: mockDismissNotification,
     showActionNotification: mockShowActionNotification,
@@ -78,7 +79,7 @@ describe('chart package download lifecycle', () => {
 
   it('continues through inactive and cancels only after a real background transition', async () => {
     const captured = { signal: null as AbortSignal | null };
-    const { result, rerender } = await renderHook(() => useChartPackageDownload({
+    const { result, rerender } = await renderHook(() => useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' },
       successMessage: '已保存',
     }));
 
@@ -120,7 +121,7 @@ describe('chart package download lifecycle', () => {
   it.each([true, false])('waits for the video choice before running with includeVideo=%s', async includeVideo => {
     mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
     const runner = jest.fn(async () => false);
-    const { result } = await renderHook(() => useChartPackageDownload({ successMessage: '已保存' }));
+    const { result } = await renderHook(() => useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '已保存' }));
     let pending!: Promise<void>;
     await act(async () => {
       pending = result.current.start(runner, { optionalVideoUrl: 'https://example.test/video' });
@@ -146,7 +147,7 @@ describe('chart package download lifecycle', () => {
   it('cancels the video choice without running and ignores stale actions', async () => {
     mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
     const runner = jest.fn(async () => false);
-    const { result } = await renderHook(() => useChartPackageDownload({ successMessage: '已保存' }));
+    const { result } = await renderHook(() => useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '已保存' }));
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.start(runner, { optionalVideoUrl: 'https://example.test/video' }); });
     const choice = mockShowActionNotification.mock.calls[0][0];
@@ -162,7 +163,7 @@ describe('chart package download lifecycle', () => {
       init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
     }));
     const runner = jest.fn(async () => false);
-    const { result, unmount } = await renderHook(() => useChartPackageDownload({ successMessage: '已保存' }));
+    const { result, unmount } = await renderHook(() => useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '已保存' }));
     let pending!: Promise<void>;
     await act(async () => {
       pending = result.current.start(runner, { optionalVideoUrl: 'https://example.test/video' });
@@ -182,7 +183,7 @@ describe('chart package download lifecycle', () => {
       init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
     }));
     const runner = jest.fn(async () => false);
-    const { result } = await renderHook(() => useChartPackageDownload({ successMessage: '已保存' }));
+    const { result } = await renderHook(() => useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '已保存' }));
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.start(runner, { optionalVideoUrl: 'https://example.test/video' }); });
     await act(async () => { await jest.advanceTimersByTimeAsync(12_000); await pending; });
@@ -194,7 +195,7 @@ describe('chart package download lifecycle', () => {
   it('dismisses a pending video choice on background and never starts its runner', async () => {
     mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
     const runner = jest.fn(async () => false);
-    const { result, rerender } = await renderHook(() => useChartPackageDownload({ successMessage: '已保存' }));
+    const { result, rerender } = await renderHook(() => useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '已保存' }));
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.start(runner, { optionalVideoUrl: 'https://example.test/video' }); });
     mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background' };
@@ -206,7 +207,7 @@ describe('chart package download lifecycle', () => {
   });
 
   it('reports public resource permission failures as download unavailability and releases the task', async () => {
-    const { result } = await renderHook(() => useChartPackageDownload({ successMessage: '已保存' }));
+    const { result } = await renderHook(() => useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '已保存' }));
     await act(async () => {
       await result.current.start(async () => { throw new ProviderError('permission', 'private resource response', false); });
     });
@@ -220,8 +221,8 @@ describe('chart package download lifecycle', () => {
 
   it('keeps parallel download cancellation independent while both report progress', async () => {
     const { result } = await renderHook(() => ({
-      first: useChartPackageDownload({ successMessage: '甲已保存' }),
-      second: useChartPackageDownload({ successMessage: '乙已保存' }),
+      first: useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '甲已保存' }),
+      second: useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '乙已保存' }),
     }));
     const signals: AbortSignal[] = [];
     const run: Parameters<typeof result.current.first.start>[0] = async (options) => {
@@ -267,8 +268,8 @@ describe('chart package download lifecycle', () => {
       write: (bytes: Uint8Array) => mockWritePackage(name, bytes),
     }) };
     const { result, unmount } = await renderHook(() => ({
-      first: useChartPackageDownload({ successMessage: '甲已保存' }),
-      second: useChartPackageDownload({ successMessage: '乙已保存' }),
+      first: useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '甲已保存' }),
+      second: useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '乙已保存' }),
     }), { wrapper: AppLifecycleProvider });
     const download = Promise.withResolvers<void>();
     const signals: AbortSignal[] = [];
@@ -320,8 +321,8 @@ describe('chart package download lifecycle', () => {
     const picker = Promise.withResolvers<unknown>();
     mockPickDirectory.mockReturnValueOnce(picker.promise);
     const { result, unmount } = await renderHook(() => ({
-      first: useChartPackageDownload({ successMessage: '甲已保存' }),
-      second: useChartPackageDownload({ successMessage: '乙已保存' }),
+      first: useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '甲已保存' }),
+      second: useChartPackageDownload({ owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: '乙已保存' }),
     }));
     let first!: Promise<void>;
     let second!: Promise<void>;
@@ -335,5 +336,27 @@ describe('chart package download lifecycle', () => {
     await act(async () => { picker.resolve({ uri: 'content://directory', createFile: () => ({ write: mockWritePackage }) }); await first; await second; });
     expect(mockPickDirectory).toHaveBeenCalledTimes(1);
     expect(mockWritePackage).not.toHaveBeenCalled();
+  });
+
+  it('停用下载工具立即中止任务且不显示迟到的保存成功', async () => {
+    const pending: { signal?: AbortSignal; finish?: (saved: boolean) => void } = {};
+    const { result } = await renderHook(() => useChartPackageDownload({
+      owner: { pluginId: 'tool.simai', gameId: 'maimai' }, successMessage: 'saved',
+    }));
+    let completion!: Promise<void>;
+    await act(async () => {
+      completion = result.current.start(({ signal }) => new Promise(resolve => {
+        pending.signal = signal; pending.finish = resolve;
+      }));
+    });
+    try {
+      expect(pending.signal).toBeDefined();
+      await act(async () => setDisabledPlugins(['tool.simai']));
+      expect(pending.signal?.aborted).toBe(true);
+      await act(async () => { pending.finish?.(true); await completion; });
+      expect(mockShowNotification).not.toHaveBeenCalledWith(expect.objectContaining({ title: '谱面已保存' }));
+    } finally {
+      await act(async () => setDisabledPlugins([]));
+    }
   });
 });

@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { Directory } from 'expo-file-system';
-import { downloadPhiraChartPreviewZip, stagePhiraRpeBundle } from '@/features/phigros-chart-preview/prepare-phigros-chart-preview-webview';
+import { downloadPhiraChartPreviewZip, stagePhiraRpeBundle } from '@rranker/tool-chart-json/features/phigros-chart-preview/prepare-phigros-chart-preview-webview';
 
 const mockWrites = jest.fn<(path: string, bytes: Uint8Array) => void>();
 const mockBytes = jest.fn<() => Promise<Uint8Array>>();
@@ -18,13 +18,13 @@ jest.mock('expo-file-system', () => ({
     write(bytes: Uint8Array) { mockWrites(this.uri, bytes); }
   },
 }));
-jest.mock('../assets/phigros-chart-preview/index.html', () => 1);
-jest.mock('../assets/phigros-chart-preview/player.bundle', () => 2);
-jest.mock('@/features/chart-download-shared/chart-download-shared', () => ({
+jest.mock('@rranker/chart-json/assets/phigros-chart-preview/index.html', () => 1);
+jest.mock('@rranker/chart-json/assets/phigros-chart-preview/player.bundle', () => 2);
+jest.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', () => ({
   downloadChartResource: async () => ({ get size() { return mockSize; }, bytes: mockBytes }),
 }));
-jest.mock('@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan', () => ({ prepareChartPreviewWebviewFromPlan: jest.fn() }));
-jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({ chartPreviewStageDirectory: jest.fn() }));
+jest.mock('@rranker/sdk/features/chart-preview-shared/prepare-chart-preview-webview-from-plan', () => ({ prepareChartPreviewWebviewFromPlan: jest.fn() }));
+jest.mock('@rranker/sdk/features/chart-preview-shared/chart-preview-assets', () => ({ chartPreviewStageDirectory: jest.fn() }));
 
 describe('native Phira staging', () => {
   beforeEach(() => { jest.clearAllMocks(); jest.useFakeTimers(); });

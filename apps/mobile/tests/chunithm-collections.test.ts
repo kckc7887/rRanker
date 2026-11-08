@@ -1,11 +1,11 @@
-import type { ChunithmScore } from '@/domain/chunithm-personal';
+import type { ChunithmScore } from '@rranker/game-chunithm/domain/chunithm-personal';
 import {
   calculateChunithmCollectionProgress,
   chunithmScoreMeetsRequirement,
   isChunithmCollectionComputable,
   isChunithmCollectionKind,
   type ChunithmCollection,
-} from '@/domain/chunithm-collections';
+} from '@rranker/game-chunithm/domain/chunithm-collections';
 
 const collectionWithConditions: ChunithmCollection = {
   id: 1,

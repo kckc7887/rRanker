@@ -1,11 +1,12 @@
+import { rizlineSongTarget } from '@rranker/game-rizline/targets';
 import { describe, expect, it } from 'vitest';
 import { buildRizlineRecords, formatRizlineAccuracy, formatRizlineConstant, formatRizlineRks, inferRizlineAh, rizlineRecordStatus, rizlineTrackId,
-  selectRizlineBest, sortedRizlineCharts, sortRizlineRecords } from '@/domain/rizline';
-import { rizlinePayloadFromSnapshot } from '@/domain/game-data';
-import { RizlineCatalogSchema } from '@/providers/rizline-catalog-schema';
-import { normalizeLibrarySongId } from '@/domain/user-library';
+  selectRizlineBest, sortedRizlineCharts, sortRizlineRecords } from '@rranker/game-rizline/domain/rizline';
+import { rizlinePayloadFromSnapshot } from '@rranker/game-rizline/domain/game-data';
+import { RizlineCatalogSchema } from '@rranker/game-rizline/providers/rizline-catalog-schema';
+
 import { rizlineCatalog, rizlineChart, rizlineSave, rizlineSong } from './fixtures/rizline';
-import { buildMaxedRizlineSnapshot } from '@/providers/maxed-rizline-test-provider';
+import { buildMaxedRizlineSnapshot } from '@rranker/provider-rizline-test/providers/maxed-rizline-test-provider';
 
 describe('Rizline identities and score semantics', () => {
   it('generates full-catalog AP saves and computes the current AH5 and Best35 contribution', () => {
@@ -31,7 +32,7 @@ describe('Rizline identities and score semantics', () => {
   });
   it('keeps full official IDs and separates special tracks sharing music', () => {
     expect(rizlineTrackId('track.Song.A.1')).toBe('Song.A.1');
-    expect(normalizeLibrarySongId('rizline', '012345')).toBe('012345');
+    expect(rizlineSongTarget('012345').id).toBe('012345');
     const catalog = rizlineCatalog();
     catalog.songs.push(rizlineSong({ id: 'Song.A.1', charts: [rizlineChart({ id: 'chart.Song.A.1.SP', songId: 'Song.A.1', difficulty: 'SP' })] }));
     const save = rizlineSave(); save.myBest.push({ trackAssetId: 'track.Song.A.1', difficultyClassName: 'SP', score: 1_000_000, completeRate: 120 });

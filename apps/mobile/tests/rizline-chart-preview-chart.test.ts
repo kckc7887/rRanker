@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { applyEase } from '@/features/rizline-chart-preview/webview-player/easing';
-import { prepareOfficialChart } from '@/features/rizline-chart-preview/webview-player/chart-prepare';
-import { layoutPreviewFrame } from '@/features/rizline-chart-preview/webview-player/frame-layout';
-import { clampUserSpeed, visualSpeed } from '@/features/rizline-chart-preview/configuration';
+import { applyEase } from '@rranker/chart-json/features/rizline-chart-preview/webview-player/easing';
+import { prepareOfficialChart } from '@rranker/chart-json/features/rizline-chart-preview/webview-player/chart-prepare';
+import { layoutPreviewFrame } from '@rranker/chart-json/features/rizline-chart-preview/webview-player/frame-layout';
+import { clampUserSpeed, visualSpeed } from '@rranker/chart-json/features/rizline-chart-preview/configuration';
 
 function color() {
   return { r: 255, g: 255, b: 255, a: 255 };

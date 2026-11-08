@@ -20,7 +20,7 @@ vi.mock('expo-file-system', () => ({
 }));
 
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { createUserDataBackup, MAX_BACKUP_FILE_BYTES } from '@/domain/user-library';
+import { createUserDataBackup, MAX_BACKUP_FILE_BYTES } from '@rranker/sdk/domain/user-library';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { pickUserDataBackup, shareUserDataBackup } from '@/services/user-data-file-service';
 
@@ -31,7 +31,7 @@ describe('user data backup file service', () => {
   });
 
   it('shares a cache file and always removes it', async () => {
-    await shareUserDataBackup(createUserDataBackup([], '2026-07-13T00:00:00.000Z'));
+    await shareUserDataBackup(createUserDataBackup('custom-game', [], '2026-07-13T00:00:00.000Z'));
     expect(native.write).toHaveBeenCalledWith(expect.stringContaining('rranker-user-data'));
     expect(native.share).toHaveBeenCalledWith('file:///cache/backup.json', expect.objectContaining({ mimeType: 'application/json' }));
     expect(native.remove).toHaveBeenCalled();
@@ -40,35 +40,37 @@ describe('user data backup file service', () => {
   it('rejects oversized and invalid backup files', async () => {
     native.size = MAX_BACKUP_FILE_BYTES + 1;
     native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///large.json' }] });
-    await expect(pickUserDataBackup()).rejects.toThrow('大小上限');
+    await expect(pickUserDataBackup('custom-game')).rejects.toThrow('大小上限');
     expect(native.remove).toHaveBeenCalled();
     native.size = 5;
     native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///bad.json' }] });
     native.read.mockResolvedValueOnce('not-json');
-    await expect(pickUserDataBackup()).rejects.toThrow('JSON');
+    await expect(pickUserDataBackup('custom-game')).rejects.toThrow('JSON');
   });
 
   it('rejects old backup files and reports file I/O errors', async () => {
-    const backup = createUserDataBackup([], '2026-07-13T00:00:00.000Z');
+    const backup = createUserDataBackup('custom-game', [], '2026-07-13T00:00:00.000Z');
     native.picker.mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///backup.json' }] });
     native.read.mockResolvedValueOnce(JSON.stringify({ ...backup, version: 2 }));
-    await expect(pickUserDataBackup()).rejects.toThrow('备份版本或内容无效');
+    await expect(pickUserDataBackup('custom-game')).rejects.toThrow('备份不属于当前游戏或内容无效');
+    native.read.mockResolvedValueOnce(JSON.stringify({ ...backup, gameId: 'other-game' }));
+    await expect(pickUserDataBackup('custom-game')).rejects.toThrow('备份不属于当前游戏');
     native.read.mockRejectedValueOnce(new Error('read failure'));
-    await expect(pickUserDataBackup()).rejects.toThrow('read failure');
+    await expect(pickUserDataBackup('custom-game')).rejects.toThrow('read failure');
   });
 
   it('does not create a file when system sharing is unavailable', async () => {
     native.available.mockResolvedValueOnce(false);
-    await expect(shareUserDataBackup(createUserDataBackup([], '2026-07-13T00:00:00.000Z'))).rejects.toThrow('不支持系统分享');
+    await expect(shareUserDataBackup(createUserDataBackup('custom-game', [], '2026-07-13T00:00:00.000Z'))).rejects.toThrow('不支持系统分享');
     expect(native.create).not.toHaveBeenCalled();
   });
 
   it('returns null when the picker is canceled and validates strict content', async () => {
     native.picker.mockResolvedValueOnce({ canceled: true, assets: null });
-    await expect(pickUserDataBackup()).resolves.toBeNull();
-    const backup = createUserDataBackup([], '2026-07-13T00:00:00.000Z');
+    await expect(pickUserDataBackup('custom-game')).resolves.toBeNull();
+    const backup = createUserDataBackup('custom-game', [], '2026-07-13T00:00:00.000Z');
     native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///valid.json', size: 100 }] });
     native.read.mockResolvedValueOnce(JSON.stringify(backup));
-    await expect(pickUserDataBackup()).resolves.toEqual(backup);
+    await expect(pickUserDataBackup('custom-game')).resolves.toEqual(backup);
   });
 });

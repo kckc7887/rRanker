@@ -35,15 +35,8 @@ import {
   type MuseDashRandomChartFilters,
   type MuseDashRawScore,
   type MuseDashSong,
-} from '@/domain/muse-dash';
-import {
-  formatMuseDashAcc,
-  formatMuseDashScore,
-  isNumericMuseDashLevel,
-  presentMuseDashChart,
-  presentMuseDashScore,
-  presentMuseDashSong,
-} from '@/features/game-content/adapters';
+} from '@rranker/game-musedash/domain/muse-dash';
+import { formatMuseDashAcc, formatMuseDashScore, isNumericMuseDashLevel, presentMuseDashChart, presentMuseDashScore, presentMuseDashSong } from '@rranker/game-musedash/presentation';
 
 describe('Muse Dash content adapter', () => {
   const parsedAlbums = MuseDashAlbumsResponseSchema.parse(albums);
@@ -126,7 +119,7 @@ describe('Muse Dash content adapter', () => {
     expect(badges.map((badge) => badge.key)).not.toContain('platform');
     expect(badges.map((badge) => badge.label)).toContain('凛·治愈者');
     expect(badges.map((badge) => badge.label)).toContain('未命名');
-    expect(presented.route).toEqual({ songId: '0-47', levelIndex: 3, params: { gameId: 'musedash' } });
+    expect(presented.route).toEqual({ gameId: 'musedash', params: { songId: '0-47', levelIndex: String(3) } });
   });
 
   it('resolves AP/FC achievements from the requested miss count', () => {

@@ -1,4 +1,4 @@
-import { resolveDxRatingTheme } from '@/domain/dx-rating-theme';
+import { resolveDxRatingTheme } from '@rranker/game-maimai/domain/dx-rating-theme';
 
 describe('resolveDxRatingTheme', () => {
   it('maps every supplied color boundary to the expected family', () => {

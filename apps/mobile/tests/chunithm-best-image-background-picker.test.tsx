@@ -1,9 +1,9 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { ChunithmBestImageBackgroundPicker } from '@/features/chunithm-best-image/chunithm-best-image-background-picker';
-import { PhigrosBestImageStylePicker } from '@/features/phigros-best-image/phigros-best-image-style-picker';
-import type { ChunithmSong } from '@/domain/chunithm';
-import { clearCompressedRemoteImageCache } from '@/services/remote-image-cache';
+import { ChunithmBestImageBackgroundPicker } from '@rranker/tool-chunithm/features/chunithm-best-image/chunithm-best-image-background-picker';
+import { PhigrosBestImageStylePicker } from '@rranker/tool-phigros/features/phigros-best-image/phigros-best-image-style-picker';
+import type { ChunithmSong } from '@rranker/game-chunithm/domain/chunithm';
+import { clearCompressedRemoteImageCache } from '@rranker/sdk/services/remote-image-cache';
 import { imageDownloads, legacyFileSystem } from './remote-image-native-mock';
 
 jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
@@ -21,7 +21,7 @@ jest.mock('expo-image', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#F3F4F6', surface: '#FFFFFF', surfaceMuted: '#E5E7EB', input: '#F9FAFB',
     border: '#D1D5DB', text: '#111827', textMuted: '#6B7280', accent: '#246BFD', accentSoft: '#DBEAFE',
@@ -73,9 +73,34 @@ describe('ChunithmBestImageBackgroundPicker', () => {
     );
 
     await fireEvent.changeText(screen.getByLabelText('搜索背景歌曲'), 'ナユタン');
-    await waitFor(() => expect(screen.queryByLabelText('使用B.B.K.K.B.K.K.作为背景')).toBeNull());
-    expect(screen.getByLabelText('使用光線チューニング作为背景')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByLabelText('使用B.B.K.K.B.K.K.作为背景')).toBeNull();
+      expect(screen.getByLabelText('使用光線チューニング作为背景')).toBeTruthy();
+    });
     expect(screen.getByLabelText('使用默认背景').props.accessibilityState).toEqual({ selected: true });
+  });
+
+  it('uses the latest search and resets it when the picker reopens', async () => {
+    const onSelect = jest.fn();
+    const picker = (visible: boolean) => <ChunithmBestImageBackgroundPicker
+      visible={visible} songs={songs} selection={{ mode: 'default' }}
+      onClose={jest.fn()} onSelect={onSelect} />;
+    const screen = await render(picker(true));
+
+    await fireEvent.changeText(screen.getByLabelText('搜索背景歌曲'), 'nora2r');
+    await fireEvent.changeText(screen.getByLabelText('搜索背景歌曲'), '202');
+    await waitFor(() => {
+      expect(screen.queryByLabelText('使用B.B.K.K.B.K.K.作为背景')).toBeNull();
+      expect(screen.getByLabelText('使用光線チューニング作为背景')).toBeTruthy();
+    });
+    await fireEvent.press(screen.getByLabelText('使用光線チューニング作为背景'));
+    expect(onSelect).toHaveBeenCalledWith({ mode: 'song', songId: 202 });
+
+    await screen.rerender(picker(false));
+    await screen.rerender(picker(true));
+    expect(screen.getByLabelText('搜索背景歌曲').props.value).toBe('');
+    expect(screen.getByLabelText('使用B.B.K.K.B.K.K.作为背景')).toBeTruthy();
+    expect(screen.getByLabelText('使用光線チューニング作为背景')).toBeTruthy();
   });
 
   it.each(['chunithm', 'phigros'] as const)('reopens %s backgrounds offline using the cached original', async game => {

@@ -1,10 +1,10 @@
 import { jest } from '@jest/globals';
 import { Share } from 'react-native';
-import { cleanupOrphanedTemporaryStorage } from '@/features/storage-management/storage-cache-maintenance';
-import type { RuntimeDiagnosticEvent } from '@/services/runtime-diagnostics';
+import { cleanupOrphanedTemporaryStorage } from '@rranker/sdk/features/storage-management/storage-cache-maintenance';
+import type { RuntimeDiagnosticEvent } from '@rranker/sdk/services/runtime-diagnostics';
 
-let runtime: typeof import('@/services/runtime-diagnostics');
-let recorder: typeof import('@/services/runtime-diagnostics-recorder');
+let runtime: typeof import('@rranker/sdk/services/runtime-diagnostics');
+let recorder: typeof import('@rranker/sdk/services/runtime-diagnostics-recorder');
 
 const mockFiles = new Map<string, string>();
 const mockWriteState = { active: 0, maximum: 0 };
@@ -120,11 +120,11 @@ jest.mock('expo-sharing', () => ({
   isAvailableAsync: () => mockAvailable(),
   shareAsync: (uri: string, options: unknown) => mockShare(uri, options),
 }));
-jest.mock('@/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'test' }));
-jest.mock('@/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'test' }));
-jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'test' }));
-jest.mock('@/features/phigros-best-image/phigros-ui-cache', () => ({ PHIGROS_UI_CACHE_VERSION: 'test' }));
-jest.mock('@/services/remote-image-cache', () => ({ pruneRemoteImageCache: jest.fn() }));
+jest.mock('@rranker/tool-maimai/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'test' }));
+jest.mock('@rranker/tool-maimai/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'test' }));
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'test' }));
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache', () => ({ PHIGROS_UI_CACHE_VERSION: 'test' }));
+jest.mock('@rranker/sdk/services/remote-image-cache', () => ({ pruneRemoteImageCache: jest.fn() }));
 
 function event(at: string): RuntimeDiagnosticEvent {
   return {
@@ -142,8 +142,8 @@ describe('本地运行诊断', () => {
     mockWriteState.active = 0;
     mockWriteState.maximum = 0;
     jest.isolateModules(() => {
-      runtime = jest.requireActual<typeof runtime>('@/services/runtime-diagnostics');
-      recorder = jest.requireActual<typeof recorder>('@/services/runtime-diagnostics-recorder');
+      runtime = jest.requireActual<typeof runtime>('@rranker/sdk/services/runtime-diagnostics');
+      recorder = jest.requireActual<typeof recorder>('@rranker/sdk/services/runtime-diagnostics-recorder');
     });
   });
 
@@ -268,11 +268,11 @@ describe('诊断正文持久化与替换', () => {
   const documentPath = 'document/rranker-runtime-diagnostics.json';
   const previousPath = `${documentPath}.previous`;
   const pendingPath = `${documentPath}.pending`;
-  let runtime: typeof import('@/services/runtime-diagnostics');
+  let runtime: typeof import('@rranker/sdk/services/runtime-diagnostics');
 
   function launch() {
     jest.isolateModules(() => {
-      runtime = jest.requireActual<typeof import('@/services/runtime-diagnostics')>('@/services/runtime-diagnostics');
+      runtime = jest.requireActual<typeof import('@rranker/sdk/services/runtime-diagnostics')>('@rranker/sdk/services/runtime-diagnostics');
     });
   }
 

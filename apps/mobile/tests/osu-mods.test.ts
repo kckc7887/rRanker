@@ -3,7 +3,7 @@ import {
   osuModIconFileName,
   osuUserPlayableMods,
   resolveOsuModTheme,
-} from '@/domain/osu-mods';
+} from '@rranker/game-osu/domain/osu-mods';
 
 describe('osu! 模组元数据映射', () => {
   it('按玩法筛选可选模组，排除系统计分标记', () => {

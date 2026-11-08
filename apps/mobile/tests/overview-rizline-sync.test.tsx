@@ -1,28 +1,36 @@
+import type { RizlineSession } from '@rranker/provider-rizline-official/credential';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { useOverviewSync } from '@/hooks/use-overview-sync';
-import { createRizlineBoundAccount } from '@/domain/bound-account';
-import { rizlinePayloadFromSnapshot, type GameDataBundle } from '@/domain/game-data';
-import { getGameProfile } from '@/domain/game-profile';
-import { failedRefresh, successfulRefresh, type RefreshResult } from '@/domain/refresh-result';
+import { useOverviewSync } from '@rranker/sdk/hooks/use-overview-sync';
+import { createRizlineBoundAccount } from '@rranker/game-rizline/accounts';
+import { rizlinePayloadFromSnapshot } from '@rranker/game-rizline/domain/game-data';
+import { type GameDataBundle } from '@rranker/sdk/data';
+import { getGameProfile } from '@rranker/sdk/domain/game-profile';
+import { failedRefresh, successfulRefresh, type RefreshResult } from '@rranker/sdk/domain/refresh-result';
 import {
   gameDataQueryKey,
   registerGameDataBackground,
-} from '@/services/game-data-query';
-import { queryClient } from '@/state/query-client';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import { abortForegroundWork, beginForegroundWork } from '@/state/app-lifecycle-core';
-import { ProviderError } from '@/providers/errors';
-import type { RizlineSession } from '@/providers/contracts';
-import { fixtureSource } from '@/fixtures/sanitized';
+} from '@rranker/sdk/services/game-data-query';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { abortForegroundWork, beginForegroundWork } from '@rranker/sdk/state/app-lifecycle-core';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+
+import { createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
+import { MAIMAI_CATALOG_QUERY_KEY } from '@rranker/game-maimai/services/maimai-catalog-query';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { applyDisabledPlugins } from '@rranker/sdk/services/plugin-lifecycle';
+import { setDisabledPlugins } from '@rranker/sdk/registry';
+import { fixtureSource, fixtureCatalog } from './fixtures/sanitized';
 import { rizlineCatalog, rizlineSave } from './fixtures/rizline';
 
 const mockNotification = jest.fn();
 const mockCatalog = jest.fn<() => Promise<void>>();
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotification }) }));
-jest.mock('@/services/rizline-catalog-query', () => ({ refreshRizlineCatalog: () => mockCatalog() }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotification }) }));
+jest.mock('@rranker/game-rizline/services/rizline-catalog-query', () => ({ refreshRizlineCatalog: () => mockCatalog() }));
 
 type Params = Parameters<typeof useOverviewSync>[0];
+const initial = useAccountStore.getState();
 const account = createRizlineBoundAccount(rizlineSave());
 const session: RizlineSession = { mode: 'rizline', token: 'test-token', phone: '13800138000', deviceId: 'device', channelId: '1', persistable: true };
 const key = gameDataQueryKey(account.id, 'rizline', 'rizline-official', 'rizline');
@@ -39,18 +47,18 @@ function settledBundle(): RefreshResult<GameDataBundle, 'data' | 'catalog'> {
   });
 }
 function options(refetch: () => Promise<unknown>, overrides: Partial<Params> = {}): Params {
-  return { boundAccounts: [account], activeAccountId: account.id, activeGameId: 'rizline', activeSession: session,
-    catalogQuery: { refetch: jest.fn() } as unknown as Params['catalogQuery'],
-    gameQuery: { refetch, profile: getGameProfile('rizline') } as unknown as Params['gameQuery'],
+  return { gameQuery: { refetch, profile: getGameProfile('rizline'), activeAccountId: account.id, activeGameId: 'rizline' } as unknown as Params['gameQuery'],
     operation: { begin: jest.fn(() => true), finish: jest.fn() }, ...overrides };
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 
 beforeEach(() => {
-  jest.clearAllMocks(); queryClient.clear(); beginForegroundWork(); registerGameDataBackground(key, null);
+  jest.clearAllMocks(); queryClient.clear(); beginForegroundWork(); registerGameDataBackground(key, undefined);
+  setDisabledPlugins([]); useAccountStore.setState(initial, true);
+  useAccountStore.getState().bindAccounts({ accounts: [account], session, credentialId: 'rizline', activeAccountId: account.id });
   mockCatalog.mockResolvedValue(undefined);
 });
-afterEach(async () => { await cleanup(); queryClient.clear(); beginForegroundWork(); registerGameDataBackground(key, null); });
+afterEach(async () => { await cleanup(); setDisabledPlugins([]); useAccountStore.setState(initial, true); jest.restoreAllMocks(); queryClient.clear(); beginForegroundWork(); registerGameDataBackground(key, undefined); });
 
 it('still synchronizes scores when catalog refresh fails and reports partial failure', async () => {
   mockCatalog.mockRejectedValue(new Error('catalog offline'));
@@ -114,7 +122,11 @@ it.each(['account switch', 'account rebind', 'cache clear', 'background', 'unmou
   let result: boolean | undefined, syncing!: Promise<void>;
   await act(() => { syncing = hook.result.current.syncData().then(value => { result = value; }); });
   await waitFor(() => expect(mockCatalog).toHaveBeenCalled());
-  if (mode === 'account switch') await hook.rerender({ ...props, activeAccountId: 'rizline:official:user-b' });
+  if (mode === 'account switch') {
+    const other = { ...account, id: 'rizline:official:user-b' };
+    await act(() => { useAccountStore.getState().upsertBoundAccount(other); useAccountStore.getState().selectBoundAccount(other.id); });
+    await hook.rerender({ ...props, gameQuery: { ...props.gameQuery, activeAccountId: other.id } });
+  }
   else if (mode === 'account rebind') invalidateResourceWrites(`account:${account.id}`);
   else if (mode === 'cache clear') invalidateResourceWrites('rizline');
   else if (mode === 'background') abortForegroundWork();
@@ -125,12 +137,47 @@ it.each(['account switch', 'account rebind', 'cache clear', 'background', 'unmou
 });
 
 it('cancels the selected account without cancelling another account query', async () => {
-  const cancel = jest.spyOn(queryClient, 'cancelQueries');
+  let selectedSignal!: AbortSignal;
+  let otherSignal!: AbortSignal;
+  const otherResponse = deferred<string>();
+  const selected = queryClient.fetchQuery({ queryKey: key, meta: { accountId: account.id },
+    queryFn: ({ signal }) => { selectedSignal = signal; return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason))); } }).catch(() => undefined);
+  const otherKey = gameDataQueryKey('rizline:official:user-b', 'rizline', 'rizline-official', 'rizline');
+  const other = queryClient.fetchQuery({ queryKey: otherKey, meta: { accountId: 'rizline:official:user-b' },
+    queryFn: ({ signal }) => { otherSignal = signal; return otherResponse.promise; } });
   const hook = await renderHook(() => useOverviewSync(options(jest.fn(async () => ({ data: bundle(), isError: false })))));
   await act(async () => { await hook.result.current.syncData(); });
-  const predicate = cancel.mock.calls[0][0]?.predicate;
-  expect(predicate).toBeDefined();
-  const selected = queryClient.getQueryCache().build(queryClient, { queryKey: key });
-  const other = queryClient.getQueryCache().build(queryClient, { queryKey: gameDataQueryKey('rizline:official:user-b', 'rizline', 'rizline-official', 'rizline') });
-  expect(predicate?.(selected)).toBe(true); expect(predicate?.(other)).toBe(false); cancel.mockRestore();
+  await selected;
+  expect(selectedSignal.aborted).toBe(true);
+  expect(otherSignal.aborted).toBe(false);
+  otherResponse.resolve('other account'); await other;
+  expect(queryClient.getQueryData(otherKey)).toBe('other account');
+});
+
+it.each(['停用来源', '切换账号', '退出页面'] as const)('%s 立即取消水鱼同步的 HTTP 请求', async action => {
+  const maimai = createMaimaiBoundAccount({ providerId: 'diving-fish', displayName: '水鱼玩家', rating: 0, playerId: 'sync-player' });
+  useAccountStore.getState().bindAccounts({ accounts: [maimai], credentialId: 'diving-fish',
+    session: { mode: 'import-token', value: 'sync-token', persistable: true }, activeAccountId: maimai.id });
+  queryClient.setQueryData(MAIMAI_CATALOG_QUERY_KEY, fixtureCatalog);
+  let requestSignal: AbortSignal | undefined;
+  jest.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise<Response>((_, reject) => {
+    requestSignal = init!.signal!;
+    requestSignal.addEventListener('abort', () => reject(requestSignal!.reason), { once: true });
+  }));
+  const refetch = jest.fn(async () => ({ data: undefined, isError: false }));
+  const params = options(refetch);
+  params.gameQuery = { ...params.gameQuery, activeAccountId: maimai.id, activeGameId: 'maimai', profile: getGameProfile('maimai') };
+  const hook = await renderHook(() => useOverviewSync(params));
+  let syncing!: Promise<boolean>;
+  await act(() => { syncing = hook.result.current.syncData(); });
+  await waitFor(() => expect(requestSignal).toBeDefined());
+  if (action === '停用来源') await act(async () => { await applyDisabledPlugins(['provider.diving-fish']); });
+  else if (action === '切换账号') await act(() => useAccountStore.getState().selectBoundAccount(account.id));
+  else await hook.unmount();
+  expect(requestSignal!.aborted).toBe(true);
+  let success: boolean | undefined;
+  await act(async () => { success = await syncing; });
+  expect(success).toBe(false);
+  expect(refetch).not.toHaveBeenCalled();
+  expect(mockNotification).not.toHaveBeenCalled();
 });

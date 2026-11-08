@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SessionPersistenceError } from '@/domain/session-vault';
-import { ProviderError, providerErrorToUserMessage, runProviderOperation } from '@/providers/errors';
+import { SessionPersistenceError } from '@rranker/sdk/domain/session-vault';
+import { ProviderError, providerErrorToUserMessage, runProviderOperation } from '@rranker/sdk/providers/errors';
 
 describe('公共账号错误阶段', () => {
   it('取消不转换成授权或存储失败', async () => {

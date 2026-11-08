@@ -4,9 +4,9 @@ import {
   animationFrameFile,
   parseBeatmapVisuals,
   referencedImageFiles,
-} from '../../src/features/osu-chart-preview/webview-player/events';
-import { evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
-import { clampManiaScrollSpeed, MANIA_SCROLL_DEFAULT } from '../../src/features/osu-chart-preview/webview-player/scroll-speed';
+} from '@rranker/chart-osu/features/osu-chart-preview/webview-player/events';
+import { evaluateSprite } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/storyboard';
+import { clampManiaScrollSpeed, MANIA_SCROLL_DEFAULT } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/scroll-speed';
 
 const osuWithEvents = `
 osu file format v14

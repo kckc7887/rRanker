@@ -1,19 +1,20 @@
-import { applyChartPreviewConfigToHtml } from '@/features/simai-chart-preview/chart-preview-inject';
+import { majdataSongTarget, majdataChartTarget } from '@rranker/game-majdata-net/targets';
+import { applyChartPreviewConfigToHtml } from '@rranker/chart-simai/features/simai-chart-preview/chart-preview-inject';
 import majdataCases from './fixtures/majdata-simai-cases.json';
 import majdataReference from './fixtures/majdata-simai-reference.json';
 import scoreReference from './fixtures/majdata-score-reference.json';
 import { describe, expect, it, vi } from 'vitest';
-import { MAJDATA_FILTER_DEFAULTS, MAJDATA_ORDER, MajdataSongSchema, filterMajdataRecords, majdataDefaultDifficulty, majdataNoteGroup, majdataRank, majdataTags, majdataTime, majdataTotals, majdataTotal, majdataTotalText, majdataAvatarUrl, matchesMajdataSong, type MajdataScore } from '@/domain/majdata';
-import { MajdataProvider } from '@/providers/majdata-provider';
-import { cookieHeader, responseCookies, isHttpCookieSession, type HttpCookieSession } from '@/providers/http-cookies';
-import { chartLibraryKey, songLibraryKey } from '@/domain/user-library';
-import { majdataRecentCard } from '@/features/game-content/adapters/majdata';
-import { parseSimaiChart, parseSimaiChartAsync, parseSimaiBody, getAvailableDifficulties } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
-import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
-import { calculateAchievement, maximumSameErrors, singleNoteLoss, type BreakJudgment, type NormalJudgment } from '@/domain/tolerance';
+import { MAJDATA_FILTER_DEFAULTS, MAJDATA_ORDER, MajdataSongSchema, filterMajdataRecords, majdataDefaultDifficulty, majdataNoteGroup, majdataRank, majdataTags, majdataTime, majdataTotals, majdataTotal, majdataTotalText, majdataAvatarUrl, matchesMajdataSong, type MajdataScore } from '@rranker/game-majdata-net/domain/majdata';
+import { MajdataProvider } from '@rranker/provider-majdata-net/providers/majdata-provider';
+import { cookieHeader, responseCookies, isHttpCookieSession, type HttpCookieSession } from '@rranker/provider-majdata-net/http-cookies';
+import { libraryTargetKey } from '@rranker/sdk/domain/user-library';
+import { majdataRecentCard } from '@rranker/game-majdata-net/presentation';
+import { parseSimaiChart, parseSimaiChartAsync, parseSimaiBody, getAvailableDifficulties } from '@rranker/chart-simai/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { simaiStatistics } from '@rranker/chart-simai/features/simai-chart-preview/statistics';
+import { calculateAchievement, maximumSameErrors, singleNoteLoss, type BreakJudgment, type NormalJudgment } from '@rranker/chart-simai/domain/tolerance';
 import cases from './fixtures/maimai-simai-cases.json';
 import reference from './fixtures/maimai-simai-reference.json';
-import { buildMaxedMajdataScore } from '@/providers/maxed-majdata-test-provider';
+import { buildMaxedMajdataScore } from '@rranker/provider-majdata-net-test/providers/maxed-majdata-test-provider';
 
 const song = MajdataSongSchema.parse({ id: '0dff2974-9419-4290-bea9-307caa5825b7', title: 'Song', timestamp: '2026-09-01T00:00:00Z', hash: 'revision', levels: ['1', '3', '', '13+', '14.5', '15', '宴'], tags: ['A', 'B'], publicTags: ['B', 'C'] });
 const record = (level: number, dx = 100, classic = 99): MajdataScore => ({ chartInfo: song, chartLevel: level, acc: { dx, classic }, dxScore: 200, hash: song.hash, timestamp: song.timestamp, comboState: 4 });
@@ -118,8 +119,8 @@ describe('Majdata integration contracts', () => {
     expect(majdataRank(ranking, 'player', 3, 'new')).toBeUndefined();
   });
   it('keeps UUID identities and seven raw difficulty indices', () => {
-    expect(songLibraryKey('majdata-net', song.id)).toContain(song.id);
-    expect(chartLibraryKey('majdata-net', song.id, 'SD', 6)).not.toBe(chartLibraryKey('majdata-net', song.id, 'SD', 0));
+    expect(libraryTargetKey(majdataSongTarget(song.id))).toContain(song.id);
+    expect(libraryTargetKey(majdataChartTarget(song.id, 6))).not.toBe(libraryTargetKey(majdataChartTarget(song.id, 0)));
     expect(majdataDefaultDifficulty(song)).toBe(5); expect(majdataDefaultDifficulty(song, 0)).toBe(0);
     expect(MAJDATA_ORDER).toEqual([5, 4, 3, 2, 1, 0, 6]);
     const text = Array.from({ length: 7 }, (_, i) => `&inote_${i + 1}=(120)${i + 1},`).join('\n');

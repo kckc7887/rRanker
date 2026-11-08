@@ -5,8 +5,8 @@ import diffdiff from './fixtures/musedash/diffdiff.sanitized.json';
 import playDetail from './fixtures/musedash/play-detail.sanitized.json';
 import player from './fixtures/musedash/player.sanitized.json';
 import search from './fixtures/musedash/search.sanitized.json';
-import { ProviderError } from '@/providers/errors';
-import { MuseDashProvider } from '@/providers/muse-dash-provider';
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { MuseDashProvider } from '@rranker/provider-musedash-moe/providers/muse-dash-provider';
 
 function response(body: unknown, status = 200, headers?: Record<string, string>) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });

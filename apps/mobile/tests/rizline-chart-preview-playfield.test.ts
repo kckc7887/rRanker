@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DESIGN_HEIGHT, DESIGN_WIDTH, FRAME_ASPECT, measurePlayfield } from '@/features/rizline-chart-preview/webview-player/renderer';
+import { DESIGN_HEIGHT, DESIGN_WIDTH, FRAME_ASPECT, measurePlayfield } from '@rranker/chart-json/features/rizline-chart-preview/webview-player/renderer';
 
 describe('Rizline 9:16 playfield', () => {
   it('fills 1080×1920 with no leftover field', () => {

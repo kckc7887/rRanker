@@ -1,24 +1,27 @@
 import { createHash } from 'node:crypto';
 import { jest } from '@jest/globals';
-import { renderHook, waitFor } from '@testing-library/react-native';
-import { useGameResourceSync } from '@/hooks/use-game-resource-sync';
-import { queryClient } from '@/state/query-client';
-import { phigrosResources } from '@/services/phigros-resources';
-import { rizlineResources } from '@/services/rizline-resources';
-import { PHIGROS_CATALOG_QUERY_KEY, type PhigrosCatalogData } from '@/services/phigros-catalog-query';
-import { RIZLINE_CATALOG_QUERY_KEY } from '@/services/rizline-catalog-query';
-import type { RizlineCatalogData } from '@/domain/rizline';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { applyDisabledPlugins } from '@rranker/sdk/services/plugin-lifecycle';
+import { setDisabledPlugins } from '@rranker/sdk/registry';
+import { useGameResourceSync } from '@rranker/sdk/hooks/use-game-resource-sync';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { phigrosResources } from '@rranker/game-phigros/services/phigros-resources';
+import { rizlineResources } from '@rranker/game-rizline/services/rizline-resources';
+import { PHIGROS_CATALOG_QUERY_KEY, type PhigrosCatalogData } from '@rranker/game-phigros/services/phigros-catalog-query';
+import { RIZLINE_CATALOG_QUERY_KEY } from '@rranker/game-rizline/services/rizline-catalog-query';
+import type { RizlineCatalogData } from '@rranker/game-rizline/domain/rizline';
 import { releaseFixture } from './fixtures/phigros-release';
 import { rizlineCatalog } from './fixtures/rizline';
 
 let mockGame = 'phigros';
 let mockReady = true;
 let mockRestore = 'ready';
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: Object.assign((select: (value: unknown) => unknown) => select({ activeGameId: mockGame, restoreStatus: mockRestore }),
-    { getState: () => ({ catalogProvider: null }) }),
+    { getState: () => ({ activeGameId: mockGame, restoreStatus: mockRestore }) }),
 }));
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => ({ foregroundReady: mockReady }) }));
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => ({ foregroundReady: mockReady }),
+  getForegroundAbortSignal: () => new AbortController().signal }));
 jest.mock('expo-sqlite', () => jest.requireActual('./expo-sqlite-shim'));
 jest.mock('expo-sqlite/kv-store', () => jest.requireActual('./expo-sqlite-kv-store-shim'));
 
@@ -47,6 +50,7 @@ let phigrosRelease: ReturnType<typeof releaseFixture>;
 let rizlineFiles: Map<string, string>;
 const requests: string[] = [];
 beforeEach(() => {
+  setDisabledPlugins([]);
   mockGame = 'phigros'; mockReady = true; mockRestore = 'ready';
   queryClient.clear(); phigrosResources.clear(); rizlineResources.clear();
   phigrosRelease = releaseFixture('r1', ['Old.Song']);
@@ -63,7 +67,7 @@ beforeEach(() => {
 afterEach(async () => {
   await queryClient.cancelQueries();
   queryClient.clear(); phigrosResources.clear(); rizlineResources.clear();
-  jest.restoreAllMocks();
+  setDisabledPlugins([]); jest.restoreAllMocks();
 });
 
 it('恢复账号并进入前台后发布 Phigros 曲库，重新进入游戏时读取更新', async () => {
@@ -114,5 +118,27 @@ it('进入 Rizline 时发布所属曲库，普通前台恢复不重复下载，�
   mockGame = 'rizline'; await hook.rerender(undefined);
   await waitFor(() => expect(revision()).toBe('r2'));
   await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  await hook.unmount();
+});
+
+
+it('停用游戏中止在途资源 HTTP，重新启用后重新取得曲库', async () => {
+  mockGame = 'rizline';
+  let requestSignal: AbortSignal | undefined;
+  jest.mocked(globalThis.fetch).mockImplementation((_input, init) => new Promise<Response>((_, reject) => {
+    requestSignal = init!.signal!;
+    requestSignal.addEventListener('abort', () => reject(requestSignal!.reason), { once: true });
+  }));
+  const hook = await renderHook(() => useGameResourceSync());
+  await waitFor(() => expect(requestSignal).toBeDefined());
+  await act(async () => { await applyDisabledPlugins(['game.rizline']); });
+  expect(requestSignal!.aborted).toBe(true);
+  expect(queryClient.getQueryData(RIZLINE_CATALOG_QUERY_KEY)).toBeUndefined();
+  jest.mocked(globalThis.fetch).mockImplementation(async input => {
+    const body = rizlineFiles.get(new URL(String(input)).pathname);
+    return body ? new Response(body) : new Response('', { status: 404 });
+  });
+  await act(async () => { await applyDisabledPlugins([]); });
+  await waitFor(() => expect(queryClient.getQueryData<RizlineCatalogData>(RIZLINE_CATALOG_QUERY_KEY)?.snapshot.resourceVersion).toBe('r1'));
   await hook.unmount();
 });

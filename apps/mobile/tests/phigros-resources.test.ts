@@ -1,11 +1,11 @@
-import type { PhigrosChartPreviewAsset } from '@/domain/phigros-chart-preview';
+import type { PhigrosChartPreviewAsset } from '@rranker/game-phigros/domain/phigros-chart-preview';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PhigrosResourceService, phigrosResources } from '@/services/phigros-resources';
+import { PhigrosResourceService, phigrosResources } from '@rranker/game-phigros/services/phigros-resources';
 import {
   loadPhigrosChartPreviewResources,
   loadPhigrosChartPreviewVariants,
-} from '@/services/phigros-chart-preview-resources';
+} from '@rranker/game-phigros/services/phigros-chart-preview-resources';
 import { releaseFixture } from './fixtures/phigros-release';
 
 const readResource = (asset: PhigrosChartPreviewAsset) => phigrosResources.bytes(asset.url);

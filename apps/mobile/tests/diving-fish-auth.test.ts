@@ -1,5 +1,5 @@
-import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
-import { ProviderError } from '@/providers/errors';
+import { DivingFishAuthProvider } from '@rranker/provider-diving-fish/providers/diving-fish-auth';
+import { ProviderError } from '@rranker/sdk/providers/errors';
 
 function jsonResponse(body: unknown, init?: ResponseInit & { cookies?: string }) {
   const headers = new Headers(init?.headers);

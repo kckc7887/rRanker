@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dedupePhiraCharts, phiraCatalogNextPage } from '@/domain/phira-filters';
+import { dedupePhiraCharts, phiraCatalogNextPage } from '@rranker/game-phira/domain/phira-filters';
 import {
   PHIRA_CATALOG_PAGE_SCAN_BUDGET,
   phiraCatalogListView,
@@ -12,7 +12,7 @@ import {
   type PhiraCatalogScanRequest,
   type PhiraChart,
   type PhiraChartPage,
-} from '@/domain/phira';
+} from '@rranker/game-phira/domain/phira';
 
 const chart = (id: number): PhiraChart => ({ id } as PhiraChart);
 it('切到无需续扫的查询后释放旧预约，返回原查询可继续同一游标', () => {

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { loadTufPlayerFresh } from '@/services/tuf-cache';
+import { loadTufPlayerFresh } from '@rranker/provider-tuf/services/tuf-cache';
 
 afterEach(() => vi.unstubAllGlobals());
 

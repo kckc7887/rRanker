@@ -2,10 +2,10 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { jest } from '@jest/globals';
-import type { GameId } from '@/domain/game-bind-options';
-import type { LibraryTarget, UserLibraryItem } from '@/domain/user-library';
-import { useUserLibrary } from '@/hooks/use-user-library';
-import { queryClient } from '@/state/query-client';
+import type { GameId } from '@rranker/sdk/domain/game-bind-options';
+import type { ChartLibraryTarget, LibraryTarget, SongLibraryTarget, UserLibraryItem } from '@rranker/sdk/domain/user-library';
+import { useUserLibrary } from '@rranker/sdk/hooks/use-user-library';
+import { queryClient } from '@rranker/sdk/state/query-client';
 
 let mockGameId: GameId = 'rizline';
 let mockActive = true;
@@ -13,20 +13,20 @@ let mockForegroundReady = true;
 let mockForegroundGeneration = 0;
 let mockForeground = new AbortController();
 const mockNotify = jest.fn();
-const mockFavorite = jest.fn<(gameId: GameId, songId: string, value: boolean) => Promise<UserLibraryItem[]>>();
-const mockPractice = jest.fn<(gameId: GameId, songId: string, type: string, index: number, value: boolean) => Promise<UserLibraryItem[]>>();
+const mockFavorite = jest.fn<(target: SongLibraryTarget, value: boolean) => Promise<UserLibraryItem[]>>();
+const mockPractice = jest.fn<(target: ChartLibraryTarget, value: boolean) => Promise<UserLibraryItem[]>>();
 const mockTags = jest.fn<(target: LibraryTarget, values: string[]) => Promise<UserLibraryItem[]>>();
-const mockPresets = jest.fn<(values: string[]) => Promise<string[]>>();
+const mockPresets = jest.fn<(gameId: string, values: string[]) => Promise<string[]>>();
 const mockList = jest.fn<() => Promise<UserLibraryItem[]>>();
 const mockListPresets = jest.fn<() => Promise<string[]>>();
 
-jest.mock('@/state/query-client', () => {
+jest.mock('@rranker/sdk/state/query-client', () => {
   const { QueryClient } = jest.requireActual<typeof import('@tanstack/react-query')>('@tanstack/react-query');
   return { queryClient: new QueryClient({ defaultOptions: {
     queries: { retry: false, gcTime: Infinity }, mutations: { retry: false, gcTime: Infinity },
   } }) };
 });
-jest.mock('@/services/user-library-service', () => ({ UserLibraryService: class {
+jest.mock('@rranker/sdk/services/user-library-service', () => ({ UserLibraryService: class {
   list = () => mockList();
   listTagPresets = () => mockListPresets();
   setSongFavorite = (...args: Parameters<typeof mockFavorite>) => mockFavorite(...args);
@@ -34,17 +34,17 @@ jest.mock('@/services/user-library-service', () => ({ UserLibraryService: class 
   setTags = (...args: Parameters<typeof mockTags>) => mockTags(...args);
   setTagPresets = (...args: Parameters<typeof mockPresets>) => mockPresets(...args);
 } }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
-jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockActive }));
-jest.mock('@/state/app-lifecycle', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockActive }));
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
   getForegroundAbortSignal: () => mockForeground.signal,
   useAppLifecycle: () => ({ foregroundReady: mockForegroundReady, foregroundGeneration: mockForegroundGeneration }),
 }));
-jest.mock('@/state/session-store', () => ({ useSession: Object.assign(
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: Object.assign(
   (selector: (state: { activeGameId: GameId }) => unknown) => selector({ activeGameId: mockGameId }),
   { getState: () => ({ activeGameId: mockGameId }) },
 ) }));
-jest.mock('@/services/runtime-diagnostics-recorder', () => ({ createRuntimeOperation: () => ({ record: jest.fn() }) }));
+jest.mock('@rranker/sdk/services/runtime-diagnostics-recorder', () => ({ createRuntimeOperation: () => ({ record: jest.fn() }) }));
 
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
@@ -83,15 +83,15 @@ describe('公共个人条目写入边界', () => {
     const read = pendingWrite();
     mockList.mockReturnValueOnce(read.promise).mockResolvedValue([]);
     const hook = await renderHook(() => useUserLibrary(), { wrapper });
-    await expect(hook.result.current.setTags({ kind: 'song', songId: 'song' }, ['tag'])).rejects.toThrow();
+    await expect(hook.result.current.setTags({ kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' } }, ['tag'])).rejects.toThrow();
     await act(async () => { read.reject(new Error('read failed')); await publishUpdates(); });
     await waitFor(() => expect(hook.result.current.tagReadState.error).toBe(true));
     expect(hook.result.current.tagReadState.ready).toBe(false);
     expect(mockTags).not.toHaveBeenCalled();
     await act(async () => { hook.result.current.tagReadState.retry(); await publishUpdates(); });
     await waitFor(() => expect(hook.result.current.tagReadState.ready).toBe(true));
-    await act(async () => { await hook.result.current.setTags({ kind: 'song', songId: 'song' }, ['tag']); });
-    expect(mockTags).toHaveBeenCalledWith({ kind: 'song', gameId: 'rizline', songId: 'song' }, ['tag']);
+    await act(async () => { await hook.result.current.setTags({ kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' } }, ['tag']); });
+    expect(mockTags).toHaveBeenCalledWith({ kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' } }, ['tag']);
   });
   it('coalesces duplicate favorites and handles failure once without exposing error text', async () => {
     const write = pendingWrite(); mockFavorite.mockReturnValue(write.promise);
@@ -99,8 +99,8 @@ describe('公共个人条目写入边界', () => {
     let first!: ReturnType<typeof hook.result.current.setSongFavorite>;
     let second!: typeof first;
     await act(() => {
-      first = hook.result.current.setSongFavorite('song', true);
-      second = hook.result.current.setSongFavorite('song', true);
+      first = hook.result.current.setSongFavorite({ kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' } }, true);
+      second = hook.result.current.setSongFavorite({ kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' } }, true);
     });
     await waitFor(() => expect(mockFavorite).toHaveBeenCalledTimes(1));
     await act(async () => {
@@ -117,7 +117,7 @@ describe('公共个人条目写入边界', () => {
     mockPractice.mockRejectedValue(new Error('write failed'));
     const hook = await loadHook();
     await act(async () => {
-      expect(await hook.result.current.setChartPractice('song', 'SD', 2, true)).toBeUndefined();
+      expect(await hook.result.current.setChartPractice({ kind: 'chart', gameId: 'rizline', id: 'song-2', target: { songId: 'song', levelIndex: '2' } }, true)).toBeUndefined();
       await publishUpdates();
     });
     await waitFor(() => expect(hook.result.current.isUpdating).toBe(false));
@@ -128,7 +128,7 @@ describe('公共个人条目写入边界', () => {
     const write = pendingWrite(); mockFavorite.mockReturnValue(write.promise);
     const hook = await loadHook();
     let result!: ReturnType<typeof hook.result.current.setSongFavorite>;
-    await act(() => { result = hook.result.current.setSongFavorite('song', true); });
+    await act(() => { result = hook.result.current.setSongFavorite({ kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' } }, true); });
     await waitFor(() => expect(mockFavorite).toHaveBeenCalledTimes(1));
     if (transition === 'unmount') await hook.unmount();
     else {
@@ -149,9 +149,9 @@ describe('公共个人条目写入边界', () => {
     const write = pendingWrite(); mockFavorite.mockReturnValue(write.promise);
     const hook = await loadHook();
     let result!: ReturnType<typeof hook.result.current.setSongFavorite>;
-    await act(() => { result = hook.result.current.setSongFavorite('song', true); });
+    await act(() => { result = hook.result.current.setSongFavorite({ kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' } }, true); });
     mockGameId = 'maimai'; await hook.rerender(undefined);
-    const item: UserLibraryItem = { key: 'song:rizline:song', kind: 'song', gameId: 'rizline', songId: 'song',
+    const item: UserLibraryItem = { key: 'song:rizline:song', kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' },
       favorite: true, tags: [], createdAt: '2026-09-30T00:00:00.000Z', updatedAt: '2026-09-30T00:00:00.000Z' };
     await act(async () => { write.resolve([item]); expect(await result).toEqual([item]); await publishUpdates(); });
     await waitFor(() => expect(hook.result.current.isUpdating).toBe(false));
@@ -160,11 +160,25 @@ describe('公共个人条目写入边界', () => {
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
+  it('keeps presets isolated when a save finishes after switching games', async () => {
+    const write = Promise.withResolvers<string[]>();
+    mockPresets.mockReturnValueOnce(write.promise);
+    const hook = await loadHook();
+    let saving!: Promise<string[]>;
+    await act(() => { saving = hook.result.current.setTagPresets(['原游戏预设']); });
+    mockGameId = 'maimai'; await hook.rerender(undefined);
+    await waitFor(() => expect(hook.result.current.tagReadState.ready).toBe(true));
+    await act(async () => { write.resolve(['原游戏预设']); await saving; await publishUpdates(); });
+    expect(mockPresets).toHaveBeenCalledWith('rizline', ['原游戏预设']);
+    expect(queryClient.getQueryData(['user-library-tag-presets', 'rizline'])).toEqual(['原游戏预设']);
+    expect(queryClient.getQueryData(['user-library-tag-presets', 'maimai'])).toEqual([]);
+  });
+
   it('keeps tag and preset rejection for the editor to handle locally', async () => {
     const error = new Error('write failed'); mockTags.mockRejectedValue(error); mockPresets.mockRejectedValue(error);
     const hook = await loadHook();
     await act(async () => {
-      await expect(hook.result.current.setTags({ kind: 'song', songId: 'song' }, ['tag'])).rejects.toBe(error);
+      await expect(hook.result.current.setTags({ kind: 'song', gameId: 'rizline', id: 'song', target: { songId: 'song' } }, ['tag'])).rejects.toBe(error);
       await expect(hook.result.current.setTagPresets(['tag'])).rejects.toBe(error);
       await publishUpdates();
     });

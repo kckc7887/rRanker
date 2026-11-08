@@ -1,9 +1,7 @@
-import {
-  emptyGamePayload,
-  maimaiPayloadFromSnapshot,
-} from '@/domain/game-data';
-import { getGameProfile } from '@/domain/game-profile';
-import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
+import { emptyGamePayload } from '@rranker/sdk/data';
+import { maimaiPayloadFromSnapshot } from '@rranker/game-maimai/domain/game-data';
+import { getGameProfile } from '@rranker/sdk/domain/game-profile';
+import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource } from './fixtures/sanitized';
 
 describe('per-game data model', () => {
   it('keeps maimai DX Rating / Best sections only on the maimai payload', () => {

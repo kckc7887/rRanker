@@ -7,7 +7,7 @@ import {
   maimaiChartPreviewMusicUrl,
   maimaiChartPreviewSimaiUrl,
   maimaiChartPreviewVideoUrl,
-} from '@/domain/maimai-chart-preview';
+} from '@rranker/game-maimai/domain/maimai-chart-preview';
 
 describe('maimai chart preview ids', () => {
   it('maps SD / DX / UTAGE chart ids like diving-fish / lxns', () => {

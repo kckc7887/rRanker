@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { normalizeRizlineChartPreviewSettings } from '@/features/rizline-chart-preview/configuration';
+import { normalizeRizlineChartPreviewSettings } from '@rranker/chart-json/features/rizline-chart-preview/configuration';
 import {
   decodeAudio,
   PreviewSession,
-} from '@/features/rizline-chart-preview/webview-player/playback';
-import type { PreparedChart } from '@/features/rizline-chart-preview/webview-player/chart-prepare';
-import type { RizlineRenderer } from '@/features/rizline-chart-preview/webview-player/renderer';
+} from '@rranker/chart-json/features/rizline-chart-preview/webview-player/playback';
+import type { PreparedChart } from '@rranker/chart-json/features/rizline-chart-preview/webview-player/chart-prepare';
+import type { RizlineRenderer } from '@rranker/chart-json/features/rizline-chart-preview/webview-player/renderer';
 
 class FakeSource {
   startCount = 0;

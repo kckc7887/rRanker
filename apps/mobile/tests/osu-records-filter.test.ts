@@ -3,8 +3,8 @@ import {
   filterOsuBestScores,
   matchesOsuRange,
   type OsuRecordsFilters,
-} from '@/domain/osu-filters';
-import type { OsuBestScore } from '@/domain/osu';
+} from '@rranker/game-osu/domain/osu-filters';
+import type { OsuBestScore } from '@rranker/game-osu/domain/osu';
 
 const baseFilters: OsuRecordsFilters = {
   keyword: '',

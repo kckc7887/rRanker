@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { MaimaiFilterBar } from '@/components/MaimaiFilterBar';
-import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
+import { MaimaiFilterBar } from '@rranker/game-maimai/components/MaimaiFilterBar';
+import type { DxRatingChartTag } from '@rranker/game-maimai/domain/dxrating-chart-tags';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);

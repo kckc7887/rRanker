@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { parseBeatmapVisuals, UNDER_LAYERS } from '../../src/features/osu-chart-preview/webview-player/events';
-import { drawStoryboardLayer, ease, evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
-import { compileStoryboardTriggers } from '../../src/features/osu-chart-preview/webview-player/storyboard-triggers';
+import { parseBeatmapVisuals, UNDER_LAYERS } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/events';
+import { drawStoryboardLayer, ease, evaluateSprite } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/storyboard';
+import { compileStoryboardTriggers } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/storyboard-triggers';
 
 const close = (actual: number, expected: number): void => assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} != ${expected}`);
 

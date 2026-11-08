@@ -1,4 +1,4 @@
-import { calculateAchievement, maximumSameErrors, singleNoteAnalysis, singleNoteLoss } from '@/domain/tolerance';
+import { calculateAchievement, maximumSameErrors, singleNoteAnalysis, singleNoteLoss } from '@rranker/chart-simai/domain/tolerance';
 
 describe('achievement tolerance', () => {
   it('calculates normal-note and mixed judgments deterministically', () => {

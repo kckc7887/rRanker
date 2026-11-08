@@ -1,8 +1,8 @@
 import { jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { AppState } from 'react-native';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle-core';
+import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle-core';
 import { useAppRuntime } from '@/hooks/use-app-runtime';
 
 const mockState = { restoreStatus: 'ready', activeAccountId: 'maimai:local', activeGameId: 'maimai', activeProviderId: 'local', boundAccounts: [] };
@@ -24,35 +24,35 @@ const mockRoute = jest.fn();
 const mockRetryPendingRotationWrites = jest.fn(async () => 0);
 const mockThemeForeground = jest.fn();
 const mockRetryAccountSources = jest.fn(async () => undefined);
-jest.mock('@/services/account-restoration', () => ({ retryFailedAccountSources: () => mockRetryAccountSources() }));
-jest.mock('@/state/theme-store', () => ({ setThemePersistenceForeground: (value: boolean) => mockThemeForeground(value) }));
+jest.mock('@rranker/sdk/services/account-restoration', () => ({ retryFailedAccountSources: () => mockRetryAccountSources() }));
+jest.mock('@rranker/sdk/state/theme-store', () => ({ setThemePersistenceForeground: (value: boolean) => mockThemeForeground(value) }));
 
 jest.mock('@tanstack/react-query', () => ({ focusManager: { setFocused: (value: unknown) => mockFocus(value) } }));
 jest.mock('expo-image', () => ({ Image: { clearMemoryCache: () => mockClearMemory() } }));
 jest.mock('expo-router', () => ({ useSegments: () => ['(tabs)', '(overview)'] }));
-jest.mock('@/hooks/use-game-resource-sync', () => ({ useGameResourceSync: () => undefined }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-resource-sync', () => ({ useGameResourceSync: () => undefined }));
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: Object.assign((select: (state: unknown) => unknown) => select(mockState), { getState: () => mockState }),
   retryPendingRotationWrites: () => mockRetryPendingRotationWrites(),
 }));
-jest.mock('@/state/app-lifecycle', () => {
-  const actual = jest.requireActual<typeof import('@/state/app-lifecycle')>('@/state/app-lifecycle');
+jest.mock('@rranker/sdk/state/app-lifecycle', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/state/app-lifecycle')>('@rranker/sdk/state/app-lifecycle');
   return { ...actual, useAppLifecycle: () => {
     const snapshot = actual.useAppLifecycle();
     return mockRealLifecycle ? snapshot : mockLifecycle;
   }, getForegroundAbortSignal: () => mockRealLifecycle ? actual.getForegroundAbortSignal() : mockController.signal };
 });
-jest.mock('@/state/query-client', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: { cancelQueries: () => mockCancelQueries(), getQueryCache: () => ({ getAll: () => [] }) },
   releaseInactiveQueries: () => mockReleaseQueries(),
   resumeInterruptedActiveQueries: () => mockResumeQueries(),
 }));
-jest.mock('@/features/storage-management/storage-cache-maintenance', () => ({ runStorageCacheMaintenance: () => mockMaintenance() }));
-jest.mock('@/services/remote-image-cache', () => ({ markRemoteImageCacheGameActive: (gameId: string) => mockActiveGame(gameId) }));
-jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: (signal: AbortSignal) => mockHydrate(signal) }));
-jest.mock('@/services/runtime-diagnostics', () => ({ recordRuntimeDiagnostic: () => mockRecord() }));
-jest.mock('@/services/upload-task-controller', () => ({ uploadTaskController: { pause: () => mockPause(), resume: () => mockResume() } }));
-jest.mock('@/services/runtime-logs', () => ({ recordRuntimeRoute: (segments: unknown) => mockRoute(segments) }));
+jest.mock('@rranker/sdk/features/storage-management/storage-cache-maintenance', () => ({ runStorageCacheMaintenance: () => mockMaintenance() }));
+jest.mock('@rranker/sdk/services/remote-image-cache', () => ({ markRemoteImageCacheGameActive: (gameId: string) => mockActiveGame(gameId) }));
+jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: (signal: AbortSignal) => mockHydrate(signal) }));
+jest.mock('@rranker/sdk/services/runtime-diagnostics', () => ({ recordRuntimeDiagnostic: () => mockRecord() }));
+jest.mock('@rranker/tool-maimai/services/upload-task-controller', () => ({ uploadTaskController: { pause: () => mockPause(), resume: () => mockResume() } }));
+jest.mock('@rranker/sdk/services/runtime-logs', () => ({ recordRuntimeRoute: (segments: unknown) => mockRoute(segments) }));
 
 type Task = { callback: () => void; cancelled: boolean };
 let tasks: Task[];

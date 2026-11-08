@@ -49,7 +49,7 @@ import {
   deleteBestImageCapture,
   requestBestImageExportPermission,
   saveBestImageCapture,
-} from '@/features/best-image/best-image-export';
+} from '@rranker/sdk/features/best-image/best-image-export';
 
 describe('best image export', () => {
   beforeEach(() => {

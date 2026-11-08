@@ -1,15 +1,21 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { DebugPreferencesStore } from '@/storage/debug-preferences-store';
-import { createCatalogTestAccount, createLocalMaimaiAccount, createMaxedChunithmTestAccount, createMaxedMaimaiTestAccount,
-  createMaxedMuseDashTestAccount, createMaxedPhigrosTestAccount } from '@/domain/bound-account';
+import { DebugPreferencesStore } from '@rranker/sdk/storage/debug-preferences-store';
+import { createCatalogTestAccount } from './plugins';
+import { createLocalMaimaiAccount, createMaxedMaimaiTestAccount } from '@rranker/game-maimai/accounts';
+import { createMaxedChunithmTestAccount } from '@rranker/game-chunithm/accounts';
+import { createMaxedMuseDashTestAccount } from '@rranker/game-musedash/accounts';
+import { createMaxedPhigrosTestAccount } from '@rranker/game-phigros/accounts';
 
-beforeEach(() => vi.resetModules());
+beforeEach(async () => {
+  vi.resetModules();
+  await import('./plugins');
+});
 afterEach(() => vi.restoreAllMocks());
 
-it('hides every fixture provider, falls back to a real account and restores visibility without stealing selection', async () => {
-  const { useDebugStore } = await import('@/state/debug-store');
-  const { useSession, UNBOUND_ACCOUNT_ID } = await import('@/state/session-store');
-  const { debugPreferencesStore } = await import('@/storage/debug-preferences-store');
+it('hides every fixture provider, falls back to a real account and restores the selected account when enabled', async () => {
+  const { useDebugStore } = await import('@rranker/sdk/state/debug-store');
+  const { useSession, UNBOUND_ACCOUNT_ID } = await import('@rranker/sdk/state/session-store');
+  const { debugPreferencesStore } = await import('@rranker/sdk/storage/debug-preferences-store');
   vi.spyOn(debugPreferencesStore, 'load').mockResolvedValue({ testAccountsEnabled: true });
   const save = vi.spyOn(debugPreferencesStore, 'save').mockResolvedValue();
   await useDebugStore.getState().hydrate();
@@ -29,7 +35,7 @@ it('hides every fixture provider, falls back to a real account and restores visi
     expect(useSession.getState().activeAccountId).toBe(real.id);
   }
   await useDebugStore.getState().setTestAccountsEnabled(true);
-  expect(useSession.getState().activeAccountId).toBe(real.id);
+  expect(useSession.getState().activeAccountId).toBe('example:test');
   for (const example of examples) {
     useSession.getState().selectBoundAccount(example.id);
     expect(useSession.getState().activeAccountId).toBe(example.id);
@@ -38,16 +44,16 @@ it('hides every fixture provider, falls back to a real account and restores visi
   await useDebugStore.getState().setTestAccountsEnabled(false);
   expect(useSession.getState().activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
   await useDebugStore.getState().setTestAccountsEnabled(true);
-  expect(useSession.getState().activeAccountId).toBe(examples[0].id);
+  expect(useSession.getState().activeAccountId).toBe(examples.at(-1)!.id);
 });
 
 it('restores a preferred example only after preferences load and keeps it inactive after a read failure', async () => {
-  const { useDebugStore } = await import('@/state/debug-store');
-  const { useSession, UNBOUND_ACCOUNT_ID } = await import('@/state/session-store');
-  const { debugPreferencesStore } = await import('@/storage/debug-preferences-store');
-  const { SecureSessionStore } = await import('@/storage/secure-session-store');
-  const { catalogDemoAccountStore } = await import('@/storage/catalog-demo-account-store');
-  const { restoreAppAccounts } = await import('@/services/account-restoration');
+  const { useDebugStore } = await import('@rranker/sdk/state/debug-store');
+  const { useSession, UNBOUND_ACCOUNT_ID } = await import('@rranker/sdk/state/session-store');
+  const { debugPreferencesStore } = await import('@rranker/sdk/storage/debug-preferences-store');
+  const { SecureSessionStore } = await import('@rranker/sdk/storage/secure-session-store');
+  const { catalogDemoAccountStore } = await import('@rranker/sdk/storage/catalog-demo-account-store');
+  const { restoreAppAccounts } = await import('@rranker/sdk/services/account-restoration');
   const account = createCatalogTestAccount('example');
   await catalogDemoAccountStore('example').save(account);
   vi.spyOn(SecureSessionStore.prototype, 'loadVault').mockResolvedValue({ version: 3, activeAccountId: account.id, credentials: [], accounts: [] });
@@ -83,10 +89,10 @@ it('defaults to disabled for missing, malformed and non-boolean preferences, and
 });
 
 it('shares initialization and does not reveal a persisted enabled choice before the read completes', async () => {
-  const { debugPreferencesStore } = await import('@/storage/debug-preferences-store');
+  const { debugPreferencesStore } = await import('@rranker/sdk/storage/debug-preferences-store');
   let finish!: (value: { testAccountsEnabled: boolean }) => void;
   const load = vi.spyOn(debugPreferencesStore, 'load').mockReturnValue(new Promise((resolve) => { finish = resolve; }));
-  const { useDebugStore } = await import('@/state/debug-store');
+  const { useDebugStore } = await import('@rranker/sdk/state/debug-store');
   const first = useDebugStore.getState().hydrate();
   expect(useDebugStore.getState().hydrate()).toBe(first);
   expect(useDebugStore.getState()).toMatchObject({ hydrated: false, testAccountsEnabled: false });
@@ -97,11 +103,11 @@ it('shares initialization and does not reveal a persisted enabled choice before 
 });
 
 it('waits for initialization before committing a user change', async () => {
-  const { debugPreferencesStore } = await import('@/storage/debug-preferences-store');
+  const { debugPreferencesStore } = await import('@rranker/sdk/storage/debug-preferences-store');
   let finish!: (value: { testAccountsEnabled: boolean }) => void;
   vi.spyOn(debugPreferencesStore, 'load').mockReturnValue(new Promise((resolve) => { finish = resolve; }));
   const save = vi.spyOn(debugPreferencesStore, 'save').mockResolvedValue();
-  const { useDebugStore } = await import('@/state/debug-store');
+  const { useDebugStore } = await import('@rranker/sdk/state/debug-store');
   const pending = useDebugStore.getState().setTestAccountsEnabled(false);
   await Promise.resolve();
   expect(save).not.toHaveBeenCalled();
@@ -112,10 +118,10 @@ it('waits for initialization before committing a user change', async () => {
 });
 
 it('serializes writes, preserves the last saved state on failure, and permits retry', async () => {
-  const { debugPreferencesStore } = await import('@/storage/debug-preferences-store');
+  const { debugPreferencesStore } = await import('@rranker/sdk/storage/debug-preferences-store');
   vi.spyOn(debugPreferencesStore, 'load').mockResolvedValue({ testAccountsEnabled: false });
   const save = vi.spyOn(debugPreferencesStore, 'save').mockRejectedValueOnce(new Error('disk full')).mockResolvedValue();
-  const { useDebugStore } = await import('@/state/debug-store');
+  const { useDebugStore } = await import('@rranker/sdk/state/debug-store');
   await expect(useDebugStore.getState().setTestAccountsEnabled(true)).rejects.toThrow('disk full');
   expect(useDebugStore.getState()).toMatchObject({ testAccountsEnabled: false, saving: false });
   let finish!: () => void;

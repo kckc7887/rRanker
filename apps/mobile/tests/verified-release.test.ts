@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { VerifiedReleaseSession } from '@/services/verified-release';
+import { VerifiedReleaseSession } from '@rranker/sdk/services/verified-release';
 
 describe('verified release lifecycle', () => {
   it('does not turn cache clearing into a recovery request that restores cleared memory', async () => {

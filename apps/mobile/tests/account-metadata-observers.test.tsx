@@ -2,19 +2,23 @@ import { jest } from '@jest/globals';
 import { act, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Text } from 'react-native';
-import { useGameData } from '@/hooks/use-game-data';
-import { useSyncAccountMetadata } from '@/hooks/use-sync-account-metadata';
-import { useSession } from '@/state/session-store';
-import { createMaxedMaimaiTestAccount } from '@/domain/bound-account';
-import { getGameProfile } from '@/domain/game-profile';
-import { gameDataQueryKey } from '@/services/game-data-query';
-import { fixturePlayer, fixtureSource } from '@/fixtures/sanitized';
-import { CachedContentActivityScope } from '@/components/CachedTabScreen';
+import { useGameData } from '@rranker/sdk/hooks/use-game-data';
+import { useSyncAccountMetadata } from '@rranker/sdk/hooks/use-sync-account-metadata';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
+import { createMaxedMaimaiTestAccount } from '@rranker/game-maimai/accounts';
+import { getGameProfile } from '@rranker/sdk/domain/game-profile';
+import { gameDataQueryKey } from '@rranker/sdk/services/game-data-query';
+import { fixturePlayer, fixtureSource } from './fixtures/sanitized';
+import { CachedContentActivityScope } from '@rranker/sdk/components/CachedTabScreen';
 
 it('keeps hidden data observers quiet and reads the latest committed value on activation', async () => {
-  const initial = useSession.getState();
+  const initial = useAccountStore.getState();
+  const debug = useDebugStore.getState();
   const account = createMaxedMaimaiTestAccount();
-  useSession.setState({ boundAccounts: [account], activeAccountId: account.id, activeGameId: 'maimai', activeProviderId: 'maimai-test', session: null });
+  useDebugStore.setState({ hydrated: true, testAccountsEnabled: true });
+  useSession.getState().finishRestore(null, [account]);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const key = gameDataQueryKey(account.id, 'maimai', 'maimai-test', null);
   function Page() {
@@ -37,18 +41,20 @@ it('keeps hidden data observers quiet and reads the latest committed value on ac
   } finally {
     await screen.unmount();
     client.clear();
-    useSession.setState(initial, true);
+    useAccountStore.setState(initial, true);
+    useDebugStore.setState(debug, true);
   }
 });
 
 const mockThumbnail = jest.fn(async (..._args: unknown[]) => undefined);
-jest.mock('@/services/account-thumbnail', () => ({ persistBoundAccountThumbnail: (...args: unknown[]) => mockThumbnail(...args) }));
-jest.mock('@/services/resolve-account-avatar-persist', () => ({ persistBoundAccountAvatar: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/services/account-thumbnail', () => ({ persistBoundAccountThumbnail: (...args: unknown[]) => mockThumbnail(...args) }));
 
 it('updates bound account metadata when visible data changes', async () => {
-  const initial = useSession.getState();
+  const initial = useAccountStore.getState();
+  const debug = useDebugStore.getState();
   const account = createMaxedMaimaiTestAccount();
-  useSession.setState({ boundAccounts: [account], activeAccountId: account.id, activeGameId: 'maimai', activeProviderId: 'maimai-test', session: null });
+  useDebugStore.setState({ hydrated: true, testAccountsEnabled: true });
+  useSession.getState().finishRestore(null, [account]);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const key = gameDataQueryKey(account.id, 'maimai', 'maimai-test', null);
   function Root() { useSyncAccountMetadata(); return null; }
@@ -63,5 +69,5 @@ it('updates bound account metadata when visible data changes', async () => {
   expect(useSession.getState().boundAccounts[0].scoreDisplay).toBe('15000');
   await act(() => { client.setQueryData(key, { ...bundle, payload: { ...bundle.payload, playerScore: { value: 15001, display: '15001' } } }); });
   await waitFor(() => expect(useSession.getState().boundAccounts[0].scoreDisplay).toBe('15001'));
-  await screen.unmount(); client.clear(); useSession.setState(initial, true);
+  await screen.unmount(); client.clear(); useAccountStore.setState(initial, true); useDebugStore.setState(debug, true);
 });

@@ -2,8 +2,8 @@ import {
   defaultRandomChartsPreferences,
   parseRandomChartsPreferences,
   RandomChartsPreferencesStore,
-} from '@/features/toolbox/random-charts-preferences';
-import { createRandomChartsFilterStore } from '@/state/random-charts-filter';
+} from '@rranker/tool-maimai/features/random-charts-preferences';
+import { createRandomChartsFilterStore } from '@rranker/tool-maimai/state/random-charts-filter';
 
 class MemoryStore {
   values = new Map<string, string>();

@@ -2,28 +2,43 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
-import type { OsuGameId } from '@/domain/game-mode-family';
-import { normalizeOsuBeatmapsetDetail, OSU_RULESET_BY_GAME_ID } from '@/domain/osu';
-import { useOsuDemoScores } from '@/hooks/use-osu-demo-scores';
-import type { OsuPublicCatalogPage } from '@/providers/osu-public-catalog-provider';
+import type { OsuGameId } from '@rranker/game-osu';
+import { normalizeOsuBeatmapsetDetail, OSU_RULESET_BY_GAME_ID } from '@rranker/game-osu/domain/osu';
+import { useOsuDemoScores } from '@rranker/game-osu/hooks/use-osu-demo-scores';
+import type { OsuPublicCatalogPage } from '@rranker/provider-osu/providers/osu-public-catalog-provider';
 
 const mockSearch = jest.fn<(params: { gameId: OsuGameId; page: number }, signal: AbortSignal) => Promise<OsuPublicCatalogPage>>();
 let mockProviderId = 'osu-test';
 let mockAccountId = 'osu-standard:test';
 let mockActive = true;
-jest.mock('@/providers/osu-public-catalog-provider', () => ({
+const mockSourceClients = new Map<string, unknown>();
+jest.mock('@rranker/provider-osu/providers/osu-public-catalog-provider', () => ({
   OsuPublicCatalogProvider: class {
     searchBeatmapsets(params: { gameId: OsuGameId; page: number }, signal: AbortSignal) {
       return mockSearch(params, signal);
     }
   },
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
+    get sourceClient() { return jest.requireMock<typeof import('@rranker/sdk/state/session-provider-resolver')>('@rranker/sdk/state/session-provider-resolver').resolveAccountClient('test'); },
     activeProviderId: mockProviderId, activeAccountId: mockAccountId,
   }),
 }));
-jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockActive }));
+jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
+  resolveAccountClient: () => {
+    const key = mockProviderId + ':' + mockAccountId;
+    if (mockSourceClients.has(key)) return mockSourceClients.get(key);
+    const value = (() => mockProviderId === 'osu-test'
+    ? jest.requireActual<typeof import('@rranker/provider-osu-test/client')>('@rranker/provider-osu-test/client').createClient({
+      account: { id: mockAccountId, gameId: mockAccountId.split(':')[0], providerId: mockProviderId, displayName: 'test' },
+      credential: null, assertCurrent() {}, commitCredential: async () => 'applied',
+    } as import('@rranker/sdk/credentials').SourceClientContext) : undefined)();
+    mockSourceClients.set(key, value);
+    return value;
+  },
+}));
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockActive }));
 
 function page(ids: number[], gameId: OsuGameId, nextPage?: number): OsuPublicCatalogPage {
   return {

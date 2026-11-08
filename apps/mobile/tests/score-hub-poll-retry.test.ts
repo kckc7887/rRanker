@@ -9,9 +9,9 @@ import {
   pollQrLoginUntilToken,
   ScoreHubError,
   fetchLatestSync,
-} from '@/services/score-hub-client';
-import { waitForUploadDelay } from '@/services/score-hub-http';
-import { UploadTaskController } from '@/services/upload-task-controller';
+} from '@rranker/tool-maimai/services/score-hub-client';
+import { waitForUploadDelay } from '@rranker/tool-maimai/services/score-hub-http';
+import { UploadTaskController } from '@rranker/tool-maimai/services/upload-task-controller';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 

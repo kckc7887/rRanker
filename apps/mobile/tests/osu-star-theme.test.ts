@@ -1,4 +1,4 @@
-import { formatOsuStar, resolveOsuStarTheme } from '@/domain/osu-star-theme';
+import { formatOsuStar, resolveOsuStarTheme } from '@rranker/game-osu/domain/osu-star-theme';
 
 describe('osu! 星数 osu-web 官方连续色阶', () => {
   it.each([

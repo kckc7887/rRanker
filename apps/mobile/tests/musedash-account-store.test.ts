@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MuseDashAccountStore } from '@/storage/musedash-account-store';
+import { MuseDashAccountStore } from '@rranker/provider-musedash-moe/storage/musedash-account-store';
 class MemoryStore {
   value: string | null = null;
   async getItem() { return this.value; }

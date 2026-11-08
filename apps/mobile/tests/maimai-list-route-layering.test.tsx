@@ -3,9 +3,9 @@ import type { PropsWithChildren } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import type { GameId } from '@/domain/game-bind-options';
-import { fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
-import { queryClient } from '@/state/query-client';
+import type { GameId } from '@rranker/sdk/domain/game-bind-options';
+import { fixtureRecords, fixtureSource } from './fixtures/sanitized';
+import { queryClient } from '@rranker/sdk/state/query-client';
 import { RecordsScreen } from '../app/(tabs)/records';
 import { SearchScreen } from '../app/(tabs)/search';
 
@@ -32,22 +32,22 @@ jest.mock('expo-router', () => ({
   useSegments: () => [],
   Stack: { Screen: () => null },
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: {
     activeGameId: GameId;
     activeAccountId: string;
-    catalogProvider: unknown;
   }) => unknown) => selector({
     activeGameId: mockActiveGameId,
     activeAccountId: mockActiveAccountId,
-    catalogProvider: {
-      getCatalog: (...args: unknown[]) => mockGetCatalog(...args),
-      getAliases: (...args: unknown[]) => mockGetAliases(...args),
-      getSong: jest.fn(),
-      getDetailedCatalog: jest.fn(),
-    },
   }),
+}));
+jest.mock('@rranker/provider-lxns/providers/lxns-catalog-provider', () => ({
+  LxnsCatalogProvider: jest.fn(() => ({
+    getCatalog: (...args: unknown[]) => mockGetCatalog(...args),
+    getAliases: (...args: unknown[]) => mockGetAliases(...args),
+    getSong: jest.fn(), getDetailedCatalog: jest.fn(),
+  })),
 }));
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -62,39 +62,38 @@ jest.mock('react-native-safe-area-context', () => ({
   ...(jest.requireActual('react-native-safe-area-context') as object),
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
     data: [], isLoading: false, isUpdating: false,
     setSongFavorite: jest.fn(), setChartPractice: jest.fn(), setTags: jest.fn(), setTagPresets: jest.fn(),
     tagPresets: [],
-    songKey: (songId: string | number) => `maimai:song:${songId}`,
-    chartKey: (songId: string | number, type: string, levelIndex: number) =>
-      `maimai:chart:${songId}:${type}:${levelIndex}`,
+    key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
+
   }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
-  ...(jest.requireActual('@/hooks/use-detailed-catalog') as object),
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
+  ...(jest.requireActual('@rranker/game-maimai/hooks/use-detailed-catalog') as object),
   useDetailedCatalog: (enabled?: boolean) => mockUseDetailedCatalog(enabled),
 }));
-jest.mock('@/hooks/use-score-snapshot', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({
   useScoreSnapshot: (...args: unknown[]) => mockUseScoreSnapshot(...args),
 }));
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({
   useDxRatingChartTags: (...args: unknown[]) => mockUseDxRatingChartTags(...args),
 }));
-jest.mock('@/state/records-filter', () => ({
-  ...(jest.requireActual('@/state/records-filter') as object),
+jest.mock('@rranker/game-maimai/state/records-filter', () => ({
+  ...(jest.requireActual('@rranker/game-maimai/state/records-filter') as object),
   useRecordsFilter: () => mockUseRecordsFilter(),
 }));
-jest.mock('@/state/catalog-filter', () => ({
-  ...(jest.requireActual('@/state/catalog-filter') as object),
+jest.mock('@rranker/game-maimai/state/catalog-filter', () => ({
+  ...(jest.requireActual('@rranker/game-maimai/state/catalog-filter') as object),
   useCatalogFilter: () => mockUseCatalogFilter(),
 }));
-jest.mock('@/screens/PhiraScreens', () => {
+jest.mock('@rranker/game-phira/screens/PhiraScreens', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     PhiraBestScreen: () => null,
@@ -105,19 +104,19 @@ jest.mock('@/screens/PhiraScreens', () => {
 });
 
 function useDetailedCatalogActual(enabled?: boolean) {
-  return jest.requireActual<typeof import('@/hooks/use-detailed-catalog')>('@/hooks/use-detailed-catalog')
+  return jest.requireActual<typeof import('@rranker/game-maimai/hooks/use-detailed-catalog')>('@rranker/game-maimai/hooks/use-detailed-catalog')
     .useDetailedCatalog(enabled);
 }
 
-const actualRecordsFilter = jest.requireActual<typeof import('@/state/records-filter')>(
-  '@/state/records-filter',
+const actualRecordsFilter = jest.requireActual<typeof import('@rranker/game-maimai/state/records-filter')>(
+  '@rranker/game-maimai/state/records-filter',
 ).useRecordsFilter;
-const actualCatalogFilter = jest.requireActual<typeof import('@/state/catalog-filter')>(
-  '@/state/catalog-filter',
+const actualCatalogFilter = jest.requireActual<typeof import('@rranker/game-maimai/state/catalog-filter')>(
+  '@rranker/game-maimai/state/catalog-filter',
 ).useCatalogFilter;
 
 function fixtureCatalog() {
-  return jest.requireActual<typeof import('@/fixtures/sanitized')>('@/fixtures/sanitized').fixtureCatalog;
+  return jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized').fixtureCatalog;
 }
 
 function wrapper({ children }: PropsWithChildren) {

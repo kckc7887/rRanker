@@ -4,8 +4,8 @@ import {
   resolveChunithmRatingCardTheme,
   resolveChunithmRatingTier,
   resolveChunithmRatingTierBorder,
-} from '@/domain/chunithm-rating-theme';
-import { resolveDxRatingTheme } from '@/domain/dx-rating-theme';
+} from '@rranker/game-chunithm/domain/chunithm-rating-theme';
+import { resolveDxRatingTheme } from '@rranker/game-maimai/domain/dx-rating-theme';
 
 describe('中二节奏 Rating 霓虹电路主题', () => {
   it.each([

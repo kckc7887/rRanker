@@ -1,7 +1,7 @@
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
-import { applyPhigrosChartPreviewConfigToHtml } from '@/features/phigros-chart-preview/phigros-chart-preview-inject';
-import type { PhigrosChartPreviewConfig } from '@/features/phigros-chart-preview/phigros-chart-preview-inject';
+import { applyPhigrosChartPreviewConfigToHtml } from '@rranker/chart-json/features/phigros-chart-preview/phigros-chart-preview-inject';
+import type { PhigrosChartPreviewConfig } from '@rranker/chart-json/features/phigros-chart-preview/phigros-chart-preview-inject';
 
 function injected(config: PhigrosChartPreviewConfig) {
   const dom = new JSDOM(applyPhigrosChartPreviewConfigToHtml('<html><body><!--PHIGROS_CHART_PREVIEW_CONFIG--></body></html>', config), { runScripts: 'dangerously' });

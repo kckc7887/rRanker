@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import { CIRCLE_FEEDBACK_MS, drawFlatCircleFeedback, drawFlatInputDrum } from '../../src/features/osu-chart-preview/webview-player/flat-feedback';
-import { buildAutoReplay } from '../../src/features/osu-chart-preview/webview-player/autoplay';
-import { computeModDifficulty, parseBeatmap, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
-import { taikoRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/index';
-import { catchRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
-import { maniaRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
-import type { RenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine/renderer/Renderer';
+import { CIRCLE_FEEDBACK_MS, drawFlatCircleFeedback, drawFlatInputDrum } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/flat-feedback';
+import { buildAutoReplay } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/autoplay';
+import { computeModDifficulty, parseBeatmap, type SkinAssets } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine';
+import { taikoRuleset } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/taiko/index';
+import { catchRuleset } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
+import { maniaRuleset } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
+import type { RenderOptions } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/renderer/Renderer';
 import { fixtureOsu } from './fixtures';
 
 type Bitmap = ImageBitmap & { label: string };

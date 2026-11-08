@@ -1,18 +1,18 @@
 import { PixelRatio, type LayoutChangeEvent } from 'react-native';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { useBestImageScreenController } from '@/features/best-image/use-best-image-screen-controller';
-import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
-import { sanitizeRuntimeLogEntry } from '@/domain/runtime-log';
+import { useBestImageScreenController } from '@rranker/sdk/features/best-image/use-best-image-screen-controller';
+import { installRuntimeLogRecorder } from '@rranker/sdk/services/runtime-diagnostics-recorder';
+import { sanitizeRuntimeLogEntry } from '@rranker/sdk/domain/runtime-log';
 
 const mockCapture = jest.fn(async () => 'file:///private/capture.png');
 const mockSave = jest.fn(async () => undefined);
 jest.mock('react-native-view-shot', () => ({ captureRef: () => mockCapture() }));
-jest.mock('@/components/AppNotification', () => {
+jest.mock('@rranker/sdk/components/AppNotification', () => {
   const notifications = { showNotification: jest.fn(), showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
   return { useNotification: () => notifications };
 });
-jest.mock('@/features/best-image/best-image-export', () => ({
+jest.mock('@rranker/sdk/features/best-image/best-image-export', () => ({
   BestImageExportError: class BestImageExportError extends Error {
     constructor(message: string) {
       super(message);
@@ -26,7 +26,7 @@ jest.mock('@/features/best-image/best-image-export', () => ({
 }));
 
 const config = {
-  game: 'maimai' as const,
+  game: 'maimai' as const, pluginId: 'tool.maimai',
   accountId: 'secret-account', defaultType: 'best', defaultWidth: 1080, defaultQuantityText: '50',
   defaultPreferences: {}, preferences: { load: async () => ({}), save: async () => undefined },
   defaultExportHeight: () => 1440,

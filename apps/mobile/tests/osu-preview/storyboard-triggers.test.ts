@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { parseBeatmapVisuals, storyboardTimeRange } from '../../src/features/osu-chart-preview/webview-player/events';
-import { compileStoryboardTriggers, type StoryboardHitSoundEvent } from '../../src/features/osu-chart-preview/webview-player/storyboard-triggers';
-import { evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
+import { parseBeatmapVisuals, storyboardTimeRange } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/events';
+import { compileStoryboardTriggers, type StoryboardHitSoundEvent } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/storyboard-triggers';
+import { evaluateSprite } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/storyboard';
 
 function sound(beatmapMs: number, overrides: Partial<StoryboardHitSoundEvent> = {}): StoryboardHitSoundEvent {
   return { beatmapMs, objectId: beatmapMs, normalSet: 1, additionSet: 2, sampleIndex: 3, type: 'normal', ...overrides };

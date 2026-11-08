@@ -1,11 +1,11 @@
 
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
-import { OsuSongRow } from '@/components/osu/OsuSongRow';
-import { OsuBestScreen, OsuCatalogScreen, OsuRecordsScreen } from '@/screens/OsuScreens';
-import { useOsuRecordsFilter } from '@/state/osu-records-filter';
-import type { OsuBestScore } from '@/domain/osu';
+import { OsuScoreCard } from '@rranker/game-osu/components/OsuScoreCard';
+import { OsuSongRow } from '@rranker/game-osu/components/OsuSongRow';
+import { OsuBestScreen, OsuCatalogScreen, OsuRecordsScreen } from '@rranker/game-osu/screens/OsuScreens';
+import { useOsuRecordsFilter } from '@rranker/game-osu/state/osu-records-filter';
+import type { OsuBestScore } from '@rranker/game-osu/domain/osu';
 
 const mockRouterPush = jest.fn();
 
@@ -14,16 +14,13 @@ jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockRouterPush(...args) },
 }));
-jest.mock('@/providers/osu-config', () => ({
-  ...jest.requireActual<typeof import('@/providers/osu-config')>('@/providers/osu-config'),
-  OSU_MOD_ICONS_ROOT: '',
-}));
+jest.mock('expo/fetch', () => ({ fetch: jest.fn(async () => ({ ok: false })) }));
 jest.mock('expo-file-system', () => ({
   Directory: class {},
   File: class {},
   Paths: { document: 'mock' },
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#fff',
     surface: '#fff',
@@ -38,7 +35,7 @@ jest.mock('@/theme/app-theme', () => ({
     dark: false,
   }),
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
@@ -77,7 +74,7 @@ let mockDemoScores: OsuBestScore[] = [];
 let mockDemoPageFailed = false;
 let mockDemoHasNextPage = true;
 const mockFetchDemoNext = jest.fn(async () => undefined);
-jest.mock('@/hooks/use-osu-demo-scores', () => ({
+jest.mock('@rranker/game-osu/hooks/use-osu-demo-scores', () => ({
   useOsuDemoScores: () => ({ bound: mockDemo, scores: mockDemoScores, isPending: false, isError: false,
     error: null, isRefetching: false, refetch: jest.fn(), hasNextPage: mockDemoHasNextPage, isFetchingNextPage: false,
     isFetchNextPageError: mockDemoPageFailed, fetchNextPage: mockFetchDemoNext }),
@@ -87,9 +84,9 @@ beforeEach(() => {
   mockFetchDemoNext.mockReset().mockResolvedValue(undefined);
 });
 
-jest.mock('@/hooks/use-osu-known-scores', () => ({ useOsuKnownScores: jest.fn() }));
-const { useOsuKnownScores } = jest.requireMock<typeof import('@/hooks/use-osu-known-scores')>(
-  '@/hooks/use-osu-known-scores',
+jest.mock('@rranker/game-osu/hooks/use-osu-known-scores', () => ({ useOsuKnownScores: jest.fn() }));
+const { useOsuKnownScores } = jest.requireMock<typeof import('@rranker/game-osu/hooks/use-osu-known-scores')>(
+  '@rranker/game-osu/hooks/use-osu-known-scores',
 );
 (useOsuKnownScores as jest.Mock).mockReturnValue({
   bound: true,
@@ -147,7 +144,7 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     );
     await fireEvent.press(records.getByTestId(`osu-score-card-${score.id}`));
     expect(mockRouterPush).toHaveBeenLastCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '3720', beatmapId: '22423', scoreId: String(score.id), gameId: 'osu-standard' },
     });
     await records.unmount();
@@ -155,7 +152,7 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     const best = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
     await fireEvent.press(best.getByTestId(`osu-score-card-${score.id}`));
     expect(mockRouterPush).toHaveBeenLastCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '3720', beatmapId: '22423', gameId: 'osu-standard' },
     });
   });
@@ -195,7 +192,7 @@ describe('OsuSongRow 曲库行', () => {
   });
 });
 
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: {
       gameId: 'osu-standard',
@@ -231,7 +228,7 @@ jest.mock('@/hooks/use-game-data', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
     activeGameId: 'osu-standard',
     activeAccountId: 'osu-standard:osu:2',
@@ -247,7 +244,7 @@ const catalogSong = {
   difficultyRatings: [3.56, 7.34],
 };
 
-jest.mock('@/hooks/use-osu-catalog', () => ({
+jest.mock('@rranker/game-osu/hooks/use-osu-catalog', () => ({
   useOsuCatalogSearch: jest.fn(() => ({
     bound: true,
     songs: [catalogSong],
@@ -387,7 +384,7 @@ describe('OsuCatalogScreen 曲库页', () => {
   });
 
   it('未绑定 osu 账号时提示绑定且不发请求渲染', async () => {
-    const { useOsuCatalogSearch } = jest.requireMock<typeof import('@/hooks/use-osu-catalog')>('@/hooks/use-osu-catalog');
+    const { useOsuCatalogSearch } = jest.requireMock<typeof import('@rranker/game-osu/hooks/use-osu-catalog')>('@rranker/game-osu/hooks/use-osu-catalog');
     (useOsuCatalogSearch as jest.Mock).mockReturnValueOnce({
       bound: false,
       songs: [],

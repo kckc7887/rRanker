@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bindLxnsAccount } from '@/services/lxns-account-binding';
-import { SecureSessionStore } from '@/storage/secure-session-store';
-import type { ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
+import { bindLxnsAccount } from '@rranker/provider-lxns/services/lxns-account-binding';
+import { SecureSessionStore } from '@rranker/sdk/storage/secure-session-store';
+import type { ChunithmPersonalSnapshot } from '@rranker/game-chunithm/domain/chunithm-personal';
 
 const mocks = vi.hoisted(() => {
   const index = new Map<string, string>();
@@ -22,23 +22,23 @@ const mocks = vi.hoisted(() => {
     },
   };
 });
-vi.mock('@/storage/key-value-storage', () => ({ default: mocks.storage }));
+vi.mock('@rranker/sdk/storage/key-value-storage', () => ({ default: mocks.storage }));
 vi.mock('expo-secure-store', () => ({
   getItemAsync: async (key: string) => mocks.secrets.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => { mocks.secrets.set(key, value); },
   deleteItemAsync: async (key: string) => { mocks.secrets.delete(key); mocks.afterSecretDelete?.(); },
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
 }));
-vi.mock('@/providers/lxns-score-provider', () => ({ LxnsScoreProvider: class {
+vi.mock('@rranker/provider-lxns/providers/lxns-score-provider', () => ({ LxnsScoreProvider: class {
   getOptionalPlayer = mocks.getPlayer; getOptionalRecords = mocks.getRecords; getSession = mocks.getSession;
 } }));
-vi.mock('@/providers/chunithm-score-provider', () => ({ ChunithmScoreProvider: class {
+vi.mock('@rranker/provider-lxns/providers/chunithm-score-provider', () => ({ ChunithmScoreProvider: class {
   getSnapshot = mocks.getSnapshot; getSession = mocks.getSession;
 } }));
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
+vi.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
   saveResource = mocks.saveResource;
 } }));
-vi.mock('@/services/runtime-diagnostics-recorder', () => ({ recordRuntimeError: vi.fn(), recordRuntimeDiagnostic: vi.fn() }));
+vi.mock('@rranker/sdk/services/runtime-diagnostics-recorder', () => ({ recordRuntimeError: vi.fn(), recordRuntimeDiagnostic: vi.fn() }));
 
 const session = { mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
   expiresAt: Date.now() + 900_000, persistable: true } as const;

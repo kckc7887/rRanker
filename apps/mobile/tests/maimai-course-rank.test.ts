@@ -3,7 +3,7 @@ import {
   normalizeDivingFishCourseRank,
   normalizeLxnsCourseRank,
   resolveMaimaiCourseRank,
-} from '@/domain/maimai-course-rank';
+} from '@rranker/game-maimai/domain/maimai-course-rank';
 
 describe('maimai course rank', () => {
   it('normalizes the distinct DivingFish and LXNS identifiers to the game asset index', () => {

@@ -6,7 +6,7 @@ import {
   pollQrLoginUntilToken,
   scoreHubErrorToUserMessage,
   ScoreHubError,
-} from '@/services/score-hub-client';
+} from '@rranker/tool-maimai/services/score-hub-client';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 

@@ -3,8 +3,8 @@ import {
   buildPhiraRpeBundlePlan,
   resolvePhiraChartZipMediaPlan,
   sanitizeRpeBundleFileName,
-} from '@/domain/phira-chart-preview';
-import { rpeResourceUrl } from '@/domain/rpe-resource-path';
+} from '@rranker/chart-json/domain/phira-chart-preview';
+import { rpeResourceUrl } from '@rranker/chart-json/domain/rpe-resource-path';
 
 const files = (names: string[]) => names.map((name) => ({ name, dir: false }));
 

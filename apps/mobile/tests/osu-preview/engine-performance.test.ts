@@ -1,21 +1,21 @@
-import { autoCursorAt } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/std/autoGenerator';
+import { autoCursorAt } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/std/autoGenerator';
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import { catchRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
-import { resolveTrackOpacity, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine-performance';
-import { buildAutoReplay } from '../../src/features/osu-chart-preview/webview-player/autoplay';
-import { computeModDifficulty, parseBeatmap, type HitResult, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
-import { maniaRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
-import { taikoRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/index';
-import type { ManiaHitObject } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/mania/types';
-import type { TaikoHitObject , TaikoDrumRoll } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/types';
-import type { RenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine/renderer/Renderer';
+import { catchRuleset } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
+import { resolveTrackOpacity, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine-performance';
+import { buildAutoReplay } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/autoplay';
+import { computeModDifficulty, parseBeatmap, type HitResult, type SkinAssets } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine';
+import { maniaRuleset } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
+import { taikoRuleset } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/taiko/index';
+import type { ManiaHitObject } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/mania/types';
+import type { TaikoHitObject , TaikoDrumRoll } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/taiko/types';
+import type { RenderOptions } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/renderer/Renderer';
 import { fixtureOsu } from './fixtures';
-import { computeDrumrollTint, taikoVisibleTime } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/Playfield';
-import { shouldShowHeadArrow, shouldShowTailArrow } from '../../src/features/osu-chart-preview/webview-player/engine/renderer/HitObjectRenderer';
-import { applyStacking } from '../../src/features/osu-chart-preview/webview-player/engine/utils/stacking';
-import { computeHitResults } from '../../src/features/osu-chart-preview/webview-player/engine/utils/hitJudge';
-import { slideDurationMs, sliderNestedEvents } from '../../src/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
+import { computeDrumrollTint, taikoVisibleTime } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/taiko/Playfield';
+import { shouldShowHeadArrow, shouldShowTailArrow } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/renderer/HitObjectRenderer';
+import { applyStacking } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/utils/stacking';
+import { computeHitResults } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/utils/hitJudge';
+import { slideDurationMs, sliderNestedEvents } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
 
 describe('indexed render candidates', () => {
   it('does not parse or mutate a pre-cancelled auto preparation', async () => {

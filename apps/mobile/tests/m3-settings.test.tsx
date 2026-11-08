@@ -1,22 +1,18 @@
-import { useDebugStore } from '@/state/debug-store';
+import type { Credential } from '@rranker/sdk/credentials';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
 import { cleanup, act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { queryClient } from '@/state/query-client';
+import { queryClient } from '@rranker/sdk/state/query-client';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
-import {
-  createLocalMaimaiAccount,
-  createMaimaiBoundAccount,
-  createMaxedChunithmTestAccount,
-  createMaxedMaimaiTestAccount,
-  createMaxedMuseDashTestAccount,
-  createMaxedPhigrosTestAccount,
-  createMuseDashBoundAccount,
-  createTufBoundAccount,
-  type BoundAccount,
-} from '@/domain/bound-account';
-import type { GameId } from '@/domain/game-bind-options';
-import type { ProviderSession } from '@/providers/contracts';
-import { NotificationProvider } from '@/components/AppNotification';
+import { createLocalMaimaiAccount, createMaimaiBoundAccount, createMaxedMaimaiTestAccount } from '@rranker/game-maimai/accounts';
+import { createMaxedChunithmTestAccount } from '@rranker/game-chunithm/accounts';
+import { createMaxedMuseDashTestAccount, createMuseDashBoundAccount } from '@rranker/game-musedash/accounts';
+import { createMaxedPhigrosTestAccount } from '@rranker/game-phigros/accounts';
+import { createTufBoundAccount } from '@rranker/game-adofai/accounts';
+import type { BoundAccount } from '@rranker/sdk/account';
+import type { GameId } from '@rranker/sdk/domain/game-bind-options';
+
+import { NotificationProvider } from '@rranker/sdk/components/AppNotification';
 
 const mockUpsertDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveDemoAccount = jest.fn(async (_accountId?: string) => undefined);
@@ -47,7 +43,7 @@ const mockSwitchBoundAccount = jest.fn(
   async (accountId: string, _options?: unknown) => { mockSelectBoundAccount(accountId); return true; },
 );
 const mockClearOrder: string[] = [];
-const mockSession: ProviderSession = { mode: 'jwt', value: 'token', persistable: true };
+const mockSession: Credential = { mode: 'jwt', value: 'token', persistable: true };
 const mockAccount = createMaimaiBoundAccount({
   providerId: 'diving-fish',
   displayName: '测试水鱼',
@@ -70,7 +66,7 @@ jest.mock('react-native-gesture-handler', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };
 });
-jest.mock('@/components/ProviderLoginSheet', () => ({
+jest.mock('@rranker/sdk/components/ProviderLoginSheet', () => ({
   ProviderLoginSheet: ({ visible, provider, gameTitle }: {
     visible: boolean;
     provider: { title: string } | null;
@@ -87,14 +83,14 @@ jest.mock('@/components/ProviderLoginSheet', () => ({
     );
   },
 }));
-jest.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn(() => ({
+jest.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn(() => ({
   removeAccount: async (accountId: string) => {
     mockClearOrder.push('credentials');
     return mockRemoveAccount(accountId);
   },
   setActiveAccountId: async (accountId: string) => mockSetActiveAccountId(accountId),
 })) }));
-jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: jest.fn(() => ({
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: jest.fn(() => ({
   clear: async () => {
     mockClearOrder.push('cache');
     return mockClearSnapshots();
@@ -104,7 +100,7 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotReposit
   saveResource: async () => undefined,
   deleteResource: async () => undefined,
 })) }));
-jest.mock('@/storage/local-account-store', () => ({
+jest.mock('@rranker/provider-local/storage/local-account-store', () => ({
   LocalAccountStore: jest.fn(() => ({
     upsert: (profile: { id: string; displayName: string }) => mockUpsertLocalAccount(profile),
     remove: (accountId: string) => mockRemoveLocalAccount(accountId),
@@ -112,75 +108,75 @@ jest.mock('@/storage/local-account-store', () => ({
   LOCAL_PLAYER_NAME_MAX_LENGTH: 20,
   normalizeLocalPlayerName: (value: string) => value.trim() || null,
 }));
-jest.mock('@/storage/demo-account-store', () => ({
+jest.mock('@rranker/provider-maimai-test/storage/demo-account-store', () => ({
   DemoAccountStore: jest.fn(() => ({
     upsert: (profile: { id: string; displayName: string }) => mockUpsertDemoAccount(profile),
     remove: (accountId: string) => mockRemoveDemoAccount(accountId),
   })),
   isMaimaiDemoAccountId: (accountId: string) => accountId === 'maimai:test' || accountId.startsWith('maimai:test:'),
 }));
-jest.mock('@/storage/chunithm-temp-account-store', () => ({
+jest.mock('@rranker/provider-chunithm-temp/storage/chunithm-temp-account-store', () => ({
   ChunithmTempAccountStore: jest.fn(() => ({
     remove: () => mockRemoveChunithmTempAccount(),
   })),
 }));
-jest.mock('@/storage/chunithm-demo-account-store', () => ({
+jest.mock('@rranker/provider-chunithm-test/storage/chunithm-demo-account-store', () => ({
   ChunithmDemoAccountStore: jest.fn(() => ({
     save: (profile: { id: string; displayName: string }) => mockSaveChunithmDemoAccount(profile),
     remove: () => mockRemoveChunithmDemoAccount(),
   })),
   isChunithmDemoAccountId: (accountId: string) => accountId === 'chunithm:test',
 }));
-jest.mock('@/storage/phigros-demo-account-store', () => ({
+jest.mock('@rranker/provider-phigros-test/storage/phigros-demo-account-store', () => ({
   PhigrosDemoAccountStore: jest.fn(() => ({
     save: (profile: { id: string; displayName: string }) => mockSavePhigrosDemoAccount(profile),
     remove: () => mockRemovePhigrosDemoAccount(),
   })),
 }));
-jest.mock('@/storage/musedash-demo-account-store', () => ({
+jest.mock('@rranker/provider-musedash-test/storage/musedash-demo-account-store', () => ({
   MuseDashDemoAccountStore: jest.fn(() => ({
     save: (profile: { id: string; displayName: string }) => mockSaveMuseDashDemoAccount(profile),
     remove: () => mockRemoveMuseDashDemoAccount(),
   })),
   isMuseDashDemoAccountId: (accountId: string) => accountId === 'musedash:musedash-moe:rranker-demo-maxed',
 }));
-jest.mock('@/storage/tuf-account-store', () => ({
+jest.mock('@rranker/provider-tuf/storage/tuf-account-store', () => ({
   TufAccountStore: jest.fn(() => ({
     remove: (playerId: number) => mockRemoveTufAccount(playerId),
   })),
 }));
-jest.mock('@/services/tuf-cache', () => ({
+jest.mock('@rranker/provider-tuf/services/tuf-cache', () => ({
   TufCache: jest.fn(() => ({
     clearPlayer: (playerId: number) => mockClearTufCache(playerId),
   })),
 }));
-jest.mock('@/services/account-thumbnail', () => ({
-  hydrateAccountDisplayData: jest.fn(async () => undefined),
+jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/services/account-thumbnail', () => ({
   persistBoundAccountThumbnail: jest.fn(async () => undefined),
 }));
-jest.mock('@/storage/musedash-account-store', () => ({
+jest.mock('@rranker/provider-musedash-moe/storage/musedash-account-store', () => ({
   MuseDashAccountStore: jest.fn(() => ({
     remove: (userId: string) => mockRemoveMuseDashAccount(userId),
   })),
 }));
-jest.mock('@/services/muse-dash-cache', () => ({
+jest.mock('@rranker/provider-musedash-moe/services/muse-dash-cache', () => ({
   MuseDashCache: jest.fn(() => ({
     clearPlayer: (userId: string) => mockClearMuseDashCache(userId),
   })),
 }));
-jest.mock('@/services/switch-bound-account', () => ({
+jest.mock('@rranker/sdk/services/switch-bound-account', () => ({
   notifyAccountSwitchError: jest.fn(),
   switchBoundAccount: (accountId: string, options?: unknown) => (
     mockSwitchBoundAccount(accountId, options)
   ),
 }));
-jest.mock('@/state/query-client', () => ({ queryClient: {
+jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: {
   cancelQueries: jest.fn(async () => undefined),
   invalidateQueries: jest.fn(),
   setQueriesData: jest.fn(),
   removeQueries: (...args: unknown[]) => mockRemoveQueries(...args),
 } }));
-jest.mock('@/state/session-store', () => {
+jest.mock('@rranker/sdk/state/session-store', () => {
   const state = () => ({
     session: mockSession,
     sessionsByAccountId: { [mockAccount.id]: mockSession },
@@ -200,7 +196,7 @@ jest.mock('@/state/session-store', () => {
   useSession.getState = state;
   return { UNBOUND_ACCOUNT_ID: 'maimai:unbound', useSession };
 });
-jest.mock('@/state/game-picker-ui', () => ({
+jest.mock('@rranker/sdk/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: {
     expandedGameId: GameId;
     setExpandedGameId: () => void;
@@ -211,13 +207,13 @@ jest.mock('@/state/game-picker-ui', () => ({
     toggleExpandedGameId: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: [], isLoading: false, clearGameUserData: async () => {
     mockClearOrder.push('personal');
     return mockClearUserData();
   },
 }) }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
 
 afterEach(async () => { await cleanup(); jest.useRealTimers(); });
 

@@ -2,11 +2,11 @@ import { imageDownloads } from './remote-image-native-mock';
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Linking } from 'react-native';
-import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
+import { ChunithmSongDetail } from '@rranker/game-chunithm/components/ChunithmSongDetail';
 import type {
   ChunithmCatalogSnapshot,
   ChunithmSongDetailSnapshot,
-} from '@/domain/chunithm';
+} from '@rranker/game-chunithm/domain/chunithm';
 
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
@@ -156,7 +156,7 @@ jest.mock('react-native-gesture-handler', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     dark: mockDarkTheme,
     accent: '#246BFD',
@@ -172,7 +172,7 @@ jest.mock('@/theme/app-theme', () => ({
     danger: '#B42318',
   }),
 }));
-jest.mock('@/hooks/use-chunithm-catalog', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: mockCatalogState,
     isLoading: false,
@@ -181,14 +181,14 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
     refetch: mockCatalogRefetch,
   }),
 }));
-jest.mock('@/hooks/use-chunithm-song-detail', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-song-detail', () => ({
   useChunithmSongDetail: () => ({
     ...mockDetailState,
     isPending: mockDetailState.isPending ?? mockDetailState.isLoading,
     refetch: mockDetailRefetch,
   }),
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: {
       payload: {
@@ -203,15 +203,12 @@ jest.mock('@/hooks/use-game-data', () => ({
     },
   }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
     data: [],
     isLoading: false,
     isUpdating: false,
-    songKey: (songId: string) => `song:chunithm:${songId}`,
-    chartKey: (songId: string, type: string, levelIndex: number) => (
-      `chart:chunithm:${songId}:${type}:${levelIndex}`
-    ),
+    key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
     setSongFavorite: mockSetSongFavorite,
     setChartPractice: mockSetChartPractice,
     setTags: mockSetTags,
@@ -219,7 +216,7 @@ jest.mock('@/hooks/use-user-library', () => ({
     setTagPresets: mockSetTagPresets,
   }),
 }));
-jest.mock('@/components/TagEditor', () => ({
+jest.mock('@rranker/sdk/components/TagEditor', () => ({
   TagEditor: ({
     tags,
     onChange,
@@ -310,16 +307,11 @@ describe('Chunithm song detail', () => {
     }
 
     await fireEvent.press(screen.getByLabelText('收藏 B.B.K.K.B.K.K.'));
-    expect(mockSetSongFavorite).toHaveBeenCalledWith('3', true);
+    expect(mockSetSongFavorite).toHaveBeenCalledWith({ gameId: 'chunithm', kind: 'song', id: '3', target: { songId: '3' } }, true);
     await fireEvent.press(master.getByLabelText('加入练习清单'));
-    expect(mockSetChartPractice).toHaveBeenCalledWith('3', 'SD', 3, true);
+    expect(mockSetChartPractice).toHaveBeenCalledWith({ gameId: 'chunithm', kind: 'chart', id: JSON.stringify(['3', 3]), target: { songId: '3', levelIndex: '3' } }, true);
     await fireEvent.press(master.getByLabelText('添加详情测试标签'));
-    expect(mockSetTags).toHaveBeenCalledWith({
-      kind: 'chart',
-      songId: '3',
-      type: 'SD',
-      levelIndex: 3,
-    }, ['爆发']);
+    expect(mockSetTags).toHaveBeenCalledWith({ gameId: 'chunithm', kind: 'chart', id: JSON.stringify(['3', 3]), target: { songId: '3', levelIndex: '3' } }, ['爆发']);
 
     await fireEvent.press(master.getByLabelText(
       '搜索谱面确认：中二节奏 B.B.K.K.B.K.K. MASTER 谱面确认',
@@ -385,8 +377,9 @@ describe('Chunithm song detail', () => {
 
     await fireEvent.press(master.getByLabelText('使用定数 12.5 打开 Rating 计算器'));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/tools/chunithm-rating',
+      pathname: '/plugins/[pluginId]/[pageId]',
       params: {
+        pluginId: 'tool.chunithm', pageId: 'chunithm-rating', gameId: 'chunithm',
         constant: '12.5',
         score: '1009000',
       },
@@ -399,8 +392,9 @@ describe('Chunithm song detail', () => {
 
     await fireEvent.press(master.getByLabelText('使用定数 12.5 打开 OVER POWER 计算器'));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/tools/chunithm-rating',
+      pathname: '/plugins/[pluginId]/[pageId]',
       params: {
+        pluginId: 'tool.chunithm', pageId: 'chunithm-rating', gameId: 'chunithm',
         constant: '12.5',
         score: '1009000',
       },

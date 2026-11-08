@@ -1,7 +1,7 @@
 import { encode } from 'jpeg-js';
 import decodeJpeg from 'jpeg-js/lib/decoder.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { decodeMaimaiQrFromImageUri } from '@/services/maimai-qr-decode';
+import { decodeMaimaiQrFromImageUri } from '@rranker/tool-maimai/services/maimai-qr-decode';
 
 const mocks = vi.hoisted(() => ({ manipulate: vi.fn(), qr: vi.fn(), deleted: vi.fn() }));
 vi.mock('expo-image-manipulator', () => ({ manipulateAsync: mocks.manipulate, SaveFormat: { JPEG: 'jpeg' } }));

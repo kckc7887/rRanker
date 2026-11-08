@@ -17,7 +17,7 @@ import {
   phigrosScoreToRate,
   roundRks,
   selectPhi3,
-} from '@/domain/phigros';
+} from '@rranker/game-phigros/domain/phigros';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

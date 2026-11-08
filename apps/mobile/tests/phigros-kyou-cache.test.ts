@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PhigrosKyouAliasesSnapshot } from '@/domain/phigros-kyou';
-import { loadPhigrosKyouAliases, resetPhigrosKyouAliasesCache, PHIGROS_KYOU_STALE_TIME_MS } from '@/services/phigros-kyou-cache';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import type { PhigrosKyouAliasesSnapshot } from '@rranker/game-phigros/domain/phigros-kyou';
+import { loadPhigrosKyouAliases, resetPhigrosKyouAliasesCache, PHIGROS_KYOU_STALE_TIME_MS } from '@rranker/provider-phi-taptap/services/phigros-kyou-cache';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
 const mocks = vi.hoisted(() => ({ getAliases: vi.fn<(signal?: AbortSignal) => Promise<PhigrosKyouAliasesSnapshot>>() }));
-vi.mock('@/providers/phigros-kyou-provider', () => ({
+vi.mock('@rranker/provider-phi-taptap/providers/phigros-kyou-provider', () => ({
   PhigrosKyouProvider: class { getAliases = mocks.getAliases; },
 }));
 

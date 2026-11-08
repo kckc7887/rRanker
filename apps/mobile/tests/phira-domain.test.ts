@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { formatPhiraRating, PhiraChartSchema, PhiraPoolResponseSchema, phiraChartStatus } from '@/domain/phira';
-import { filterPhiraBests, phiraRecordXing } from '@/domain/phira-filters';
-import { presentPhiraBestSection, presentPhiraChart, presentPhiraScore } from '@/features/game-content/adapters';
+import { formatPhiraRating, PhiraChartSchema, PhiraPoolResponseSchema, phiraChartStatus } from '@rranker/game-phira/domain/phira';
+import { filterPhiraBests, phiraRecordXing } from '@rranker/game-phira/domain/phira-filters';
+import { presentPhiraBestSection, presentPhiraChart, presentPhiraScore } from '@rranker/game-phira/presentation';
 
 const chart = PhiraChartSchema.parse({
   id: 38294, name: 'Test Song', level: 'Another Lv.?', difficulty: 15.6,
@@ -37,7 +37,7 @@ describe('Phira domain contracts', () => {
   });
 
   it('maps snake-case full combo and record time at the provider boundary', async () => {
-    const { PhiraRecordSchema } = await import('@/domain/phira');
+    const { PhiraRecordSchema } = await import('@rranker/game-phira/domain/phira');
     expect(PhiraRecordSchema.parse({ id: 9, chart: 1, score: 999_999, accuracy: .99, full_combo: true, time: '2026-08-13T00:00:00Z' }))
       .toMatchObject({ fullCombo: true, created: '2026-08-13T00:00:00Z' });
   });

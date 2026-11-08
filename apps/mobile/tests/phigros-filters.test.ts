@@ -4,7 +4,7 @@ import {
   matchesPhigrosScoreRange,
   phigrosLevelToDifficulty,
   phigrosRankFilterLabel,
-} from '@/domain/phigros-filters';
+} from '@rranker/game-phigros/domain/phigros-filters';
 
 describe('phigros level filters', () => {
   it('maps EZ/HD/IN/AT to shared difficulty enums', () => {

@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  createLocalMaimaiAccount,
-  createMaxedChunithmTestAccount,
-  createMaxedMaimaiTestAccount,
-  createMaxedPhigrosTestAccount,
-} from '@/domain/bound-account';
-import { queryClient } from '@/state/query-client';
-import { notifyAccountSwitchError, switchBoundAccount } from '@/services/switch-bound-account';
+import { createLocalMaimaiAccount, createMaxedMaimaiTestAccount } from '@rranker/game-maimai/accounts';
+import { createMaxedChunithmTestAccount } from '@rranker/game-chunithm/accounts';
+import { createMaxedPhigrosTestAccount } from '@rranker/game-phigros/accounts';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { notifyAccountSwitchError, switchBoundAccount } from '@rranker/sdk/services/switch-bound-account';
 
 const mocks = vi.hoisted(() => ({
   setActiveAccountId: vi.fn(async (_accountId: string): Promise<void> => undefined),
@@ -28,13 +25,13 @@ vi.mock('expo-router', () => ({
   },
 }));
 
-vi.mock('@/storage/secure-session-store', () => ({
+vi.mock('@rranker/sdk/storage/secure-session-store', () => ({
   SecureSessionStore: class {
     setActiveAccountId = mocks.setActiveAccountId;
   },
 }));
 
-vi.mock('@/state/session-store', () => ({
+vi.mock('@rranker/sdk/state/session-store', () => ({
   useSession: {
     getState: () => mocks.sessionState,
   },

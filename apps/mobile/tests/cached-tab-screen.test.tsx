@@ -3,8 +3,8 @@ import { jest } from '@jest/globals';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, Text, TextInput } from 'react-native';
 import { create } from 'zustand';
-import { CachedTabScreen, StackScreenActivityScope, useCachedTabActive, useStackScreenReady } from '@/components/CachedTabScreen';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+import { CachedTabScreen, StackScreenActivityScope, useCachedTabActive, useStackScreenReady } from '@rranker/sdk/components/CachedTabScreen';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
 
 let mockLifecycle: AppLifecycleSnapshot;
 let mockFocused = true;
@@ -17,8 +17,8 @@ const mockNavigation = {
     return () => { mockEvents.delete(event); };
   },
 };
-jest.mock('@/state/app-lifecycle', () => ({
-  ...jest.requireActual<typeof import('@/state/app-lifecycle')>('@/state/app-lifecycle'),
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/state/app-lifecycle')>('@rranker/sdk/state/app-lifecycle'),
   useAppLifecycle: () => mockLifecycle,
 }));
 jest.mock('expo-router', () => ({

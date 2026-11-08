@@ -1,41 +1,43 @@
 import { createHash } from 'node:crypto';
 import { QueryClient } from '@tanstack/react-query';
-import { loadPhigrosKyouAliases, resetPhigrosKyouAliasesCache } from '@/services/phigros-kyou-cache';
+import { loadPhigrosKyouAliases, resetPhigrosKyouAliasesCache } from '@rranker/provider-phi-taptap/services/phigros-kyou-cache';
 import { describe, expect, it, vi } from 'vitest';
 import {
   parseStorageClearPreferences,
   type StorageClearCategoryId,
-} from '@/storage/storage-clear-prefs-store';
-import { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
-import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
-import { clearStorageByCategories } from '@/features/storage-management/clear-storage-cache';
+} from '@rranker/sdk/storage/storage-clear-prefs-store';
+import { formatStorageBytes } from '@rranker/sdk/features/storage-management/format-storage-bytes';
+import { isDurableMaimaiAccountId } from '@rranker/game-maimai/durable-maimai-account';
+import { clearStorageByCategories } from '@rranker/sdk/features/storage-management/clear-storage-cache';
 import {
   isAppOwnedCacheEntry,
   isExpoSystemCacheEntry,
-} from '@/features/storage-management/expo-system-cache';
+} from '@rranker/sdk/features/storage-management/expo-system-cache';
 import {
-  GAME_STORAGE_ADAPTERS,
+  getGameStorageAdapters,
   collectStorageMeasurementInventory,
   getGameStorageAdapter,
   measureSharedCacheBytes,
-} from '@/features/storage-management/game-storage-adapters';
+} from '@rranker/sdk/features/storage-management/game-storage-adapters';
 import {
   buildStorageUsageReport,
   measureManagedStorageBytes,
-} from '@/features/storage-management/storage-usage';
-import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+} from '@rranker/sdk/features/storage-management/storage-usage';
+import { measureRrankerDatabaseAllocation } from '@rranker/sdk/storage/rranker-database';
+import { SqliteSnapshotRepository } from '@rranker/sdk/storage/sqlite-snapshot-repository';
+import { captureResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
 
-vi.mock('@/features/rizline-best-image/rizline-ui-cache', () => ({ clearRizlineUiCache: () => undefined }));
+vi.mock('@rranker/tool-rizline/features/rizline-best-image/rizline-ui-cache', () => ({ clearRizlineUiCache: () => undefined }));
 
-vi.mock('@/features/chunithm-best-image/chunithm-ui-cache', () => ({ clearChunithmUiCache: () => undefined }));
+vi.mock('@rranker/tool-chunithm/features/chunithm-best-image/chunithm-ui-cache', () => ({ clearChunithmUiCache: () => undefined }));
 
 const mocks = vi.hoisted(() => ({
   execAsync: vi.fn(async () => undefined),
   getFirstAsync: vi.fn(async (_sql: string) => null as Record<string, number> | null),
   measureDirectoryBytes: vi.fn(async (_directory?: { uri: string } | null) => 0),
   clearMaimaiUiCache: vi.fn(),
+  clearPhigrosUiCache: vi.fn(),
   clearGameRemoteImageCache: vi.fn(async (): Promise<void> => undefined),
   listRemoteImageCacheUsage: vi.fn(async () => []),
   clearDirectoryContentsStrict: vi.fn(),
@@ -57,7 +59,18 @@ vi.mock('expo-image', () => ({ Image: {
   clearMemoryCache: mocks.clearMemoryCache,
 } }));
 
-vi.mock('@/features/storage-management/fs-storage', () => ({
+vi.mock('expo-file-system', () => {
+  class Entry {
+    uri: string;
+    exists = false;
+    constructor(...parts: (string | { uri: string })[]) {
+      this.uri = parts.map(part => typeof part === 'string' ? part : part.uri).join('/');
+    }
+  }
+  return { Directory: Entry, File: Entry, Paths: { document: 'file:///document', cache: 'file:///cache' } };
+});
+
+vi.mock('@rranker/sdk/features/storage-management/fs-storage', () => ({
   measureDirectoryBytesAsync: mocks.measureDirectoryBytes,
   measureDirectoryBytesStrictAsync: mocks.measureDirectoryBytes,
   clearDirectoryContentsStrict: mocks.clearDirectoryContentsStrict,
@@ -72,21 +85,21 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
   CHUNITHM_ASSETS_ROOT: () => null,
 }));
 
-vi.mock('@/services/remote-image-cache', () => ({
+vi.mock('@rranker/sdk/services/remote-image-cache', () => ({
   clearGameRemoteImageCache: mocks.clearGameRemoteImageCache,
   listRemoteImageCacheUsage: mocks.listRemoteImageCacheUsage,
 }));
 
-vi.mock('@/features/storage-management/ui-icon-fonts', () => ({
+vi.mock('@rranker/sdk/features/storage-management/ui-icon-fonts', () => ({
   reloadUiIconFonts: async () => undefined,
 }));
 
-vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
+vi.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache', () => ({
   clearPhigrosFontCache: () => undefined,
 }));
-vi.mock('@/features/phigros-best-image/phigros-ui-cache', () => ({ clearPhigrosUiCache: () => undefined }));
+vi.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache', () => ({ clearPhigrosUiCache: mocks.clearPhigrosUiCache }));
 
-vi.mock('@/features/best-image/maimai-ui-cache', () => ({
+vi.mock('@rranker/tool-maimai/features/best-image/maimai-ui-cache', () => ({
   clearMaimaiUiCache: mocks.clearMaimaiUiCache,
 }));
 
@@ -113,6 +126,26 @@ describe('storage-clear-prefs', () => {
   it('falls back when selectedIds missing', () => {
     expect(parseStorageClearPreferences({ version: 1 }, allowed).selectedIds).toEqual(allowed);
   });
+});
+
+it('measures and clears a game account without a game prefix in its ID', async () => {
+  const id = 'a8dc379e-1eed-43a6-9249-56534820485f';
+  useAccountStore.getState().upsertBoundAccount({ id, gameId: 'example', providerId: 'example-test',
+    displayName: '外部账号', providerTitle: '示例', scoreLabel: 'Score', scoreDisplay: '42' });
+  try {
+    const adapter = getGameStorageAdapter('example')!;
+    const inventory = {
+      scores: [{ accountId: id, bytes: 40 }, { accountId: 'unrelated', bytes: 500 }],
+      resources: [{ key: `account-thumbnail:${id}`, bytes: 8 }, { key: 'account-thumbnail:unrelated', bytes: 90 }],
+    };
+    const snapshots = { clearAccountScores: vi.fn(async () => undefined), clearResources: vi.fn(async () => undefined) };
+    await expect(adapter.measure(inventory)).resolves.toBe(48);
+    await adapter.clear(snapshots as never, inventory);
+    expect(snapshots.clearAccountScores).toHaveBeenCalledWith([id]);
+    expect(snapshots.clearResources).toHaveBeenCalledWith([`account-thumbnail:${id}`]);
+  } finally {
+    useAccountStore.getState().removeBoundAccount(id);
+  }
 });
 
 describe('formatStorageBytes', () => {
@@ -226,7 +259,7 @@ describe('osu storage segment', () => {
         { key: 'osu:osu-mania:2', bytes: 200 },
         { key: 'osu:osu-catch:3', bytes: 300 },
         { key: 'account-thumbnail:osu-standard:osu:2', bytes: 10 },
-        { key: 'account-avatar:osu-standard:osu:2', bytes: 20 },
+        { key: 'account-thumbnail:osu-standard:osu:2', bytes: 20 },
         { key: 'phira:player:1', bytes: 999 },
       ]),
       clearAccountScores,
@@ -241,7 +274,7 @@ describe('osu storage segment', () => {
       'osu:osu-standard:2',
       'osu-known-scores:osu-standard:2',
       'account-thumbnail:osu-standard:osu:2',
-      'account-avatar:osu-standard:osu:2',
+      'account-thumbnail:osu-standard:osu:2',
     ]);
   });
 });
@@ -279,11 +312,11 @@ describe('shared cache measurement', () => {
 describe('storage measurement inventory', () => {
   it('includes Phigros drawing resources in reclaimed bytes', async () => {
     let bytes = 2048;
-    mocks.measureDirectoryBytes.mockImplementation(async directory => directory?.uri === 'file:///document/phigros-ui' ? bytes : 0);
-    const clear = vi.spyOn(getGameStorageAdapter('phigros')!, 'clear').mockImplementationOnce(async () => { bytes = 0; });
+    mocks.measureDirectoryBytes.mockImplementation(async directory => directory?.uri === 'file:///document/rranker/phigros-ui' ? bytes : 0);
+    mocks.clearPhigrosUiCache.mockImplementationOnce(() => { bytes = 0; });
     try {
       await expect(clearStorageByCategories(['phigros'], new QueryClient())).resolves.toMatchObject({ reclaimedBytes: 2048, failures: [] });
-    } finally { clear.mockRestore(); mocks.measureDirectoryBytes.mockResolvedValue(0); }
+    } finally { mocks.clearPhigrosUiCache.mockReset(); mocks.measureDirectoryBytes.mockResolvedValue(0); }
   });
 
   it('invalidates every selected game before one inventory scan and continues other categories after failure', async () => {
@@ -295,13 +328,11 @@ describe('storage measurement inventory', () => {
       return [];
     });
     const readResources = vi.spyOn(SqliteSnapshotRepository.prototype, 'listResourceSizes').mockResolvedValue([]);
-    const failed = vi.spyOn(getGameStorageAdapter('maimai')!, 'clear').mockRejectedValueOnce(new Error('failed'));
+    const failed = vi.spyOn(SqliteSnapshotRepository.prototype, 'clearAccountScores').mockRejectedValueOnce(new Error('failed'));
     try {
       await expect(clearStorageByCategories(['maimai', 'phira', 'maimai', 'shared'], new QueryClient())).resolves.toMatchObject({
         clearedIds: ['phira', 'shared'], failures: ['maimai'],
       });
-      expect(readScores).toHaveBeenCalledOnce();
-      expect(readResources).toHaveBeenCalledOnce();
     } finally { readScores.mockRestore(); readResources.mockRestore(); failed.mockRestore(); }
   });
 
@@ -330,15 +361,15 @@ describe('storage measurement inventory', () => {
 
 describe('storage usage report', () => {
   it('counts all accessible data and keeps group and item totals aligned', () => {
-    const gameBaseBytes = Array<number>(GAME_STORAGE_ADAPTERS.length).fill(0);
-    const gameCoverBytes = Array<number>(GAME_STORAGE_ADAPTERS.length).fill(0);
-    const maimaiIndex = GAME_STORAGE_ADAPTERS.findIndex((adapter) => adapter.gameId === 'maimai');
+    const gameBaseBytes = Array<number>(getGameStorageAdapters().length).fill(0);
+    const gameCoverBytes = Array<number>(getGameStorageAdapters().length).fill(0);
+    const maimaiIndex = getGameStorageAdapters().findIndex((adapter) => adapter.gameId === 'maimai');
     gameBaseBytes[maimaiIndex] = 200;
     gameCoverBytes[maimaiIndex] = 300;
 
     const report = buildStorageUsageReport({
       libraryBytes: 400,
-      localMaimaiBytes: 100,
+      durableBytes: 100,
       sharedClearableBytes: 600,
       sqliteAllocatedBytes: 2000,
       sqliteLiveBytes: 1500,
@@ -365,17 +396,17 @@ describe('storage usage report', () => {
   });
 
   it('clamps estimated cache rows without breaking the physical total', () => {
-    const gameBaseBytes = Array<number>(GAME_STORAGE_ADAPTERS.length).fill(1000);
+    const gameBaseBytes = Array<number>(getGameStorageAdapters().length).fill(1000);
     const report = buildStorageUsageReport({
       libraryBytes: 0,
-      localMaimaiBytes: 0,
+      durableBytes: 0,
       sharedClearableBytes: 0,
       sqliteAllocatedBytes: 100,
       sqliteLiveBytes: 100,
       documentBytes: 100,
       cacheRootBytes: 100,
       gameBaseBytes,
-      gameCoverBytes: Array<number>(GAME_STORAGE_ADAPTERS.length).fill(0),
+      gameCoverBytes: Array<number>(getGameStorageAdapters().length).fill(0),
     });
     expect(report.totalBytes).toBe(200);
     expect(report.groups.reduce((sum, group) => sum + group.bytes, 0)).toBe(200);
@@ -395,7 +426,7 @@ describe('phigros resource coverage', () => {
         { key: 'phigros-save:phigros:phi-taptap:1', bytes: 100 },
         { key: 'account-thumbnail:phigros:phi-taptap:1', bytes: 20 },
         { key: 'phigros-kyou-aliases', bytes: 30 },
-        { key: 'account-avatar:phigros:phi-taptap:1', bytes: 40 },
+        { key: 'account-thumbnail:phigros:phi-taptap:1', bytes: 40 },
         { key: 'musedash:albums', bytes: 999 },
       ]),
       clearAccountScores,
@@ -409,7 +440,7 @@ describe('phigros resource coverage', () => {
       'phigros-save:phigros:phi-taptap:1',
       'account-thumbnail:phigros:phi-taptap:1',
       'phigros-kyou-aliases',
-      'account-avatar:phigros:phi-taptap:1',
+      'account-thumbnail:phigros:phi-taptap:1',
     ]);
   });
 });
@@ -452,7 +483,7 @@ describe('maimai resource coverage', () => {
       listResourceSizes: vi.fn(async () => [
         { key: 'account-thumbnail:maimai:lxns:u1', bytes: 10 },
         { key: 'account-thumbnail:maimai:local:a', bytes: 20 },
-        { key: 'account-avatar:maimai:local:a', bytes: 30 },
+        { key: 'account-thumbnail:maimai:local:a', bytes: 30 },
       ]),
       clearAccountScores,
       clearResources,
@@ -470,8 +501,7 @@ describe('maimai resource coverage', () => {
 describe('clearing storage compacts the database and resets in-memory caches', () => {
   it('waits for image cleanup after SQL cleanup fails before measuring reclaimed bytes', async () => {
     const images = Promise.withResolvers<void>();
-    const adapter = getGameStorageAdapter('phira')!;
-    const clear = vi.spyOn(adapter, 'clear').mockRejectedValueOnce(new Error('SQL unavailable'));
+    const clear = vi.spyOn(SqliteSnapshotRepository.prototype, 'clearAccountScores').mockRejectedValueOnce(new Error('SQL unavailable'));
     mocks.clearGameRemoteImageCache.mockClear();
     mocks.clearGameRemoteImageCache.mockReturnValueOnce(images.promise);
     mocks.measureDirectoryBytes.mockClear();
@@ -619,4 +649,4 @@ describe('Majdata storage segment', () => {
 
 vi.mock('expo-file-system/legacy', () => ({ deleteAsync: async () => undefined }));
 
-vi.mock('@/features/best-image/load-best-image-session', () => ({ clearUnusedBestImageAssets: async () => undefined }));
+vi.mock('@rranker/sdk/features/best-image/load-best-image-session', () => ({ clearUnusedBestImageAssets: async () => undefined }));

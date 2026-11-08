@@ -1,4 +1,4 @@
-import { useCatalogFilter } from '@/state/catalog-filter';
+import { useCatalogFilter } from '@rranker/game-maimai/state/catalog-filter';
 
 describe('useCatalogFilter store', () => {
   beforeEach(() => useCatalogFilter.getState().reset());

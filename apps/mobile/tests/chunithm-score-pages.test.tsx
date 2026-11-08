@@ -3,10 +3,10 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
-import { CHUNITHM_RANKS_DESC } from '@/domain/chunithm-filters';
-import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
+import { CHUNITHM_RANKS_DESC } from '@rranker/game-chunithm/domain/chunithm-filters';
+import { useChunithmRecordsFilter } from '@rranker/game-chunithm/state/chunithm-records-filter';
 
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
   data: undefined, isLoading: false, isError: false, error: null,
 }) }));
 
@@ -24,28 +24,28 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
 } as unknown as ReturnType<typeof Animated.loop>);
 
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   CachedTabScreen: ({ children }: { children: unknown }) => children,
   useCachedTabActive: () => true,
 }));
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: string) => value }));
-jest.mock('@/hooks/use-score-snapshot', () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: string) => value }));
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({
   useScoreSnapshot: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
 }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
-  useSession: (selector: (state: unknown) => unknown) => selector(mockSessionState),
+  useSession: (selector: (state: unknown) => unknown) => selector({ ...mockSessionState, sourceClient: mockSessionState.session || mockSessionState.activeProviderId?.endsWith('-test') ? {} : undefined }),
 }));
 
 const mockSource = {
@@ -91,7 +91,7 @@ const mockRecords = [
   },
 ] as const;
 
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: {
       gameId: 'chunithm',
@@ -194,7 +194,7 @@ const mockChunithmCatalogQuery = {
     error: null,
     refetch: mockRefetchCatalog,
 };
-jest.mock('@/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => mockChunithmCatalogQuery }));
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => mockChunithmCatalogQuery }));
 
 describe('Chunithm records and B50 screens', () => {
   beforeEach(() => {
@@ -210,7 +210,7 @@ describe('Chunithm records and B50 screens', () => {
 
     const records = await render(<RecordsScreen />);
     expect(await records.findByTestId('chunithm-records-list')).toBeTruthy();
-    expect(records.queryByText('尚未绑定落雪账号')).toBeNull();
+    expect(records.queryByText('尚未绑定账号')).toBeNull();
   });
 
   it('allows the generated sample provider to open the best page without LXNS credentials', async () => {
@@ -220,7 +220,7 @@ describe('Chunithm records and B50 screens', () => {
     const best = await render(<Best50Screen />);
     expect(best.getByTestId('chunithm-best-results-list')).toBeTruthy();
     expect(best.getByLabelText('生成B50图片')).toBeTruthy();
-    expect(best.queryByText('尚未绑定落雪账号')).toBeNull();
+    expect(best.queryByText('尚未绑定账号')).toBeNull();
   });
 
   it('shows all scores ordered by Rating, supports local metadata search and keeps filters collapsed', async () => {
@@ -236,7 +236,7 @@ describe('Chunithm records and B50 screens', () => {
     ]);
     await fireEvent.press(cards[0]!);
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '2', levelIndex: '3', gameId: 'chunithm' },
     });
 

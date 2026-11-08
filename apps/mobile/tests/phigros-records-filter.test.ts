@@ -1,4 +1,4 @@
-import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
+import { usePhigrosRecordsFilter } from '@rranker/game-phigros/state/phigros-records-filter';
 
 describe('usePhigrosRecordsFilter store', () => {
   beforeEach(() => {

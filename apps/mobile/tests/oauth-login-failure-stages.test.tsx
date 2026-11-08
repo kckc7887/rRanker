@@ -3,23 +3,23 @@ import { jest } from '@jest/globals';
 import { Linking } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
-import { LxnsLoginPanel } from '@/components/LxnsLoginPanel';
-import { OsuLoginPanel } from '@/components/osu/OsuLoginPanel';
-import { createAppTheme } from '@/theme/theme-tokens';
+import { LxnsLoginPanel } from '@rranker/provider-lxns/components/LxnsLoginPanel';
+import { OsuLoginPanel } from '@rranker/provider-osu/components/osu/OsuLoginPanel';
+import { createAppTheme } from '@rranker/sdk/theme/theme-tokens';
 
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => ({ foregroundReady: true, foregroundGeneration: 1 }) }));
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => ({ foregroundReady: true, foregroundGeneration: 1 }) }));
 const mockTheme = createAppTheme('light', '#246BFD');
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
-jest.mock('@/state/query-client', () => ({ queryClient: { invalidateQueries: jest.fn() } }));
-jest.mock('@/storage/chunithm-temp-account-store', () => ({ ChunithmTempAccountStore: jest.fn(() => ({ remove: jest.fn() })) }));
-jest.mock('@/services/lxns-account-binding', () => ({ bindLxnsAccount: jest.fn() }));
-jest.mock('@/services/osu-account-binding', () => ({ bindOsuModes: jest.fn() }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: { invalidateQueries: jest.fn() } }));
+jest.mock('@rranker/provider-chunithm-temp/storage/chunithm-temp-account-store', () => ({ ChunithmTempAccountStore: jest.fn(() => ({ remove: jest.fn() })) }));
+jest.mock('@rranker/provider-lxns/services/lxns-account-binding', () => ({ bindLxnsAccount: jest.fn() }));
+jest.mock('@rranker/provider-osu/services/osu-account-binding', () => ({ bindOsuModes: jest.fn() }));
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (select: (state: unknown) => unknown) => select({
     boundAccounts: [], sessionsByAccountId: {}, credentialIdsByAccountId: {},
-    setSession: jest.fn(), setOsuBinding: jest.fn(), removeBoundAccount: jest.fn(),
+    bindAccounts: jest.fn(), removeBoundAccount: jest.fn(),
   }),
 }));
 

@@ -1,109 +1,49 @@
 import {
-  buildTagHistory, chartLibraryKey, createUserDataBackup, mergeLibraryItems,
-  normalizeLibraryItem, normalizeTagName, normalizeTags, parseUserDataBackup, songLibraryKey,
-} from '@/domain/user-library';
-import type { ChartLibraryItem, SongLibraryItem } from '@/domain/user-library';
-import { GAME_IDS } from '@/domain/game-bind-options';
+  buildTagHistory, createUserDataBackup, libraryDetailTarget, libraryTargetKey, mergeLibraryItems,
+  normalizeLibraryItem, normalizeTagName, normalizeTags, parseUserDataBackup,
+} from '@rranker/sdk/domain/user-library';
+import type { ChartLibraryItem, SongLibraryItem } from '@rranker/sdk/domain/user-library';
 
 const createdAt = '2026-07-13T00:00:00.000Z';
 const updatedAt = '2026-07-13T01:00:00.000Z';
 const song: SongLibraryItem = {
-  key: 'ignored', gameId: 'maimai', kind: 'song', songId: '10001', favorite: true, tags: ['  上 分  ', 'ＡＢＣ'], createdAt, updatedAt,
+  key: 'ignored', gameId: 'custom-game', kind: 'song', id: '0001', target: { songId: '0001' },
+  favorite: true, tags: ['  上 分  ', 'ＡＢＣ'], createdAt, updatedAt,
 };
 const chart: ChartLibraryItem = {
-  key: 'ignored', gameId: 'maimai', kind: 'chart', songId: '10001', type: 'DX', levelIndex: 3, practice: true, tags: ['abc'], createdAt, updatedAt,
+  key: 'ignored', gameId: 'custom-game', kind: 'chart', id: 'custom-chart',
+  target: { songId: '0001', difficulty: 'special', variant: '004' },
+  practice: true, tags: ['abc'], createdAt, updatedAt,
 };
 
 describe('user library domain', () => {
-  it('accepts current game identities and rejects old backups and missing gameId', () => {
-    const items = GAME_IDS.map(gameId => ({ ...song, gameId, songId: '5', key: songLibraryKey(gameId, '5') }));
-    const backup = createUserDataBackup(items, updatedAt);
-    expect(parseUserDataBackup(backup).items.map(item => item.gameId).sort()).toEqual([...GAME_IDS].sort());
+  it('round-trips third-party identifiers and opaque route parameters without interpreting them', () => {
+    const backup = createUserDataBackup('custom-game', [song, chart], updatedAt, ['自定义']);
+    const restored = parseUserDataBackup(JSON.parse(JSON.stringify(backup)), 'custom-game');
+    expect(restored.items).toEqual(expect.arrayContaining([normalizeLibraryItem(song), normalizeLibraryItem(chart)]));
+    expect(restored.tagPresets).toEqual(['自定义']);
+    expect(libraryDetailTarget(chart)).toEqual({ gameId: 'custom-game', params: chart.target });
+    expect(restored.items.find(item => item.kind === 'song')?.target.songId).toBe('0001');
+  });
+
+  it('rejects old, mixed-game and wrong-game backups before restoration', () => {
+    const backup = createUserDataBackup('custom-game', [song], updatedAt);
     for (const version of [1, 2, 4]) expect(() => parseUserDataBackup({ ...backup, version })).toThrow();
-    const { gameId: _gameId, ...withoutGameId } = items[0];
-    expect(() => parseUserDataBackup({ ...backup, items: [withoutGameId] })).toThrow();
-    expect(() => parseUserDataBackup({ ...backup, items: [{ ...song, gameId: 'unknown' }] })).toThrow();
+    const { gameId: _gameId, ...withoutGameId } = backup;
+    expect(() => parseUserDataBackup(withoutGameId)).toThrow();
+    expect(() => parseUserDataBackup(backup, 'other-game')).toThrow();
+    expect(() => parseUserDataBackup({ ...backup, items: [{ ...song, gameId: 'other-game' }] })).toThrow();
+    expect(() => createUserDataBackup('custom-game', [{ ...song, gameId: 'other-game' }])).toThrow();
+    expect(() => parseUserDataBackup({ ...backup, items: [{ ...song, target: { songId: 1 } }] })).toThrow();
+    expect(() => parseUserDataBackup({ ...backup, token: 'secret' })).toThrow();
   });
 
-  it('round-trips Rizline favorites, SP practice and scoped tags without changing official IDs', () => {
-    const items = [
-      { ...song, gameId: 'rizline' as const, songId: 'Song.A.0', key: songLibraryKey('rizline', 'Song.A.0'), tags: ['歌曲标签'] },
-      { ...song, gameId: 'rizline' as const, songId: 'Song.A.1', key: songLibraryKey('rizline', 'Song.A.1'), tags: ['SP歌曲'] },
-      { ...chart, gameId: 'rizline' as const, songId: 'Song.A.1', type: 'SD' as const, levelIndex: 4,
-        key: chartLibraryKey('rizline', 'Song.A.1', 'SD', 4), tags: ['SP谱面'] },
-    ];
-    const backup = createUserDataBackup(items, updatedAt);
-    const restored = parseUserDataBackup(JSON.parse(JSON.stringify(backup)));
-    expect(restored.items).toEqual(expect.arrayContaining(items));
-    expect(new Set(restored.items.map(item => item.key)).size).toBe(3);
-    expect(mergeLibraryItems(items, restored.items)).toHaveLength(3);
-  });
-  it('builds stable normalized song and chart keys per game', () => {
-    expect(songLibraryKey('maimai', '10001')).toBe('song:maimai:1');
-    expect(chartLibraryKey('maimai', '10001', 'DX', 3)).toBe('chart:maimai:1:DX:3');
-    expect(songLibraryKey('phigros', 'Song.A')).toBe('song:phigros:Song.A');
-    expect(chartLibraryKey('phigros', 'Song.A', 'SD', 2)).toBe('chart:phigros:Song.A:SD:2');
-  });
-
-  it('keeps adofai level ids intact instead of applying maimai id truncation', () => {
-    expect(songLibraryKey('adofai', 11372)).toBe('song:adofai:11372');
-    expect(songLibraryKey('adofai', '11372')).toBe('song:adofai:11372');
-    expect(chartLibraryKey('adofai', 11372, 'SD', 0)).toBe('chart:adofai:11372:SD:0');
-    expect(normalizeLibraryItem({ ...song, gameId: 'adofai', songId: '11372' }).key).toBe('song:adofai:11372');
-  });
-
-  it('keeps musedash uid song ids intact instead of applying maimai id truncation', () => {
-    expect(songLibraryKey('musedash', '0-47')).toBe('song:musedash:0-47');
-    expect(songLibraryKey('musedash', 0)).toBe('song:musedash:0');
-    expect(normalizeLibraryItem({ ...song, gameId: 'musedash', songId: '0-47' }).key).toBe('song:musedash:0-47');
-  });
-
-  it('keeps phira chart ids intact instead of applying maimai id truncation', () => {
-    expect(songLibraryKey('phira', 66661)).toBe('song:phira:66661');
-    expect(songLibraryKey('phira', '66661')).toBe('song:phira:66661');
-    expect(normalizeLibraryItem({ ...song, gameId: 'phira', songId: '66661' }).key).toBe('song:phira:66661');
-    expect(normalizeLibraryItem({ ...song, gameId: 'phira', songId: '38294' }).key).toBe('song:phira:38294');
-  });
-
-  it('keeps osu beatmap ids intact and scopes identical ids by four independent modes', () => {
-    const modes = ['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'] as const;
-    expect(modes.map((gameId) => chartLibraryKey(gameId, 3720, 'SD', 22423))).toEqual([
-      'chart:osu-standard:3720:SD:22423',
-      'chart:osu-mania:3720:SD:22423',
-      'chart:osu-catch:3720:SD:22423',
-      'chart:osu-taiko:3720:SD:22423',
-    ]);
-    for (const gameId of modes) {
-      expect(normalizeLibraryItem({
-        ...chart,
-        gameId,
-        songId: '3720',
-        type: 'SD',
-        levelIndex: 22423,
-      })).toMatchObject({ levelIndex: 22423 });
-    }
-  });
-
-  it('round-trips phira song items through backups without truncation', () => {
-    const phiraSong: SongLibraryItem = {
-      ...song, gameId: 'phira', songId: '66661', key: songLibraryKey('phira', 66661),
-    };
-    const backup = createUserDataBackup([phiraSong], updatedAt);
-    const parsed = parseUserDataBackup(backup);
-    expect(parsed.items).toEqual([
-      expect.objectContaining({ key: 'song:phira:66661', gameId: 'phira', songId: '66661' }),
-    ]);
-  });
-
-  it('round-trips adofai song items through backups', () => {
-    const adofaiSong: SongLibraryItem = {
-      ...song, gameId: 'adofai', songId: '11372', key: songLibraryKey('adofai', 11372),
-    };
-    const backup = createUserDataBackup([adofaiSong], updatedAt);
-    const parsed = parseUserDataBackup(backup);
-    expect(parsed.items).toEqual([
-      expect.objectContaining({ key: 'song:adofai:11372', gameId: 'adofai', songId: '11372' }),
-    ]);
+  it('isolates keys by game, kind and complete adapter identity', () => {
+    const targets = [song, chart, { ...song, gameId: 'other-game' }, { ...song, id: '1' },
+      { ...song, gameId: 'a:b', id: 'c' }, { ...song, gameId: 'a', id: 'b:c' }];
+    expect(new Set(targets.map(libraryTargetKey)).size).toBe(targets.length);
+    const changedRoute = { ...song, target: { songId: 'different' } };
+    expect(libraryTargetKey(changedRoute)).toBe(libraryTargetKey(song));
   });
 
   it('normalizes tags with NFKC, whitespace and case-insensitive deduplication', () => {
@@ -113,55 +53,17 @@ describe('user library domain', () => {
     expect(() => normalizeTagName('a'.repeat(25))).toThrow('24');
   });
 
-  it('creates a deterministic strict privacy backup', () => {
-    const backup = createUserDataBackup([chart, song], updatedAt);
-    expect(backup.items.map((item) => item.key)).toEqual(['chart:maimai:1:DX:3', 'song:maimai:1']);
-    expect(backup.version).toBe(3);
-    expect(backup.tagPresets).toEqual(['爆发', '交互', '星星', '鬼歌', '大歌']);
-    expect(() => parseUserDataBackup({ ...backup, token: 'secret' })).toThrow();
-    expect(() => parseUserDataBackup({ ...backup, version: 4 })).toThrow();
-  });
-
-  it('preserves U·TA·GE chart items in backup data without changing its version', () => {
-    const utageChart: ChartLibraryItem = {
-      ...chart,
-      songId: '100123',
-      type: 'UTAGE',
-      levelIndex: 0,
-      key: chartLibraryKey('maimai', '100123', 'UTAGE', 0),
-    };
-    const backup = createUserDataBackup([utageChart], updatedAt);
-    const parsed = parseUserDataBackup(backup);
-
-    expect(backup.version).toBe(3);
-    expect(parsed.items).toEqual([
-      expect.objectContaining({
-        key: 'chart:maimai:100123:UTAGE:0',
-        type: 'UTAGE',
-        levelIndex: 0,
-        practice: true,
-      }),
-    ]);
-  });
-
   it('builds recent history excluding the current item and presets', () => {
     expect(buildTagHistory([
-      { ...song, key: 'song:maimai:1', tags: ['爆发', '耐力'], updatedAt: createdAt },
-      { ...chart, key: 'chart:maimai:2:DX:3', tags: ['耐力', '交互', '星星谱'], updatedAt },
-    ], 'song:maimai:1', ['爆发', '交互'])).toEqual(['耐力', '星星谱']);
+      { ...song, key: 'current', tags: ['爆发', '耐力'], updatedAt: createdAt },
+      { ...chart, key: 'other', tags: ['耐力', '交互', '星星谱'], updatedAt },
+    ], 'current', ['爆发', '交互'])).toEqual(['耐力', '星星谱']);
   });
 
-  it('merges flags and tags while keeping the local display spelling', () => {
-    const local: SongLibraryItem = { ...song, key: songLibraryKey('maimai', '1'), songId: '1', favorite: false, tags: ['ABC'], updatedAt: createdAt };
-    const imported: SongLibraryItem = { ...local, favorite: true, tags: ['abc', '耐力'], updatedAt };
-    const merged = mergeLibraryItems([local], [imported]);
-    expect(merged).toEqual([{ ...local, favorite: true, tags: ['ABC', '耐力'], updatedAt }]);
-  });
-
-  it('keeps library items isolated by game id', () => {
-    const maimaiSong: SongLibraryItem = { ...song, key: songLibraryKey('maimai', 'Song.A'), songId: 'Song.A', favorite: true };
-    const phigrosSong: SongLibraryItem = { ...song, gameId: 'phigros', key: songLibraryKey('phigros', 'Song.A'), songId: 'Song.A', favorite: true };
-    const merged = mergeLibraryItems([maimaiSong], [phigrosSong]);
-    expect(merged.map((item) => item.key).sort()).toEqual(['song:maimai:Song.A', 'song:phigros:Song.A']);
+  it('merges flags and tags while keeping local spelling and earliest creation', () => {
+    const local = normalizeLibraryItem({ ...song, favorite: false, tags: ['ABC'], updatedAt: createdAt });
+    const imported = { ...local, favorite: true, tags: ['abc', '耐力'], createdAt: updatedAt, updatedAt };
+    expect(mergeLibraryItems([local], [imported])).toEqual([{ ...local, favorite: true, tags: ['ABC', '耐力'], updatedAt }]);
+    expect(mergeLibraryItems([song], [{ ...song, gameId: 'other-game' }])).toHaveLength(2);
   });
 });

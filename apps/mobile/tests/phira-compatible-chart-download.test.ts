@@ -1,12 +1,12 @@
 
 import JSZip from 'jszip';
 
-import type { PhiraChart } from '@/domain/phira';
+import type { PhiraChart } from '@rranker/game-phira/domain/phira';
 
-import { ChartPackageDownloadCancelledError, ChartPackageDownloadError } from '@/features/chart-download-shared/chart-download-shared';
+import { ChartPackageDownloadCancelledError, ChartPackageDownloadError } from '@rranker/sdk/features/chart-download-shared/chart-download-shared';
 
-import { downloadPhigrosChartAsPhiraPackage, phiraCompatiblePackageName } from '@/features/phigros-chart-download/chart-package-download';
-import { downloadPhiraChartPackage } from '@/features/phira-chart-download/chart-package-download';
+import { downloadPhigrosChartAsPhiraPackage, phiraCompatiblePackageName } from '@rranker/tool-chart-json/features/phigros-chart-download/chart-package-download';
+import { downloadPhiraChartPackage } from '@rranker/tool-chart-json/features/phira-chart-download/chart-package-download';
 
 const native = vi.hoisted(() => ({
   bytes: new Map<string, Uint8Array>(),
@@ -97,7 +97,7 @@ vi.mock('expo-modules-core', () => ({
   }),
 }));
 
-vi.mock('@/services/phigros-chart-preview-resources', () => ({
+vi.mock('@rranker/game-phigros/services/phigros-chart-preview-resources', () => ({
   loadPhigrosChartPreviewResources: async (target: unknown, signal: unknown, read: (asset: { url: string }, index: number) => Promise<{ bytes: () => Promise<Uint8Array> }>) => {
     const bundle = await resources.loadBundle(target, signal);
     return { bundle, chart: await (await read(bundle.chart, 0)).bytes(), music: await (await read(bundle.music, 1)).bytes(), illustration: await (await read(bundle.illustration, 2)).bytes() };

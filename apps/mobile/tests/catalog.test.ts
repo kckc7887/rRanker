@@ -6,9 +6,9 @@ import {
   normalizeSongId,
   originalSongIdForUtage,
   stripUtageTitlePrefix,
-} from '@/domain/catalog';
-import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
-import { maimaiJacketUrl } from '@/domain/maimai-assets';
+} from '@rranker/game-maimai/domain/catalog';
+import type { CatalogSnapshot, ScoreRecord } from '@rranker/game-maimai/domain/models';
+import { maimaiJacketUrl } from '@rranker/game-maimai/domain/maimai-assets';
 
 describe('catalog identity mapping', () => {
   it('normalizes DivingFish DX ids to the shared LXNS song id', () => {

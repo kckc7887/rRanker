@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PlayerEventScope } from '@/features/chart-preview-shared/webview-player/event-scope';
+import { PlayerEventScope } from '@rranker/sdk/features/chart-preview-shared/webview-player/event-scope';
 
 describe('播放器监听所有权', () => {
   it('终态与释放均拒绝晚事件，清理只执行一次', () => {

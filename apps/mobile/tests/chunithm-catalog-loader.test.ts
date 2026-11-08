@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadChunithmAliases } from '@/services/chunithm-catalog-loader';
+import { loadChunithmAliases } from '@rranker/game-chunithm/services/chunithm-catalog-loader';
 
 const aliasPayload = {
   aliases: [
@@ -8,9 +8,9 @@ const aliasPayload = {
   ],
 };
 
-vi.mock('@/providers/chunithm-catalog-provider', async () => {
-  const actual = await vi.importActual<typeof import('@/providers/chunithm-catalog-provider')>(
-    '@/providers/chunithm-catalog-provider',
+vi.mock('@rranker/provider-lxns/providers/chunithm-catalog-provider', async () => {
+  const actual = await vi.importActual<typeof import('@rranker/provider-lxns/providers/chunithm-catalog-provider')>(
+    '@rranker/provider-lxns/providers/chunithm-catalog-provider',
   );
   return {
     ...actual,
@@ -42,7 +42,7 @@ describe('loadChunithmAliases', () => {
   });
 
   it('does not provide a cold-start disk fallback when the network fails', async () => {
-    const providerModule = await import('@/providers/chunithm-catalog-provider');
+    const providerModule = await import('@rranker/provider-lxns/providers/chunithm-catalog-provider');
     const prototype = providerModule.ChunithmCatalogProvider.prototype as {
       getAliases: () => Promise<unknown>;
     };

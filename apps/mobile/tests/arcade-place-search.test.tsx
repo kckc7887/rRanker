@@ -1,13 +1,13 @@
 import { jest } from '@jest/globals';
 import { Platform } from 'react-native';
-import { resolveArcadePlace, searchArcadePlaces, type ArcadePlace } from '@/services/arcade-place-search';
-import type { ArcadeMapAvailability } from '@/services/arcade-map-platform';
+import { resolveArcadePlace, searchArcadePlaces, type ArcadePlace } from '@rranker/tool-arcade-finder/services/arcade-place-search';
+import type { ArcadeMapAvailability } from '@rranker/tool-arcade-finder/services/arcade-map-platform';
 
 let mockAvailability: ArcadeMapAvailability = 'available';
 const mockSearch = jest.fn<() => Promise<ArcadePlace[]>>();
 const mockResolve = jest.fn<() => Promise<{ latitude: number; longitude: number } | null>>();
 const mockCancel = jest.fn<() => Promise<void>>(async () => {});
-jest.mock('@/services/arcade-map-platform', () => ({ getArcadeMapAvailability: () => mockAvailability }));
+jest.mock('@rranker/tool-arcade-finder/services/arcade-map-platform', () => ({ getArcadeMapAvailability: () => mockAvailability }));
 jest.mock('expo-modules-core', () => ({
   ...jest.requireActual<typeof import('expo-modules-core')>('expo-modules-core'),
   requireOptionalNativeModule: () => ({ searchPlaces: mockSearch, resolvePlace: mockResolve, cancelPlaceSearch: mockCancel }),

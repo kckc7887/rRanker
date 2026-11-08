@@ -1,42 +1,45 @@
+import type { Credential } from '@rranker/sdk/credentials';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createChunithmBoundAccount, createOsuBoundAccount, createLocalMaimaiAccount } from '@/domain/bound-account';
-import type { ProviderSession } from '@/providers/contracts';
-import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
-import type { OsuScoreProvider } from '@/providers/osu-score-provider';
-import { useSession } from '@/state/session-store';
+import { createChunithmBoundAccount } from '@rranker/game-chunithm/accounts';
+import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
+import { createLocalMaimaiAccount } from '@rranker/game-maimai/accounts';
 
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class { async getLatest() { return null; } } }));
-vi.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: class {} }));
+import type { ChunithmDataSource } from '@rranker/game-chunithm/data-source';
+import type { MaimaiDataSource } from '@rranker/game-maimai/data-source';
+import type { OsuDataSource } from '@rranker/game-osu/data-source';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { useSession } from '@rranker/sdk/state/session-store';
 
-const lxnsSession: ProviderSession = {
+vi.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class { async getLatest() { return null; } } }));
+vi.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: class {} }));
+
+const lxnsSession: Credential = {
   mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
   expiresAt: Date.now() + 600_000, persistable: true,
 };
 
-beforeEach(() => useSession.getState().finishRestore(null));
+beforeEach(() => useAccountStore.getState().finishRestore(null));
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('当前账号的 Provider', () => {
   it('切换本地账号后查分显示对应玩家名，改名立即生效', async () => {
     const first = createLocalMaimaiAccount('玩家甲', 0);
     const second = { ...createLocalMaimaiAccount('玩家乙', 0), id: 'maimai:local:second' };
-    useSession.getState().upsertBoundAccount(first);
-    useSession.getState().upsertBoundAccount(second);
-    useSession.getState().selectBoundAccount(first.id);
-    expect((await useSession.getState().scoreProvider.getPlayer())?.displayName).toBe('玩家甲');
-    useSession.getState().selectBoundAccount(second.id);
-    expect((await useSession.getState().scoreProvider.getPlayer())?.displayName).toBe('玩家乙');
-    useSession.getState().renameLocalAccount(second.id, '新名字');
-    expect((await useSession.getState().scoreProvider.getPlayer())?.displayName).toBe('新名字');
+    useAccountStore.getState().upsertBoundAccount(first);
+    useAccountStore.getState().upsertBoundAccount(second);
+    useAccountStore.getState().selectBoundAccount(first.id);
+    expect((await (useSession.getState().sourceClient as MaimaiDataSource).scoreProvider.getPlayer())?.displayName).toBe('玩家甲');
+    useAccountStore.getState().selectBoundAccount(second.id);
+    expect((await (useSession.getState().sourceClient as MaimaiDataSource).scoreProvider.getPlayer())?.displayName).toBe('玩家乙');
+    useAccountStore.getState().renameLocalAccount(second.id, '新名字');
+    expect((await (useSession.getState().sourceClient as MaimaiDataSource).scoreProvider.getPlayer())?.displayName).toBe('新名字');
   });
 
   it('重新授权后的中二请求使用新令牌', async () => {
     const account = createChunithmBoundAccount({ playerId: '2', displayName: '中二玩家', rating: 17 });
-    const metadata = { gameId: 'chunithm', accountId: account.id, providerId: 'lxns',
-      playerId: '2', displayName: account.displayName, rating: 17, credentialId: 'shared' } as const;
-    useSession.getState().setSession(lxnsSession, metadata);
+    useAccountStore.getState().bindAccounts({ accounts: [account], session: lxnsSession, credentialId: 'shared', activeAccountId: account.id });
     const next = { ...lxnsSession, accessToken: 'new-access', refreshToken: 'new-refresh' };
-    useSession.getState().setSession(next, metadata);
+    useAccountStore.getState().bindAccounts({ accounts: [account], session: next, credentialId: 'shared', activeAccountId: account.id });
     const requests: Headers[] = [];
     vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
       requests.push(new Headers(init.headers));
@@ -44,8 +47,8 @@ describe('当前账号的 Provider', () => {
         class_emblem: { base: 0, medal: 0 }, reborn_count: 0, over_power: 0, over_power_progress: 0,
         currency: 0, total_currency: 0, total_play_count: 0 } }));
     });
-    const provider = useSession.getState().protocolScoreProvider as ChunithmScoreProvider;
-    await expect(provider.getPlayer()).resolves.toMatchObject({ name: '中二玩家', rating: 17 });
+    const provider = useSession.getState().sourceClient as ChunithmDataSource;
+    await expect(provider.getPlayer!()).resolves.toMatchObject({ name: '中二玩家', rating: 17 });
     expect(requests[0].get('Authorization')).toBe('Bearer new-access');
   });
 
@@ -54,18 +57,22 @@ describe('当前账号的 Provider', () => {
       createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: '键盘', pp: 50 })];
     const session = { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh',
       expiresAt: Date.now() + 600_000, persistable: true } as const;
-    useSession.getState().setOsuBinding({ accounts, session, credentialId: 'osu:shared', activeAccountId: accounts[0].id });
+    useAccountStore.getState().bindAccounts({ accounts, session, credentialId: 'osu:shared', activeAccountId: accounts[0].id });
     const requests: { url: string; authorization: string | null }[] = [];
     vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
       requests.push({ url: String(url), authorization: new Headers(init.headers).get('Authorization') });
-      return new Response(JSON.stringify({ id: 7, username: '玩家', avatar_url: '', country_code: 'CN', statistics: { pp: 50 } }));
+      return Response.json(String(url).includes('/scores/best') ? []
+        : { id: 7, username: '玩家', avatar_url: '', country_code: 'CN', statistics: { pp: 50 } });
     });
-    const standard = useSession.getState().protocolScoreProvider as OsuScoreProvider;
-    await standard.getOwnUser('osu-standard');
-    useSession.getState().selectBoundAccount(accounts[1].id);
-    const mania = useSession.getState().protocolScoreProvider as OsuScoreProvider;
-    await expect(mania.getOwnUser('osu-mania')).resolves.toMatchObject({ id: 7, username: '玩家' });
-    expect(requests.map(request => new URL(request.url).pathname)).toEqual(['/api/v2/me/osu', '/api/v2/me/mania']);
-    expect(requests.map(request => request.authorization)).toEqual(['Bearer access', 'Bearer access']);
+    const standard = useSession.getState().sourceClient as OsuDataSource;
+    await standard.readFresh(new AbortController().signal);
+    useAccountStore.getState().selectBoundAccount(accounts[1].id);
+    const mania = useSession.getState().sourceClient as OsuDataSource;
+    await expect(mania.readFresh(new AbortController().signal)).resolves.toMatchObject({ data: { player: { userId: 7, username: '玩家' } } });
+    expect(requests.map(request => new URL(request.url).pathname)).toEqual([
+      '/api/v2/users/7/osu', '/api/v2/users/7/scores/best', '/api/v2/users/7/mania', '/api/v2/users/7/scores/best',
+    ]);
+    expect(requests.filter(request => request.url.includes('/scores/best')).map(request => new URL(request.url).searchParams.get('mode'))).toEqual(['osu', 'mania']);
+    expect(requests.map(request => request.authorization)).toEqual(Array(4).fill('Bearer access'));
   });
 });

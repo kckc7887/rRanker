@@ -1,17 +1,17 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
-import { createOsuBoundAccount } from '@/domain/bound-account';
-import { findGame } from '@/domain/game-bind-options';
-import { OsuLoginPanel } from '@/components/osu/OsuLoginPanel';
-import { bindOsuModes } from '@/services/osu-account-binding';
-import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+import { ProviderLoginSheet } from '@rranker/sdk/components/ProviderLoginSheet';
+import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
+import { findGame } from '@rranker/sdk/domain/game-bind-options';
+import { OsuLoginPanel } from '@rranker/provider-osu/components/osu/OsuLoginPanel';
+import { bindOsuModes } from '@rranker/provider-osu/services/osu-account-binding';
+import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
 
 let mockLifecycle: AppLifecycleSnapshot = { appState: 'active', phase: 'foreground-ready', foregroundReady: true,
   foregroundGeneration: 1, memoryWarningGeneration: 0 };
-const mockSetOsuBinding = jest.fn();
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
-jest.mock('@/components/osu/OsuModeSelectSheet', () => {
+const mockBindAccounts = jest.fn();
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
+jest.mock('@rranker/game-osu/components/OsuModeSelectSheet', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { OsuModeSelectSheet: ({ visible, onSubmit }: { visible: boolean; onSubmit: (ids: string[]) => void }) =>
@@ -39,7 +39,7 @@ jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#fff',
     surface: '#fff',
@@ -53,33 +53,32 @@ jest.mock('@/theme/app-theme', () => ({
   }),
 }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@/storage/secure-session-store', () => ({
+jest.mock('@rranker/sdk/storage/secure-session-store', () => ({
   SecureSessionStore: jest.fn(() => ({ upsertAccount: jest.fn() })),
 }));
-jest.mock('@/storage/chunithm-temp-account-store', () => ({
+jest.mock('@rranker/provider-chunithm-temp/storage/chunithm-temp-account-store', () => ({
   ChunithmTempAccountStore: jest.fn(() => ({ remove: jest.fn(async () => undefined) })),
 }));
-jest.mock('@/state/query-client', () => ({
+jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: { invalidateQueries: jest.fn() },
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
     boundAccounts: [mockOsuAccount],
     sessionsByAccountId: { [mockOsuAccount.id]: mockOsuSession },
     credentialIdsByAccountId: { [mockOsuAccount.id]: 'osu:shared' },
-    setSession: jest.fn(),
-    setOsuBinding: mockSetOsuBinding,
+    bindAccounts: mockBindAccounts,
     removeBoundAccount: jest.fn(),
   }),
 }));
-jest.mock('@/providers/osu-oauth', () => ({
+jest.mock('@rranker/provider-osu/providers/osu-oauth', () => ({
   beginOsuAuthorize: jest.fn(async () => 'https://osu.ppy.sh/oauth/authorize?state=x'),
   subscribeOsuOAuthOutcome: (listener: (outcome: unknown) => void) => {
     oauthListener = listener;
     return () => { oauthListener = null; };
   },
 }));
-jest.mock('@/services/osu-account-binding', () => ({
+jest.mock('@rranker/provider-osu/services/osu-account-binding', () => ({
   bindOsuModes: jest.fn(),
 }));
 
@@ -106,7 +105,7 @@ describe('ProviderLoginSheet osu! OAuth', () => {
     expect(signal.aborted).toBe(true);
     await act(async () => { release({ accounts: [mockOsuAccount], activeAccountId: mockOsuAccount.id,
       credentialId: 'osu:shared', session: mockOsuSession }); });
-    expect(mockSetOsuBinding).not.toHaveBeenCalled(); expect(success).not.toHaveBeenCalled();
+    expect(mockBindAccounts).not.toHaveBeenCalled(); expect(success).not.toHaveBeenCalled();
   });
 
   it('收到授权回调后自动关闭绑定页', async () => {

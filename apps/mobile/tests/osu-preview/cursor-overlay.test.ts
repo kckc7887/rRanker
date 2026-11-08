@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { computeModDifficulty, parseBeatmap, synthesizeAutoReplay, type Renderer, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
-import { PreviewSession } from '../../src/features/osu-chart-preview/webview-player/playback';
-import type { AudioSync } from '../../src/features/osu-chart-preview/webview-player/engine-audio/AudioSync';
-import type { PreviewMedia } from '../../src/features/osu-chart-preview/webview-player/backdrop';
+import { computeModDifficulty, parseBeatmap, synthesizeAutoReplay, type Renderer, type SkinAssets } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine';
+import { PreviewSession } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/playback';
+import type { AudioSync } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine-audio/AudioSync';
+import type { PreviewMedia } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/backdrop';
 import { fixtureOsu } from './fixtures';
 
 type LabelledBitmap = ImageBitmap & { label: string };

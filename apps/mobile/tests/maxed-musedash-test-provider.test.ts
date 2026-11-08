@@ -1,25 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import albums from './fixtures/musedash/albums.sanitized.json';
 import diffdiff from './fixtures/musedash/diffdiff.sanitized.json';
-import { MUSEDASH_TEST_USER_ID } from '@/domain/bound-account';
+import { MUSEDASH_TEST_USER_ID } from '@rranker/game-musedash/accounts';
 import {
   museDashDiffdiffMap,
   museDashSongsFromAlbums,
   MuseDashAlbumsResponseSchema,
   MuseDashDiffdiffResponseSchema,
   MuseDashPlayerSchema,
-} from '@/domain/muse-dash';
-import { isCatalogDrivenScoreProvider } from '@/providers/contracts';
+} from '@rranker/game-musedash/domain/muse-dash';
 import {
   buildMaxedMuseDashPlayDetail,
   buildMaxedMuseDashPlays,
   buildMaxedMuseDashPlayer,
   buildMaxedMuseDashRl,
-  MaxedMuseDashTestProvider,
   maxedMuseDashPlayDetailSnapshot,
   maxedMuseDashPlayerSnapshot,
   MUSE_DASH_MAX_SCORE,
-} from '@/providers/maxed-musedash-test-provider';
+} from '@rranker/provider-musedash-test/providers/maxed-musedash-test-provider';
 
 const parsedAlbums = MuseDashAlbumsResponseSchema.parse(albums);
 const parsedDiffdiff = MuseDashDiffdiffResponseSchema.parse(diffdiff);
@@ -101,17 +99,12 @@ describe('喵斯快跑全满示例账号', () => {
     });
   });
 
-  it('实现 CatalogDrivenScoreProvider，统一成绩覆盖全部启用难度档', async () => {
-    const provider = new MaxedMuseDashTestProvider();
-    expect(isCatalogDrivenScoreProvider(provider)).toBe(true);
-    const records = await provider.getRecordsFromCatalog({
-      albums: parsedAlbums,
-      constants: museDashDiffdiffMap(parsedDiffdiff),
-    });
+  it('成绩覆盖全部启用难度档', () => {
+    const plays = buildMaxedMuseDashPlays(parsedAlbums, museDashDiffdiffMap(parsedDiffdiff));
     const enabledSlots = museDashSongsFromAlbums(parsedAlbums)
       .flatMap(({ song }) => song.difficulty)
       .filter((level) => level !== '0');
-    expect(records).toHaveLength(enabledSlots.length);
-    expect(records.every((record) => record.achievements === 100)).toBe(true);
+    expect(plays).toHaveLength(enabledSlots.length);
+    expect(plays.every(play => play.acc === 100)).toBe(true);
   });
 });

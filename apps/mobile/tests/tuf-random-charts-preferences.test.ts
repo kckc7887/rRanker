@@ -2,8 +2,8 @@ import {
   TufRandomChartsPreferencesStore,
   defaultTufRandomChartsPreferences,
   parseTufRandomChartsPreferences,
-} from '@/features/toolbox/tuf-random-charts-preferences';
-import { createTufRandomChartsFilterStore } from '@/state/tuf-random-charts-filter';
+} from '@rranker/tool-adofai/features/tuf-random-charts-preferences';
+import { createTufRandomChartsFilterStore } from '@rranker/tool-adofai/state/tuf-random-charts-filter';
 
 class MemoryStore {
   values = new Map<string, string>();

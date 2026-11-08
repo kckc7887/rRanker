@@ -1,5 +1,5 @@
-import { FIXTURE_CURRENT_VERSION } from '@/fixtures/sanitized';
-import { useRecordsFilter } from '@/state/records-filter';
+import { FIXTURE_CURRENT_VERSION } from './fixtures/sanitized';
+import { useRecordsFilter } from '@rranker/game-maimai/state/records-filter';
 
 describe('useRecordsFilter store', () => {
   beforeEach(() => {

@@ -2,10 +2,10 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { View } from 'react-native';
 import type { Camera, MapMarkerProps, MapViewProps, Region } from 'react-native-maps';
-import { ArcadeMap } from '@/components/ArcadeMap';
-import type { NativeArcadeMapProps } from '@/components/ArcadeMap.types';
-import type { ArcadeShop } from '@/domain/arcade-shops';
-import type { ArcadeMapAvailability } from '@/services/arcade-map-platform';
+import { ArcadeMap } from '@rranker/tool-arcade-finder/components/ArcadeMap';
+import type { NativeArcadeMapProps } from '@rranker/tool-arcade-finder/components/ArcadeMap.types';
+import type { ArcadeShop } from '@rranker/tool-arcade-finder/domain/arcade-shops';
+import type { ArcadeMapAvailability } from '@rranker/tool-arcade-finder/services/arcade-map-platform';
 
 let mockAvailability: ArcadeMapAvailability = 'available';
 let mockNative: NativeArcadeMapProps;
@@ -30,19 +30,19 @@ jest.mock('react-native-maps', () => {
     Marker: (props: MapMarkerProps) => <MockView testID={`marker-${props.identifier}`} {...props} />,
   };
 });
-jest.mock('@/services/arcade-map-platform', () => ({
+jest.mock('@rranker/tool-arcade-finder/services/arcade-map-platform', () => ({
   getArcadeMapAvailability: () => mockAvailability,
   acceptArcadeMapPrivacy: () => { mockAgree(); mockAvailability = 'available'; },
 }));
-jest.mock('@/components/NativeArcadeMap', () => ({
+jest.mock('@rranker/tool-arcade-finder/components/NativeArcadeMap', () => ({
   NativeArcadeMap: (props: NativeArcadeMapProps) => {
     mockNative = props;
-    const { NativeArcadeMap } = jest.requireActual<typeof import('@/components/NativeArcadeMap.ios')>('@/components/NativeArcadeMap.ios');
+    const { NativeArcadeMap } = jest.requireActual<typeof import('@rranker/tool-arcade-finder/components/NativeArcadeMap.ios')>('@rranker/tool-arcade-finder/components/NativeArcadeMap.ios');
     return <NativeArcadeMap {...props} />;
   },
 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({}) }));
-jest.mock('@/components/AppModal', () => ({ AppModal: ({ visible, children }: { visible: boolean; children: React.ReactNode }) => visible ? children : null }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({}) }));
+jest.mock('@rranker/sdk/components/AppModal', () => ({ AppModal: ({ visible, children }: { visible: boolean; children: React.ReactNode }) => visible ? children : null }));
 
 beforeEach(() => {
   mockAvailability = 'available'; jest.clearAllMocks(); jest.useFakeTimers();

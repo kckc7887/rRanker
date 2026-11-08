@@ -1,7 +1,8 @@
-import type { ProviderSession, ScoreProvider } from '@/providers/contracts';
-import { validateAndActivateSession, validateScoreProvider } from '@/services/session-validation';
+import type { Credential } from '@rranker/sdk/credentials';
+import type { ScoreProvider } from '@rranker/game-maimai/data-source';
+import { validateAndActivateSession, validateScoreProvider } from '@rranker/provider-diving-fish/services/session-validation';
 
-const session: ProviderSession = { mode: 'import-token', value: 'fake-token', persistable: true };
+const session: Credential = { mode: 'import-token', value: 'fake-token', persistable: true };
 const player = { id: 'u1', displayName: '尘言', rating: 15000, source: { kind: 'diving-fish', label: '水鱼', updatedAt: '', isStale: false } };
 
 describe('validateScoreProvider', () => {

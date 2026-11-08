@@ -1,13 +1,13 @@
 import { cleanup, act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import type { ArcadeOrigin, ArcadeShop } from '@/domain/arcade-shops';
+import type { ArcadeOrigin, ArcadeShop } from '@rranker/tool-arcade-finder/domain/arcade-shops';
 import type { ComponentProps } from 'react';
-import type { ArcadeMap } from '@/components/ArcadeMap';
-import type { searchNearcadeShops } from '@/services/nearcade-client';
-import type { searchArcadePlaces, resolveArcadePlace } from '@/services/arcade-place-search';
-import type { ArcadeFinderPreferences } from '@/features/toolbox/arcade-finder-preferences';
-import type { GameId } from '@/domain/game-bind-options';
-import ArcadeFinderScreen from '../app/tools/arcade-finder';
+import type { ArcadeMap } from '@rranker/tool-arcade-finder/components/ArcadeMap';
+import type { searchNearcadeShops } from '@rranker/tool-arcade-finder/services/nearcade-client';
+import type { searchArcadePlaces, resolveArcadePlace } from '@rranker/tool-arcade-finder/services/arcade-place-search';
+import type { ArcadeFinderPreferences } from '@rranker/tool-arcade-finder/features/arcade-finder-preferences';
+import type { GameId } from '@rranker/sdk/domain/game-bind-options';
+import ArcadeFinderScreen from '@rranker/tool-arcade-finder/pages/arcade-finder/index';
 
 const mockGps = jest.fn<() => Promise<ArcadeOrigin>>();
 const mockDiscover = jest.fn<(_input: unknown) => Promise<ArcadeShop[]>>(async () => []);
@@ -23,23 +23,23 @@ let mockForeground = new AbortController();
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, Stack: { Screen: () => null }, useIsFocused: () => true }));
 jest.mock('expo-router/react-navigation', () => ({ useHeaderHeight: () => 0 }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@/components/ArcadeMap', () => ({ ArcadeMap: (props: typeof mockMap) => { mockMap = props; return null; } }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }) }));
-jest.mock('@/components/ArcadeBusinessStatusLabel', () => ({ ArcadeBusinessStatusLabel: () => null }));
-jest.mock('@/features/toolbox/arcade-finder-preferences', () => ({
+jest.mock('@rranker/tool-arcade-finder/components/ArcadeMap', () => ({ ArcadeMap: (props: typeof mockMap) => { mockMap = props; return null; } }));
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }) }));
+jest.mock('@rranker/tool-arcade-finder/components/ArcadeBusinessStatusLabel', () => ({ ArcadeBusinessStatusLabel: () => null }));
+jest.mock('@rranker/tool-arcade-finder/features/arcade-finder-preferences', () => ({
   arcadeFinderPreferencesStore: { load: (gameId: GameId) => mockLoadPreferences(gameId),
     save: (gameId: GameId, value: ArcadeFinderPreferences) => mockSavePreferences(gameId, value) },
   defaultArcadeFinderPreferences: () => ({ minDistanceKm: 0, radiusKm: 10, titleIds: [] }),
 }));
-jest.mock('@/services/nearcade-client', () => ({ fetchNearcadeDiscover: (input: unknown) => mockDiscover(input),
+jest.mock('@rranker/tool-arcade-finder/services/nearcade-client', () => ({ fetchNearcadeDiscover: (input: unknown) => mockDiscover(input),
   fetchNearcadeGameTitles: async () => [{ id: 1, key: 'maimai_dx', name: '舞萌DX', seats: 2 }, { id: 3, key: 'chunithm', name: '中二节奏', seats: 1 }],
   searchNearcadeShops: (...args: Parameters<typeof searchNearcadeShops>) => mockShopSearch(...args) }));
-jest.mock('@/services/arcade-place-search', () => ({ searchArcadePlaces: (...args: Parameters<typeof searchArcadePlaces>) => mockPlaceSearch(...args), resolveArcadePlace: (...args: Parameters<typeof resolveArcadePlace>) => mockResolvePlace(...args) }));
-jest.mock('@/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ activeGameId: mockGameId }) }));
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle, getForegroundAbortSignal: () => mockForeground.signal }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({}) }));
-jest.mock('@/utils/acquire-arcade-gps-origin', () => ({ acquireArcadeGpsOrigin: () => mockGps() }));
-jest.mock('@/utils/open-arcade-navigation', () => ({ openArcadeNavigation: jest.fn() }));
+jest.mock('@rranker/tool-arcade-finder/services/arcade-place-search', () => ({ searchArcadePlaces: (...args: Parameters<typeof searchArcadePlaces>) => mockPlaceSearch(...args), resolveArcadePlace: (...args: Parameters<typeof resolveArcadePlace>) => mockResolvePlace(...args) }));
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ activeGameId: mockGameId }) }));
+jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle, getForegroundAbortSignal: () => mockForeground.signal }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({}) }));
+jest.mock('@rranker/tool-arcade-finder/utils/acquire-arcade-gps-origin', () => ({ acquireArcadeGpsOrigin: () => mockGps() }));
+jest.mock('@rranker/tool-arcade-finder/utils/open-arcade-navigation', () => ({ openArcadeNavigation: jest.fn() }));
 
 const origin = (latitude: number): ArcadeOrigin => ({ latitude, longitude: 120 });
 beforeEach(() => {

@@ -1,12 +1,13 @@
+import { setDisabledPlugins } from '@rranker/sdk';
 import { AppState, PixelRatio, Platform, type AppStateStatus, type LayoutChangeEvent } from 'react-native';
 import { useMemo } from 'react';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
-import { clearUnusedBestImageAssets } from '@/features/best-image/load-best-image-session';
+import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
+import { clearUnusedBestImageAssets } from '@rranker/sdk/features/best-image/load-best-image-session';
 import { jest } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
-import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import type { ActionNotificationInput } from '@/components/AppNotification';
+import { useBestImageScreenController, usePreparedBestImageSources } from '@rranker/sdk/features/best-image/use-best-image-screen-controller';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import type { ActionNotificationInput } from '@rranker/sdk/components/AppNotification';
 
 const mockPermission = jest.fn<() => Promise<void>>();
 const mockCapture = jest.fn<(...args: unknown[]) => Promise<string>>();
@@ -21,18 +22,18 @@ const mockWrite = jest.fn<(uri: string, content: string) => Promise<void>>();
 const mockBase64 = jest.fn<() => Promise<string>>();
 const mockDeletedDirectories = new Set<string>();
 jest.mock('react-native-view-shot', () => ({ captureRef: (...args: unknown[]) => mockCapture(...args) }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({
   showNotification: mockNotify, showActionNotification: mockShowProgress,
   updateNotification: mockUpdateProgress, dismissNotification: mockDismissProgress,
 }) }));
-jest.mock('@/features/best-image/best-image-export', () => ({
+jest.mock('@rranker/sdk/features/best-image/best-image-export', () => ({
   BestImageExportError: class BestImageExportError extends Error {},
   bestImageCaptureDimensions: (width: number, height: number) => ({ width, height }), deleteBestImageCapture: async (uri: string) => mockDelete(uri),
   requestBestImageExportPermission: () => mockPermission(),
   saveBestImageCapture: (uri: string, name: string) => mockSave(uri, name),
 }));
 const config = {
-  game: 'maimai' as const,
+  game: 'maimai' as const, pluginId: 'tool.maimai',
   accountId: 'account-a', defaultType: 'best', defaultWidth: 1080, defaultQuantityText: '50', defaultPreferences: {},
   preferences: { load: async () => ({}), save: async () => undefined }, defaultExportHeight: () => 1440,
 };
@@ -211,6 +212,25 @@ describe('best image export lifecycle', () => {
     await waitFor(() => expect(mockDeletedDirectories.has(directory)).toBe(true));
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockDelete).toHaveBeenCalledWith('file:///late.png');
+  });
+
+  it('停用工具取消导出并在原生截图结束后删除素材', async () => {
+    const capture = deferred<string>(); mockCapture.mockReturnValueOnce(capture.promise);
+    const { result } = await renderHook(() => useBestImageScreenController(config));
+    const directory = result.current.assetSession.directory.uri;
+    let pending!: Promise<void>;
+    await act(async () => { pending = result.current.exportImages(runtime()); });
+    await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
+    try {
+      await act(async () => setDisabledPlugins(['tool.maimai']));
+      expect(mockDeletedDirectories.has(directory)).toBe(false);
+      await act(async () => { capture.resolve('file:///late.png'); await pending; });
+      await waitFor(() => expect(mockDeletedDirectories.has(directory)).toBe(true));
+      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockDelete).toHaveBeenCalledWith('file:///late.png');
+    } finally {
+      await act(async () => setDisabledPlugins([]));
+    }
   });
 
   it('releases replaced HTML only after the old native capture finishes', async () => {

@@ -1,6 +1,6 @@
 import { JSDOM } from 'jsdom';
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({ downloadChartResource: vi.fn() }));
+vi.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', () => ({ downloadChartResource: vi.fn() }));
 
 vi.mock('expo-file-system', () => {
   class Directory {
@@ -24,9 +24,9 @@ vi.mock('expo-file-system', () => {
 const {
   resolveNeededPhigrosFonts,
   trimPhigrosBestImageCss,
-} = await import('@/features/phigros-best-image/phigros-font-coverage');
-const { PHIGROS_FONT_MANIFEST } = await import('@/features/phigros-best-image/phigros-font-cache');
-const { collectPhigrosBestImageVisibleStrings } = await import('@/features/phigros-best-image/collect-phigros-best-image-visible-strings');
+} = await import('@rranker/tool-phigros/features/phigros-best-image/phigros-font-coverage');
+const { PHIGROS_FONT_MANIFEST } = await import('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache');
+const { collectPhigrosBestImageVisibleStrings } = await import('@rranker/tool-phigros/features/phigros-best-image/collect-phigros-best-image-visible-strings');
 
 describe('Phigros font coverage selection', () => {
   it('keeps only core fonts for CJK and basic Latin text', () => {

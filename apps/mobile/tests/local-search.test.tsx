@@ -2,11 +2,12 @@ import { act, render, renderHook } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
 import { AppState, type AppStateStatus, Text } from 'react-native';
-import { CachedContentActivityScope } from '@/components/CachedTabScreen';
-import type { Song } from '@/domain/models';
-import { useLocalSearch } from '@/hooks/use-local-search';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
-import { EMPTY_SONG_FILTERS, findMatchedAlias, matchesSongSearch } from '@/utils/search';
+import { CachedContentActivityScope } from '@rranker/sdk/components/CachedTabScreen';
+import type { Song } from '@rranker/game-maimai/domain/models';
+import { useLocalSearch } from '@rranker/sdk/hooks/use-local-search';
+import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
+import { EMPTY_SONG_FILTERS, findMatchedAlias } from '@rranker/sdk/utils/search';
+import { matchesSongSearch } from '@rranker/game-maimai/domain/search';
 
 const originalIdle = globalThis.requestIdleCallback;
 const originalCancelIdle = globalThis.cancelIdleCallback;

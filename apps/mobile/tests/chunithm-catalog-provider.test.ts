@@ -4,9 +4,9 @@ import {
   mapChunithmCatalog,
   mapChunithmCollections,
   mapChunithmSongDetail,
-} from '@/providers/chunithm-catalog-provider';
-import { loadChunithmAliases, loadChunithmCatalog } from '@/services/chunithm-catalog-loader';
-import { loadChunithmCollections } from '@/services/chunithm-collection-loader';
+} from '@rranker/provider-lxns/providers/chunithm-catalog-provider';
+import { loadChunithmAliases, loadChunithmCatalog } from '@rranker/game-chunithm/services/chunithm-catalog-loader';
+import { loadChunithmCollections } from '@rranker/game-chunithm/services/chunithm-collection-loader';
 
 const responsePayload = {
   versions: [

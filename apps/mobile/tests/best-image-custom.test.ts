@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ScoreRecord } from '@/domain/models';
-import {
-  buildCustomBestImageSections,
-  maximumBestImageRowsForWidth,
-  DEFAULT_CUSTOM_BEST_IMAGE_FILTERS,
-  paginateBestImageSections,
-  parseBestImageQuantity,
-  type CustomBestImageFilters,
-} from '@/features/best-image/best-image-custom';
+import type { ScoreRecord } from '@rranker/game-maimai/domain/models';
+import { parseBestImageQuantity } from "@rranker/sdk/features/best-image/best-image-custom";
+import { buildCustomBestImageSections, maximumBestImageRowsForWidth, DEFAULT_CUSTOM_BEST_IMAGE_FILTERS, paginateBestImageSections, type CustomBestImageFilters } from "@rranker/tool-maimai/features/maimai-best-image/maimai-best-image-custom";
 
 function score(overrides: Partial<ScoreRecord> = {}): ScoreRecord {
   return {

@@ -6,10 +6,10 @@ import {
   downloadOsuBeatmapsetArchive, downloadOsuBeatmapsetPackage,
   osuBeatmapsetDownloadUrl, osuBeatmapsetPackageName,
   OSU_BEATMAPSET_PACKAGE_MAX_BYTES,
-} from '@/features/osu-beatmapset-download/osu-beatmapset-download';
-import { ChartPreviewBudgetExceededError } from '@/features/chart-preview-shared/chart-preview-resource-budget';
-import { readOsuChartPreviewArchive } from '@/features/osu-chart-preview/chart-preview-resources';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+} from '@rranker/tool-osu/features/osu-beatmapset-download/osu-beatmapset-download';
+import { ChartPreviewBudgetExceededError } from '@rranker/sdk/features/chart-preview-shared/chart-preview-resource-budget';
+import { readOsuChartPreviewArchive } from '@rranker/chart-osu/features/osu-chart-preview/chart-preview-resources';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
 const mocks = vi.hoisted(() => ({
   cleanup: vi.fn(), download: vi.fn(), save: vi.fn(async (_name?: unknown, _output?: unknown, _signal?: AbortSignal) => true),
@@ -31,7 +31,7 @@ vi.mock('expo-file-system', () => {
 vi.mock('expo-file-system/legacy', () => ({
   deleteAsync: async (uri: string) => { mocks.files.delete(uri); mocks.sizes.delete(uri); },
 }));
-vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({
+vi.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', () => ({
   chartPackageNameWithSuffix: (title: string, suffix: string) => `${title} ${suffix}`,
   cleanupChartDownloadSessionDirectory: (directory: unknown) => mocks.cleanup(directory),
   createChartDownloadSessionDirectory: () => ({ uri: 'file:///stage' }),

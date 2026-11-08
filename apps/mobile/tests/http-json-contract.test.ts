@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { ProviderError, providerErrorFromStatus } from '@/providers/errors';
-import { readProviderResponseBytes, requestJson, requestProviderResponse, requestProviderWrite, retryAfterMs } from '@/providers/http-json';
-import { SessionPersistenceError } from '@/domain/session-vault';
+import { ProviderError, providerErrorFromStatus } from '@rranker/sdk/providers/errors';
+import { readProviderResponseBytes, requestJson, requestProviderResponse, requestProviderWrite, retryAfterMs } from '@rranker/sdk/providers/http-json';
+import { SessionPersistenceError } from '@rranker/sdk/domain/session-vault';
 
 const schema = z.object({ ok: z.boolean() });
 

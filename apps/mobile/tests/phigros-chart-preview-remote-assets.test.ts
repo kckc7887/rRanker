@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import { clearSharedCache } from '@/features/storage-management/shared-storage-cache';
+import { prepareChartPreviewWebviewFromPlan } from '@rranker/sdk/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { clearSharedCache } from '@rranker/sdk/features/storage-management/shared-storage-cache';
 
 vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 
@@ -107,7 +107,7 @@ vi.mock('expo-file-system/legacy', () => ({
 }));
 
 vi.mock('expo-image', () => ({ Image: { clearDiskCache: async () => true, clearMemoryCache: async () => true } }));
-vi.mock('@/features/storage-management/ui-icon-fonts', () => ({ reloadUiIconFonts: async () => undefined }));
+vi.mock('@rranker/sdk/features/storage-management/ui-icon-fonts', () => ({ reloadUiIconFonts: async () => undefined }));
 
 vi.mock('expo-asset', () => ({ Asset: { fromModule: (moduleId: number) => ({
   localUri: `file://asset/${moduleId}`, type: 'js', downloadAsync: async () => undefined,

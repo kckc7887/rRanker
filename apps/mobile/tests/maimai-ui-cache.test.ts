@@ -1,8 +1,8 @@
-import { PHIGROS_APP_UI_ENTRIES, PHIGROS_APP_UI_ZIP } from '@/features/phigros-best-image/phigros-app-ui-manifest';
-import { prepareChunithmUi, clearChunithmUiCache } from '@/features/chunithm-best-image/chunithm-ui-cache';
-import { CHUNITHM_UI_ENTRIES, CHUNITHM_UI_ZIP } from '@/features/chunithm-best-image/chunithm-ui-manifest';
-import { preparePhigrosUi, clearPhigrosUiCache } from '@/features/phigros-best-image/phigros-ui-cache';
-import { PHIGROS_UI_ENTRIES, PHIGROS_UI_ZIP } from '@/features/phigros-best-image/phigros-ui-manifest';
+import { PHIGROS_APP_UI_ENTRIES, PHIGROS_APP_UI_ZIP } from '@rranker/tool-phigros/features/phigros-best-image/phigros-app-ui-manifest';
+import { prepareChunithmUi, clearChunithmUiCache } from '@rranker/tool-chunithm/features/chunithm-best-image/chunithm-ui-cache';
+import { CHUNITHM_UI_ENTRIES, CHUNITHM_UI_ZIP } from '@rranker/tool-chunithm/features/chunithm-best-image/chunithm-ui-manifest';
+import { preparePhigrosUi, clearPhigrosUiCache } from '@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache';
+import { PHIGROS_UI_ENTRIES, PHIGROS_UI_ZIP } from '@rranker/tool-phigros/features/phigros-best-image/phigros-ui-manifest';
 import { createHash } from 'node:crypto';
 import JSZip from 'jszip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,13 +10,13 @@ import {
   clearMaimaiUiCache,
   prepareMaimaiUi,
   type MaimaiUiProgress,
-} from '@/features/best-image/maimai-ui-cache';
+} from '@rranker/tool-maimai/features/best-image/maimai-ui-cache';
 import {
   MAIMAI_UI_MANIFEST_ENTRIES,
   MAIMAI_UI_ZIP,
   MAIMAI_APP_UI_ZIP,
   MAIMAI_APP_UI_MANIFEST_ENTRIES,
-} from '@/features/best-image/maimai-ui-manifest.generated';
+} from '@rranker/tool-maimai/features/best-image/maimai-ui-manifest.generated';
 
 const mockUiFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
@@ -282,7 +282,7 @@ describe('maimai ui asset cache', () => {
   });
 });
 
-vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
+vi.mock('@rranker/sdk/features/chart-download-shared/chart-download-shared', async () => {
   const { File } = await import('expo-file-system');
   return { downloadChartResource: async (directory: import('expo-file-system').Directory, name: string, url: string,
     _signal?: AbortSignal, onProgress?: (progress: import('expo-file-system/legacy').DownloadProgressData) => void) => {

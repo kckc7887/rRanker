@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getNativeTabBottomInset } from '@/navigation/native-tab-layout';
+import { getNativeTabBottomInset } from '@rranker/sdk/navigation/native-tab-layout';
 
 describe('native tab content inset', () => {
   it('does not duplicate the automatic iOS native-tab content inset', () => {

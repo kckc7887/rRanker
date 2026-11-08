@@ -1,64 +1,67 @@
 import { z } from 'zod';
 import { DatabaseSync } from 'node:sqlite';
-import type { PhiraQueriedBest } from '@/domain/phira';
-import type { MajdataSong } from '@/domain/majdata';
-import { createUserDataBackup, DEFAULT_TAG_PRESETS, libraryDetailTarget, parseUserDataBackup } from '@/domain/user-library';
-import type { ScoreSnapshot } from '@/domain/models';
-import { normalizeOsuSnapshot, osuKnownScoresCacheKey, osuSnapshotCacheKey, OSU_KNOWN_SCORES_SCHEMA_VERSION } from '@/domain/osu';
-import { TufPlayerSchema, tufPlayerCacheKey } from '@/domain/tuf';
-import { museDashPlayerCacheKey } from '@/domain/muse-dash';
-import { fixtureSource, fixturePlayer } from '@/fixtures/sanitized';
-import { ACCOUNT_THUMBNAIL_SCHEMA_VERSION, accountThumbnailResourceKey } from '@/domain/account-thumbnail';
-import { createLocalMaimaiAccount, createMaxedChunithmTestAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
-import type { PhigrosGameDataPayload } from '@/domain/game-data';
+import type { PhiraQueriedBest } from '@rranker/game-phira/domain/phira';
+import type { MajdataSong } from '@rranker/game-majdata-net/domain/majdata';
+import { createUserDataBackup, DEFAULT_TAG_PRESETS, libraryDetailTarget, parseUserDataBackup } from '@rranker/sdk/domain/user-library';
+import type { ScoreSnapshot } from '@rranker/game-maimai/domain/models';
+import { normalizeOsuSnapshot, osuKnownScoresCacheKey, osuSnapshotCacheKey, OSU_KNOWN_SCORES_SCHEMA_VERSION } from '@rranker/game-osu/domain/osu';
+import { TufPlayerSchema, tufPlayerCacheKey } from '@rranker/game-adofai/domain/tuf';
+import { museDashPlayerCacheKey } from '@rranker/game-musedash/domain/muse-dash';
+import { fixtureSource, fixturePlayer } from './fixtures/sanitized';
+import { ACCOUNT_THUMBNAIL_SCHEMA_VERSION, accountThumbnailResourceKey } from '@rranker/sdk/domain/account-thumbnail';
+import { createLocalMaimaiAccount, createMaxedMaimaiTestAccount } from '@rranker/game-maimai/accounts';
+import { createMaxedChunithmTestAccount } from '@rranker/game-chunithm/accounts';
+import type { PhigrosGameDataPayload } from '@rranker/game-phigros/domain/game-data';
 import { rizlineSave } from './fixtures/rizline';
 
-let SqliteSnapshotRepository: typeof import('@/storage/sqlite-snapshot-repository')['SqliteSnapshotRepository'];
-let SqliteUserLibraryRepository: typeof import('@/storage/sqlite-user-library-repository')['SqliteUserLibraryRepository'];
-let UserLibraryService: typeof import('@/services/user-library-service')['UserLibraryService'];
-let runDatabaseWrite: typeof import('@/storage/rranker-database')['runDatabaseWrite'];
-let captureResourceWrites: typeof import('@/services/snapshot-cache-utils')['captureResourceWrites'];
-let invalidateResourceWrites: typeof import('@/services/snapshot-cache-utils')['invalidateResourceWrites'];
-let PhiraCache: typeof import('@/services/phira-cache')['PhiraCache'];
-let OsuCache: typeof import('@/services/osu-cache')['OsuCache'];
-let makeOsuSnapshot: typeof import('@/services/osu-cache')['makeOsuSnapshot'];
-let TufCache: typeof import('@/services/tuf-cache')['TufCache'];
-let makeTufSnapshot: typeof import('@/services/tuf-cache')['makeTufSnapshot'];
-let MuseDashCache: typeof import('@/services/muse-dash-cache')['MuseDashCache'];
-let makeMuseDashSnapshot: typeof import('@/services/muse-dash-cache')['makeMuseDashSnapshot'];
-let PhigrosSaveCache: typeof import('@/services/phigros-save-cache')['PhigrosSaveCache'];
-let stalePhigrosPayload: typeof import('@/services/phigros-save-cache')['stalePhigrosPayload'];
-let loadMajdataSong: typeof import('@/services/majdata-service')['loadMajdataSong'];
-let majdataSongKey: typeof import('@/services/majdata-service')['majdataSongKey'];
-let loadMajdataCached: typeof import('@/services/majdata-service')['loadMajdataCached'];
-let loadRizlineCached: typeof import('@/services/rizline-service')['loadRizlineCached'];
-let majdataProvider: typeof import('@/providers/majdata-provider')['majdataProvider'];
-let abortForegroundWork: typeof import('@/state/app-lifecycle-core')['abortForegroundWork'];
-let beginForegroundWork: typeof import('@/state/app-lifecycle-core')['beginForegroundWork'];
-let useSession: typeof import('@/state/session-store')['useSession'];
-let persistBoundAccountThumbnail: typeof import('@/services/account-thumbnail')['persistBoundAccountThumbnail'];
-let hydrateBoundAccountThumbnails: typeof import('@/services/account-thumbnail')['hydrateBoundAccountThumbnails'];
-let hydrateLocalAccountRatings: typeof import('@/services/hydrate-local-account-ratings')['hydrateLocalAccountRatings'];
+let ScoreRepository: typeof import('@rranker/game-maimai/storage/score-repository')['ScoreRepository'];
+let SqliteUserLibraryRepository: typeof import('@rranker/sdk/storage/sqlite-user-library-repository')['SqliteUserLibraryRepository'];
+let UserLibraryService: typeof import('@rranker/sdk/services/user-library-service')['UserLibraryService'];
+let runDatabaseWrite: typeof import('@rranker/sdk/storage/rranker-database')['runDatabaseWrite'];
+let captureResourceWrites: typeof import('@rranker/sdk/services/snapshot-cache-utils')['captureResourceWrites'];
+let invalidateResourceWrites: typeof import('@rranker/sdk/services/snapshot-cache-utils')['invalidateResourceWrites'];
+let PhiraCache: typeof import('@rranker/provider-phira-community/services/phira-cache')['PhiraCache'];
+let OsuCache: typeof import('@rranker/provider-osu/services/osu-cache')['OsuCache'];
+let makeOsuSnapshot: typeof import('@rranker/provider-osu/services/osu-cache')['makeOsuSnapshot'];
+let TufCache: typeof import('@rranker/provider-tuf/services/tuf-cache')['TufCache'];
+let makeTufSnapshot: typeof import('@rranker/provider-tuf/services/tuf-cache')['makeTufSnapshot'];
+let MuseDashCache: typeof import('@rranker/provider-musedash-moe/services/muse-dash-cache')['MuseDashCache'];
+let makeMuseDashSnapshot: typeof import('@rranker/provider-musedash-moe/services/muse-dash-cache')['makeMuseDashSnapshot'];
+let PhigrosSaveCache: typeof import('@rranker/provider-phi-taptap/services/phigros-save-cache')['PhigrosSaveCache'];
+let stalePhigrosPayload: typeof import('@rranker/provider-phi-taptap/services/phigros-save-cache')['stalePhigrosPayload'];
+let loadMajdataSong: typeof import('@rranker/provider-majdata-net/services/majdata-service')['loadMajdataSong'];
+let majdataSongKey: typeof import('@rranker/provider-majdata-net/services/majdata-service')['majdataSongKey'];
+let loadMajdataCached: typeof import('@rranker/provider-majdata-net/services/majdata-service')['loadMajdataCached'];
+let loadRizlineCached: typeof import('@rranker/provider-rizline-official/services/rizline-service')['loadRizlineCached'];
+let majdataProvider: typeof import('@rranker/provider-majdata-net/providers/majdata-provider')['majdataProvider'];
+let abortForegroundWork: typeof import('@rranker/sdk/state/app-lifecycle-core')['abortForegroundWork'];
+let beginForegroundWork: typeof import('@rranker/sdk/state/app-lifecycle-core')['beginForegroundWork'];
+let useSession: typeof import('@rranker/sdk/state/session-store')['useSession'];
+let persistBoundAccountThumbnail: typeof import('@rranker/sdk/services/account-thumbnail')['persistBoundAccountThumbnail'];
+let hydrateBoundAccountThumbnails: typeof import('@rranker/sdk/services/account-thumbnail')['hydrateBoundAccountThumbnails'];
+let hydrateAccountSummaries: typeof import('@rranker/sdk/services/account-hydration')['hydrateAccountSummaries'];
 
 async function reloadStorage() {
   vi.resetModules();
-  ({ SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository'));
-  ({ SqliteUserLibraryRepository } = await import('@/storage/sqlite-user-library-repository'));
-  ({ UserLibraryService } = await import('@/services/user-library-service'));
-  ({ runDatabaseWrite } = await import('@/storage/rranker-database'));
-  ({ captureResourceWrites, invalidateResourceWrites } = await import('@/services/snapshot-cache-utils'));
-  ({ PhiraCache } = await import('@/services/phira-cache'));
-  ({ OsuCache, makeOsuSnapshot } = await import('@/services/osu-cache'));
-  ({ TufCache, makeTufSnapshot } = await import('@/services/tuf-cache'));
-  ({ MuseDashCache, makeMuseDashSnapshot } = await import('@/services/muse-dash-cache'));
-  ({ PhigrosSaveCache, stalePhigrosPayload } = await import('@/services/phigros-save-cache'));
-  ({ loadMajdataSong, majdataSongKey, loadMajdataCached } = await import('@/services/majdata-service'));
-  ({ loadRizlineCached } = await import('@/services/rizline-service'));
-  ({ majdataProvider } = await import('@/providers/majdata-provider'));
-  ({ abortForegroundWork, beginForegroundWork } = await import('@/state/app-lifecycle-core'));
-  ({ useSession } = await import('@/state/session-store'));
-  ({ persistBoundAccountThumbnail, hydrateBoundAccountThumbnails } = await import('@/services/account-thumbnail'));
-  ({ hydrateLocalAccountRatings } = await import('@/services/hydrate-local-account-ratings'));
+  await import('./plugins');
+  ({ ScoreRepository } = await import('@rranker/game-maimai/storage/score-repository'));
+  ({ SqliteUserLibraryRepository } = await import('@rranker/sdk/storage/sqlite-user-library-repository'));
+  ({ UserLibraryService } = await import('@rranker/sdk/services/user-library-service'));
+  ({ runDatabaseWrite } = await import('@rranker/sdk/storage/rranker-database'));
+  ({ captureResourceWrites, invalidateResourceWrites } = await import('@rranker/sdk/services/snapshot-cache-utils'));
+  ({ PhiraCache } = await import('@rranker/provider-phira-community/services/phira-cache'));
+  ({ OsuCache, makeOsuSnapshot } = await import('@rranker/provider-osu/services/osu-cache'));
+  ({ TufCache, makeTufSnapshot } = await import('@rranker/provider-tuf/services/tuf-cache'));
+  ({ MuseDashCache, makeMuseDashSnapshot } = await import('@rranker/provider-musedash-moe/services/muse-dash-cache'));
+  ({ PhigrosSaveCache, stalePhigrosPayload } = await import('@rranker/provider-phi-taptap/services/phigros-save-cache'));
+  ({ loadMajdataSong, majdataSongKey, loadMajdataCached } = await import('@rranker/provider-majdata-net/services/majdata-service'));
+  ({ loadRizlineCached } = await import('@rranker/provider-rizline-official/services/rizline-service'));
+  ({ majdataProvider } = await import('@rranker/provider-majdata-net/providers/majdata-provider'));
+  ({ abortForegroundWork, beginForegroundWork } = await import('@rranker/sdk/state/app-lifecycle-core'));
+  ({ useSession } = await import('@rranker/sdk/state/session-store'));
+  await (await import('@rranker/sdk/state/debug-store')).useDebugStore.getState().setTestAccountsEnabled(true);
+  ({ persistBoundAccountThumbnail, hydrateBoundAccountThumbnails } = await import('@rranker/sdk/services/account-thumbnail'));
+  ({ hydrateAccountSummaries } = await import('@rranker/sdk/services/account-hydration'));
 }
 
 const bridge = vi.hoisted(() => ({ open: vi.fn() }));
@@ -79,7 +82,7 @@ const queriedBest = (chartId: number, score = 900_000): PhiraQueriedBest => ({
 
 describe('SQLite storage and current backups', () => {
   let database: DatabaseSync;
-  let repository: InstanceType<typeof SqliteSnapshotRepository>;
+  let repository: InstanceType<typeof ScoreRepository>;
   let run: ReturnType<typeof vi.fn>;
   let reads: ReturnType<typeof vi.fn>;
   beforeEach(async () => {
@@ -99,34 +102,34 @@ describe('SQLite storage and current backups', () => {
       },
     });
     await reloadStorage();
-    repository = new SqliteSnapshotRepository();
+    repository = new ScoreRepository();
     await repository.initialize();
   });
   afterEach(() => database.close());
 
   it('keeps favorites, practice and two tag scopes independent through storage and backup restore', async () => {
     const library = new UserLibraryService();
-    await library.setSongFavorite('example', '0001', true);
-    await library.setSongFavorite('example', '0002', true);
-    await library.setChartPractice('example', '0001', 'SD', 0, true);
-    await library.setTags({ gameId: 'example', kind: 'song', songId: '0001' }, ['歌曲标签']);
-    await library.setTags({ gameId: 'example', kind: 'chart', songId: '0001', type: 'SD', levelIndex: 0 }, ['谱面标签']);
+    await library.setSongFavorite({ gameId: 'example', kind: 'song', id: String('0001'), target: { songId: String('0001') } }, true);
+    await library.setSongFavorite({ gameId: 'example', kind: 'song', id: String('0002'), target: { songId: String('0002') } }, true);
+    await library.setChartPractice({ gameId: 'example', kind: 'chart', id: JSON.stringify([String('0001'), 0]), target: { songId: String('0001'), levelIndex: String(0) } }, true);
+    await library.setTags({ gameId: 'example', kind: 'song', id: String('0001'), target: { songId: String('0001') } }, ['歌曲标签']);
+    await library.setTags({ gameId: 'example', kind: 'chart', id: JSON.stringify([String('0001'), 0]), target: { songId: String('0001'), levelIndex: String(0) } }, ['谱面标签']);
     const before = await library.list('example');
     expect(before).toHaveLength(3);
     expect(before).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: 'song:example:0001', favorite: true, tags: ['歌曲标签'] }),
-      expect.objectContaining({ key: 'chart:example:0001:SD:0', practice: true, tags: ['谱面标签'] }),
-      expect.objectContaining({ key: 'song:example:0002', favorite: true, tags: [] }),
+      expect.objectContaining({ key: "[\"example\",\"song\",\"0001\"]", favorite: true, tags: ['歌曲标签'] }),
+      expect.objectContaining({ key: "[\"example\",\"chart\",\"[\\\"0001\\\",0]\"]", practice: true, tags: ['谱面标签'] }),
+      expect.objectContaining({ key: "[\"example\",\"song\",\"0002\"]", favorite: true, tags: [] }),
     ]));
-    const backup = parseUserDataBackup(JSON.parse(JSON.stringify(await library.createBackup())));
-    await library.clear();
-    await library.restore(backup, 'replace');
+    const backup = parseUserDataBackup(JSON.parse(JSON.stringify(await library.createBackup('example'))));
+    await library.clearGame('example');
+    await library.restore('example', backup, 'replace');
     expect(await library.list('example')).toEqual(before);
-    expect(libraryDetailTarget(before.find(item => item.kind === 'chart')!)).toEqual({ game: 'example', songId: '0001', levelIndex: 0 });
-    await library.setSongFavorite('example', '0001', false);
+    expect(libraryDetailTarget(before.find(item => item.kind === 'chart')!)).toEqual({ gameId: 'example', params: { songId: '0001', levelIndex: '0' } });
+    await library.setSongFavorite({ gameId: 'example', kind: 'song', id: String('0001'), target: { songId: String('0001') } }, false);
     expect(await library.list('example')).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: 'chart:example:0001:SD:0', practice: true, tags: ['谱面标签'] }),
-      expect.objectContaining({ key: 'song:example:0002', favorite: true }),
+      expect.objectContaining({ key: "[\"example\",\"chart\",\"[\\\"0001\\\",0]\"]", practice: true, tags: ['谱面标签'] }),
+      expect.objectContaining({ key: "[\"example\",\"song\",\"0002\"]", favorite: true }),
     ]));
   });
 
@@ -260,14 +263,14 @@ describe('SQLite storage and current backups', () => {
     const failure = expect(clearing).rejects.toThrow('clear failed');
     await reached.promise;
     const writing = repository.saveResource('unrelated', 1, 'now', { kept: true });
-    const presets = library.setTagPresets(['舞萌 DX', '🎵']);
+    const presets = library.setTagPresets('maimai', ['舞萌 DX', '🎵']);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(database.prepare("SELECT * FROM resource_snapshots WHERE resource_key = 'unrelated'").get()).toBeUndefined();
     release.resolve();
     await failure; await Promise.all([writing, presets]);
     expect(await repository.getResource('clear-me', 1)).toEqual({});
     expect(await repository.getResource('unrelated', 1)).toEqual({ kept: true });
-    expect(await library.listTagPresets()).toEqual(['舞萌 DX', '🎵']);
+    expect(await library.listTagPresets('maimai')).toEqual(['舞萌 DX', '🎵']);
   });
 
   it('rechecks cache generations after waiting for an unrelated database writer', async () => {
@@ -287,49 +290,27 @@ describe('SQLite storage and current backups', () => {
   it('keeps concurrent backup merges and single-item writes without losing updates', async () => {
     const library = new SqliteUserLibraryRepository();
     const at = '2026-09-24T00:00:00.000Z';
-    const song = (songId: string) => ({
-      key: `song:maimai:${songId}`, gameId: 'maimai' as const, kind: 'song' as const,
-      songId, favorite: true, tags: [], createdAt: at, updatedAt: at,
-    });
-    await library.mergeBackup({ items: [song('A')], presets: ['旧预设'] }, 'replace');
+    const song = (songId: string) => ({ key: JSON.stringify(['maimai', 'song', String(songId)]), gameId: 'maimai', kind: 'song' as const, id: String(songId), target: { songId: String(songId) }, favorite: true, tags: [], createdAt: at, updatedAt: at });
+    await library.mergeBackup('maimai', { items: [song('A')], presets: ['旧预设'] }, 'replace');
     await Promise.all([
-      library.mergeBackup({ items: [song('C')], presets: ['新预设'] }, 'merge'),
-      library.updateTarget({ kind: 'song', gameId: 'maimai', songId: 'B' }, () => song('B')),
+      library.mergeBackup('maimai', { items: [song('C')], presets: ['新预设'] }, 'merge'),
+      library.updateTarget({ gameId: 'maimai', kind: 'song', id: String('B'), target: { songId: String('B') } }, () => song('B')),
     ]);
     expect((await library.list()).map((item) => item.key).sort())
-      .toEqual(['song:maimai:A', 'song:maimai:B', 'song:maimai:C']);
-    expect(await library.listTagPresets()).toEqual(['旧预设', '新预设']);
+      .toEqual(["[\"maimai\",\"song\",\"A\"]", "[\"maimai\",\"song\",\"B\"]", "[\"maimai\",\"song\",\"C\"]"]);
+    expect(await library.listTagPresets('maimai')).toEqual(['旧预设', '新预设']);
   });
 
   it('returns only the edited game while pruning its empty row and preserving other games', async () => {
-    const library = new SqliteUserLibraryRepository();
-    const at = '2026-09-24T00:00:00.000Z';
-    await library.mergeBackup({
-      items: [{
-        key: 'song:maimai:A', gameId: 'maimai', kind: 'song', songId: 'A',
-        favorite: true, tags: ['独有', '共有'], createdAt: '2026-09-20T00:00:00.000Z', updatedAt: at,
-      }, {
-        key: 'song:maimai:B', gameId: 'maimai', kind: 'song', songId: 'B',
-        favorite: true, tags: ['共有'], createdAt: at, updatedAt: at,
-      }, {
-        key: 'song:phigros:A', gameId: 'phigros', kind: 'song', songId: 'A',
-        favorite: true, tags: ['其它游戏'], createdAt: at, updatedAt: at,
-      }],
-      presets: [],
-    }, 'replace');
-    run.mockClear();
-    const result = await library.updateTarget(
-      { kind: 'song', gameId: 'maimai', songId: 'A' },
-      (current) => {
-        if (!current || current.kind !== 'song') throw new Error('missing seeded song');
-        return { ...current, favorite: false, tags: [], updatedAt: '2026-09-24T00:00:01.000Z' };
-      },
-    );
-    expect(result.map((item) => item.key)).toEqual(['song:maimai:B']);
-    expect(result[0]).toMatchObject({ createdAt: at, tags: ['共有'] });
-    expect(await library.list('phigros')).toEqual([expect.objectContaining({ key: 'song:phigros:A', favorite: true, tags: ['其它游戏'] })]);
-    expect(database.prepare('SELECT normalized_name AS name FROM user_library_tags ORDER BY name').all())
-      .toEqual([{ name: '共有' }, { name: '其它游戏' }]);
+    const service = new UserLibraryService();
+    const first = { gameId: 'maimai', kind: 'song' as const, id: 'A', target: { songId: 'A' } };
+    const second = { ...first, id: 'B', target: { songId: 'B' } };
+    const other = { ...first, gameId: 'phigros' };
+    await service.setTags(first, ['独有', '共有']);
+    await service.setTags(second, ['共有']);
+    await service.setTags(other, ['其它游戏']);
+    expect(await service.setTags(first, [])).toEqual([expect.objectContaining({ id: 'B', tags: ['共有'] })]);
+    expect(await service.list('phigros')).toEqual([expect.objectContaining({ id: 'A', tags: ['其它游戏'] })]);
   });
 
   it('keeps both charts when two best merges of one account overlap', async () => {
@@ -388,84 +369,139 @@ describe('SQLite storage and current backups', () => {
     expect(Object.keys((await cache.loadBests(1))?.items ?? {})).toEqual(['502']);
   });
 
-  it('clears one game without touching other games or presets', async () => {
-    const library = new SqliteUserLibraryRepository();
-    const at = '2026-09-24T00:00:00.000Z';
-    await library.mergeBackup({
-      items: [{
-        key: 'song:maimai:A', gameId: 'maimai', kind: 'song', songId: 'A',
-        favorite: true, tags: ['舞萌标签'], createdAt: at, updatedAt: at,
-      }, {
-        key: 'song:phigros:A', gameId: 'phigros', kind: 'song', songId: 'A',
-        favorite: true, tags: ['Phigros 标签'], createdAt: at, updatedAt: at,
-      }],
-      presets: ['预设'],
-    }, 'replace');
-    expect((await library.list('maimai')).map((item) => item.key)).toEqual(['song:maimai:A']);
-    const remaining = await library.clearGame('maimai');
-    expect(remaining.map((item) => item.key)).toEqual(['song:phigros:A']);
-    expect(await library.listTagPresets()).toEqual(['预设']);
-    expect(database.prepare('SELECT normalized_name AS name FROM user_library_tags ORDER BY name').all())
-      .toEqual([{ name: 'phigros 标签' }]);
+  it('clears one game and its presets while preserving every other game', async () => {
+    const service = new UserLibraryService();
+    const target = { gameId: 'maimai', kind: 'song' as const, id: 'A', target: { songId: 'A' } };
+    await service.setSongFavorite(target, true);
+    await service.setSongFavorite({ ...target, gameId: 'phigros' }, true);
+    await service.setTagPresets('maimai', ['舞萌预设']);
+    await service.setTagPresets('phigros', ['Phigros 预设']);
+    await service.clearGame('maimai');
+    expect(await service.list('maimai')).toEqual([]);
+    expect(await service.list('phigros')).toEqual([expect.objectContaining({ id: 'A', favorite: true })]);
+    expect(await service.listTagPresets('maimai')).toEqual([...DEFAULT_TAG_PRESETS]);
+    expect(await service.listTagPresets('phigros')).toEqual(['Phigros 预设']);
   });
 
   it('keeps favorites, practice and tags independent and removes empty items', async () => {
     const service = new UserLibraryService();
-    await service.setSongFavorite('maimai', '10001', true);
-    await service.setChartPractice('maimai', '1', 'DX', 3, true);
-    await service.setTags({ kind: 'song', gameId: 'maimai', songId: '1' }, ['喜欢']);
-    await service.setSongFavorite('maimai', '1', false);
+    await service.setSongFavorite({ gameId: 'maimai', kind: 'song', id: '1', target: { songId: '1' } }, true);
+    await service.setChartPractice({ gameId: 'maimai', kind: 'chart', id: JSON.stringify([String('1'), 'DX', 3]), target: { songId: String('1'), levelIndex: String(3), chartType: 'DX' } }, true);
+    await service.setTags({ gameId: 'maimai', kind: 'song', id: String('1'), target: { songId: String('1') } }, ['喜欢']);
+    await service.setSongFavorite({ gameId: 'maimai', kind: 'song', id: String('1'), target: { songId: String('1') } }, false);
     expect(await service.list()).toHaveLength(2);
-    await service.setTags({ kind: 'song', gameId: 'maimai', songId: '1' }, []);
+    await service.setTags({ gameId: 'maimai', kind: 'song', id: String('1'), target: { songId: String('1') } }, []);
     expect(await service.list()).toEqual([expect.objectContaining({ kind: 'chart', practice: true })]);
   });
 
-  it('round-trips current backups, rejects old input, and keeps a failed import atomic', async () => {
+  it('restores only the selected game, rejects incompatible input, and rolls back failed imports', async () => {
     const service = new UserLibraryService();
-    await service.setSongFavorite('rizline', 'Song.A.1', true);
-    await service.setChartPractice('maimai', '100123', 'UTAGE', 0, true);
-    await service.setTagPresets(['原预设']);
-    const backup = await service.createBackup();
-    await service.clear();
-    await service.restore(parseUserDataBackup(JSON.parse(JSON.stringify(backup))), 'replace');
-    expect(await service.list()).toEqual(backup.items);
-    expect(await service.listTagPresets()).toEqual(['原预设']);
-    for (const version of [1, 2]) {
-      expect(() => parseUserDataBackup({ ...backup, version })).toThrow();
-      expect(await service.list()).toEqual(backup.items);
+    const target = { gameId: 'maimai', kind: 'song' as const, id: '1', target: { songId: '1' } };
+    await service.setSongFavorite(target, true);
+    await service.setSongFavorite({ ...target, gameId: 'phigros' }, true);
+    await service.setTagPresets('maimai', ['原预设']);
+    await service.setTagPresets('phigros', ['其他预设']);
+    const backup = await service.createBackup('maimai');
+    const other = await service.createBackup('phigros');
+    await service.clearGame('maimai');
+    await service.restore('maimai', parseUserDataBackup(JSON.parse(JSON.stringify(backup))), 'replace');
+    expect(await service.list('maimai')).toEqual(backup.items);
+    for (const invalid of [{ ...backup, version: 1 }, { ...backup, gameId: 'phigros' },
+      { ...backup, items: [{ ...backup.items[0], gameId: 'phigros' }] },
+      { ...backup, items: [{ ...backup.items[0], target: {} }] },
+      { ...backup, items: [{ ...backup.items[0], id: 'wrong-id' }] }]) {
+      expect(() => service.restore('maimai', invalid as typeof backup, 'replace')).toThrow();
+      expect(await service.list('maimai')).toEqual(backup.items);
     }
-    const imported = createUserDataBackup([], backup.exportedAt, ['新预设']);
+    const imported = createUserDataBackup('maimai', [], backup.exportedAt, ['新预设']);
     run.mockImplementationOnce(async (sql, ...args) => database.prepare(sql).run(...args))
       .mockRejectedValueOnce(new Error('disk failure'));
-    await expect(service.restore(imported, 'replace')).rejects.toThrow('disk failure');
-    expect(await service.list()).toEqual(backup.items);
-    expect(await service.listTagPresets()).toEqual(['原预设']);
+    await expect(service.restore('maimai', imported, 'replace')).rejects.toThrow('disk failure');
+    expect(await service.list('maimai')).toEqual(backup.items);
+    expect(await service.listTagPresets('maimai')).toEqual(['原预设']);
+    expect(await service.createBackup('phigros')).toMatchObject({ items: other.items, tagPresets: other.tagPresets });
+  });
+
+  it.each([
+    ['maimai', 'SD', 4], ['maimai', 'DX', 4], ['maimai', 'UTAGE', 0],
+    ['phigros', undefined, 3], ['chunithm', undefined, 5], ['rizline', undefined, 4],
+    ['musedash', undefined, 4], ['majdata-net', undefined, 6], ['example', undefined, 0],
+  ] as const)('imports valid %s %s difficulties and rejects unavailable slots without changing data', async (gameId, chartType, lastLevel) => {
+    const service = new UserLibraryService();
+    const timestamp = '2026-07-13T00:00:00.000Z';
+    const backupAt = (levelIndex: number, presets: string[]) => createUserDataBackup(gameId, [{
+      gameId, kind: 'chart', key: 'imported', practice: true, tags: ['练习'],
+      id: JSON.stringify(chartType ? ['song', chartType, levelIndex] : ['song', levelIndex]),
+      target: { songId: 'song', levelIndex: String(levelIndex), ...(chartType ? { chartType } : {}) },
+      createdAt: timestamp, updatedAt: timestamp,
+    }], timestamp, presets);
+    const accepted = backupAt(lastLevel, ['保留预设']);
+    await service.restore(gameId, accepted, 'replace');
+    expect(await service.createBackup(gameId)).toMatchObject({ items: accepted.items, tagPresets: accepted.tagPresets });
+    for (const levelIndex of [lastLevel + 1, 999]) {
+      expect(() => service.restore(gameId, backupAt(levelIndex, ['替换预设']), 'replace')).toThrow('备份包含无效的曲目或谱面');
+      expect(await service.createBackup(gameId)).toMatchObject({ items: accepted.items, tagPresets: accepted.tagPresets });
+    }
+  });
+
+  it('keeps data when its adapter is disabled and refuses imports until reenabled', async () => {
+    const { setDisabledPlugins, getGameAdapter } = await import('@rranker/sdk');
+    const service = new UserLibraryService();
+    await service.setSongFavorite({ gameId: 'example', kind: 'song', id: '0001', target: { songId: '0001' } }, true);
+    await service.setTagPresets('example', ['保留']);
+    const backup = await service.createBackup('example');
+    setDisabledPlugins([getGameAdapter('example')!.id]);
+    try {
+      expect(() => service.restore('example', backup, 'replace')).toThrow('当前游戏适配器不可用');
+      expect(await service.createBackup('example')).toMatchObject({ items: backup.items, tagPresets: backup.tagPresets });
+    } finally { setDisabledPlugins([]); }
+    await service.restore('example', backup, 'replace');
+    expect(await service.list('example')).toEqual(backup.items);
+  });
+
+  it.each(['request', 'adapter'] as const)('cancels a queued import when its %s is cancelled without changing data', async reason => {
+    const { setDisabledPlugins, getGameAdapter } = await import('@rranker/sdk');
+    const service = new UserLibraryService();
+    await service.setTagPresets('example', ['保留']);
+    const before = await service.createBackup('example');
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const blocking = runDatabaseWrite(async () => { entered.resolve(); await release.promise; });
+    await entered.promise;
+    const controller = new AbortController();
+    const importing = service.restore('example', createUserDataBackup('example', [], before.exportedAt, ['替换']), 'replace', controller.signal);
+    const failure = expect(importing).rejects.toThrow();
+    if (reason === 'request') controller.abort();
+    else setDisabledPlugins([getGameAdapter('example')!.id]);
+    release.resolve();
+    try { await blocking; await failure; } finally { setDisabledPlugins([]); }
+    expect(await service.createBackup('example')).toMatchObject({ items: before.items, tagPresets: before.tagPresets });
   });
 
   it.each(['commit', 'rollback'] as const)('reads only the final library state after an overlapping import %s', async outcome => {
     const service = new UserLibraryService();
     const library = new SqliteUserLibraryRepository();
-    await service.setSongFavorite('maimai', '1', true);
-    await service.setTagPresets(['原预设']);
-    const before = await service.createBackup();
+    await service.setSongFavorite({ gameId: 'maimai', kind: 'song', id: String('1'), target: { songId: String('1') } }, true);
+    await service.setTagPresets('maimai', ['原预设']);
+    const before = await service.createBackup('maimai');
     const beforeBytes = await library.measureBytes();
-    const imported = createUserDataBackup([], before.exportedAt, ['新预设']);
+    const imported = createUserDataBackup('maimai', [], before.exportedAt, ['新预设']);
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     run.mockImplementation(async (sql, ...args) => {
       const result = database.prepare(sql).run(...args);
-      if (sql === 'DELETE FROM user_library_items') {
+      if (sql === 'DELETE FROM user_library_items WHERE game_id = ?') {
         entered.resolve();
         await release.promise;
         if (outcome === 'rollback') throw new Error('disk failure');
       }
       return result;
     });
-    const importing = service.restore(imported, 'replace').then(() => null, (error: Error) => error);
+    const importing = service.restore('maimai', imported, 'replace').then(() => null, (error: Error) => error);
     await entered.promise;
     const reading = service.list();
-    const presets = service.listTagPresets();
-    const exporting = service.createBackup();
+    const presets = service.listTagPresets('maimai');
+    const exporting = service.createBackup('maimai');
     const measuring = library.measureBytes();
     await new Promise<void>(resolve => { setTimeout(resolve, 0); });
     release.resolve();
@@ -480,66 +516,66 @@ describe('SQLite storage and current backups', () => {
 
   it('exports items and presets from the same state while another import is pending', async () => {
     const service = new UserLibraryService();
-    await service.setSongFavorite('maimai', '1', true);
-    await service.setTagPresets(['原预设']);
-    const before = await service.createBackup();
+    await service.setSongFavorite({ gameId: 'maimai', kind: 'song', id: String('1'), target: { songId: String('1') } }, true);
+    await service.setTagPresets('maimai', ['原预设']);
+    const before = await service.createBackup('maimai');
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     let blocked = false;
     reads.mockImplementation(async (sql, ...args) => {
-      if (!blocked && sql === 'SELECT display_name FROM user_library_tag_presets ORDER BY sort_order, normalized_name') {
+      if (!blocked && sql === 'SELECT * FROM user_library_items WHERE game_id = ? ORDER BY item_key') {
         blocked = true;
         entered.resolve();
         await release.promise;
       }
       return database.prepare(sql).all(...args);
     });
-    const exporting = service.createBackup();
+    const exporting = service.createBackup('maimai');
     await entered.promise;
-    const imported = createUserDataBackup([], before.exportedAt, ['新预设']);
-    const importing = service.restore(imported, 'replace');
+    const imported = createUserDataBackup('maimai', [], before.exportedAt, ['新预设']);
+    const importing = service.restore('maimai', imported, 'replace');
     await new Promise<void>(resolve => { setTimeout(resolve, 0); });
     release.resolve();
     await expect(exporting).resolves.toMatchObject({ items: before.items, tagPresets: before.tagPresets });
     await importing;
-    await expect(service.createBackup()).resolves.toMatchObject({ items: imported.items, tagPresets: imported.tagPresets });
+    await expect(service.createBackup('maimai')).resolves.toMatchObject({ items: imported.items, tagPresets: imported.tagPresets });
   });
 
   it('rejects overflowing preset merges without modifying existing items or presets', async () => {
     const service = new UserLibraryService();
-    await service.setSongFavorite('maimai', '1', true);
+    await service.setSongFavorite({ gameId: 'maimai', kind: 'song', id: String('1'), target: { songId: String('1') } }, true);
     const presets = Array.from({ length: 20 }, (_, index) => `现有${index}`);
-    await service.setTagPresets(presets);
+    await service.setTagPresets('maimai', presets);
     const previous = await service.list();
-    const backup = createUserDataBackup([], '2026-07-13T00:00:00.000Z', Array.from({ length: 20 }, (_, index) => `导入${index}`));
-    await expect(service.restore(backup, 'merge')).rejects.toThrow('标签预设');
+    const backup = createUserDataBackup('maimai', [], '2026-07-13T00:00:00.000Z', Array.from({ length: 20 }, (_, index) => `导入${index}`));
+    await expect(service.restore('maimai', backup, 'merge')).rejects.toThrow('标签预设');
     expect(await service.list()).toEqual(previous);
-    expect(await service.listTagPresets()).toEqual(presets);
+    expect(await service.listTagPresets('maimai')).toEqual(presets);
   });
 
   it.each([1, 5])('rebuilds unsupported library version %i without clearing resource caches', async (version) => {
     const service = new UserLibraryService();
-    await service.setSongFavorite('maimai', '1', true);
+    await service.setSongFavorite({ gameId: 'maimai', kind: 'song', id: String('1'), target: { songId: String('1') } }, true);
     await repository.saveResource('keep', 1, 'now', { keep: true });
     database.prepare('UPDATE user_library_meta SET schema_version = ?').run(version);
     await reloadStorage();
     const restarted = new UserLibraryService();
     expect(await restarted.list()).toEqual([]);
-    expect(await restarted.listTagPresets()).toEqual([...DEFAULT_TAG_PRESETS]);
-    expect(await new SqliteSnapshotRepository().getResource('keep', 1)).toEqual({ keep: true });
-    await restarted.setSongFavorite('maimai', '2', true);
-    expect(await restarted.list()).toEqual([expect.objectContaining({ songId: '2' })]);
+    expect(await restarted.listTagPresets('maimai')).toEqual([...DEFAULT_TAG_PRESETS]);
+    expect(await new ScoreRepository().getResource('keep', 1)).toEqual({ keep: true });
+    await restarted.setSongFavorite({ gameId: 'maimai', kind: 'song', id: String('2'), target: { songId: String('2') } }, true);
+    expect(await restarted.list()).toEqual([expect.objectContaining({ id: '2', target: { songId: '2' } })]);
   });
 
   it('rebuilds an unsupported library structure and preserves valid current data on restart', async () => {
     const service = new UserLibraryService();
-    await service.setSongFavorite('phigros', 'Song.A', true);
-    await service.setTagPresets(['保留']);
+    await service.setSongFavorite({ gameId: 'phigros', kind: 'song', id: String('Song.A'), target: { songId: String('Song.A') } }, true);
+    await service.setTagPresets('maimai', ['保留']);
     const current = await service.list();
     await reloadStorage();
     const restarted = new UserLibraryService();
     expect(await restarted.list()).toEqual(current);
-    expect(await restarted.listTagPresets()).toEqual(['保留']);
+    expect(await restarted.listTagPresets('maimai')).toEqual(['保留']);
     database.exec('ALTER TABLE user_library_items RENAME COLUMN game_id TO unsupported_game_id');
     await reloadStorage();
     expect(await new SqliteUserLibraryRepository().list()).toEqual([]);
@@ -547,15 +583,15 @@ describe('SQLite storage and current backups', () => {
 
   it('propagates library read and rebuild I/O failures without deleting data', async () => {
     const service = new UserLibraryService();
-    await service.setSongFavorite('maimai', '1', true);
+    await service.setSongFavorite({ gameId: 'maimai', kind: 'song', id: String('1'), target: { songId: String('1') } }, true);
     await reloadStorage();
     reads.mockRejectedValueOnce(new Error('read failure'));
     await expect(new SqliteUserLibraryRepository().list()).rejects.toThrow('read failure');
-    expect(database.prepare('SELECT song_id FROM user_library_items').all()).toEqual([{ song_id: '1' }]);
+    expect(database.prepare('SELECT target_id FROM user_library_items').all()).toEqual([{ target_id: '1' }]);
     database.exec('UPDATE user_library_meta SET schema_version = 1');
     run.mockRejectedValueOnce(new Error('write failure'));
     await expect(new SqliteUserLibraryRepository().list()).rejects.toThrow('write failure');
-    expect(database.prepare('SELECT song_id FROM user_library_items').all()).toEqual([{ song_id: '1' }]);
+    expect(database.prepare('SELECT target_id FROM user_library_items').all()).toEqual([{ target_id: '1' }]);
   });
 
   it('removes only invalid snapshots and resources, keeping supported rows', async () => {
@@ -672,38 +708,49 @@ describe('SQLite storage and current backups', () => {
 
   it('merges concurrent thumbnail patches and retries unsaved fields after a disk failure', async () => {
     const id = 'maimai:thumbnail';
+    useSession.getState().finishRestore(null, [createLocalMaimaiAccount('缩略图', 0, id)]);
     await Promise.all([
       persistBoundAccountThumbnail(id, { scoreDisplay: '15000', avatarUrl: null }),
-      persistBoundAccountThumbnail(id, { ratingPossession: null, challengeModeRank: null }),
+      persistBoundAccountThumbnail(id, { displayData: { ratingPossession: null, challengeModeRank: null } }),
     ]);
     expect(await repository.getResource(accountThumbnailResourceKey(id), ACCOUNT_THUMBNAIL_SCHEMA_VERSION))
-      .toEqual({ scoreDisplay: '15000', ratingPossession: null, challengeModeRank: null });
+      .toEqual({ scoreDisplay: '15000', avatarUrl: null, displayData: { ratingPossession: null, challengeModeRank: null } });
     const before = database.prepare('SELECT updated_at FROM resource_snapshots WHERE resource_key = ?').get(accountThumbnailResourceKey(id));
     await persistBoundAccountThumbnail(id, { scoreDisplay: '15000' });
     expect(database.prepare('SELECT updated_at FROM resource_snapshots WHERE resource_key = ?').get(accountThumbnailResourceKey(id))).toEqual(before);
     run.mockRejectedValueOnce(new Error('disk failure'));
     await expect(persistBoundAccountThumbnail(id, { scoreDisplay: '16000' })).rejects.toThrow('disk failure');
-    await persistBoundAccountThumbnail(id, { challengeModeRank: 5 });
+    await persistBoundAccountThumbnail(id, { displayData: { ratingPossession: null, challengeModeRank: 5 } });
     expect(await repository.getResource(accountThumbnailResourceKey(id), ACCOUNT_THUMBNAIL_SCHEMA_VERSION))
-      .toEqual({ scoreDisplay: '16000', ratingPossession: null, challengeModeRank: 5 });
+      .toEqual({ scoreDisplay: '16000', avatarUrl: null, displayData: { ratingPossession: null, challengeModeRank: 5 } });
+  });
+
+  it('clears an avatar through the same thumbnail without dropping the saved rating', async () => {
+    const account = createLocalMaimaiAccount('缩略图', 0);
+    useSession.getState().finishRestore(null, [account]);
+    await persistBoundAccountThumbnail(account.id, { scoreDisplay: '15000', avatarUrl: 'https://example.com/avatar.png' });
+    const { persistBoundAccountAvatar } = await import('@rranker/sdk/services/resolve-account-avatar-persist');
+    await persistBoundAccountAvatar(account.id, null);
+    expect(await repository.getResource(accountThumbnailResourceKey(account.id), ACCOUNT_THUMBNAIL_SCHEMA_VERSION))
+      .toEqual({ scoreDisplay: '15000', avatarUrl: null });
   });
 
   it('hydrates saved thumbnails without changing names or accounts that have no snapshot', async () => {
     const maimai = createMaxedMaimaiTestAccount(), chuni = createMaxedChunithmTestAccount();
     const local = createLocalMaimaiAccount('本地玩家', 0);
-    useSession.setState({ boundAccounts: [maimai, chuni, local] });
+    useSession.getState().finishRestore(null, [maimai, chuni, local]);
     await persistBoundAccountThumbnail(maimai.id, { scoreDisplay: '16123', avatarUrl: 'https://example.com/a.png' });
-    await persistBoundAccountThumbnail(chuni.id, { scoreDisplay: '16.50', ratingPossession: 'rainbow' });
+    await persistBoundAccountThumbnail(chuni.id, { scoreDisplay: '16.50', displayData: { ratingPossession: 'rainbow' } });
     await hydrateBoundAccountThumbnails();
     expect(useSession.getState().boundAccounts).toEqual([
       { ...maimai, scoreDisplay: '16123', avatarUrl: 'https://example.com/a.png' },
-      { ...chuni, scoreDisplay: '16.50', ratingPossession: 'rainbow' }, local,
+      { ...chuni, scoreDisplay: '16.50', displayData: { ratingPossession: 'rainbow' } }, local,
     ]);
   });
 
   it('continues thumbnail hydration after one I/O failure and deletes only a structurally unsupported row', async () => {
     const maimai = createMaxedMaimaiTestAccount(), chuni = createMaxedChunithmTestAccount();
-    useSession.setState({ boundAccounts: [maimai, chuni] });
+    useSession.getState().finishRestore(null, [maimai, chuni]);
     await repository.saveResource(accountThumbnailResourceKey(maimai.id), 1, 'old', { scoreDisplay: 42 });
     await persistBoundAccountThumbnail(chuni.id, { scoreDisplay: '16.50' });
     const nativeDatabase = await bridge.open.mock.results[0].value;
@@ -720,16 +767,16 @@ describe('SQLite storage and current backups', () => {
   it('hydrates actual local ratings and preserves other account displays', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0), missing = createLocalMaimaiAccount('未录入', 0, 'maimai:local:missing');
     const generated = createMaxedMaimaiTestAccount();
-    useSession.setState({ boundAccounts: [local, missing, generated] });
+    useSession.getState().finishRestore(null, [local, missing, generated]);
     const player = { ...fixturePlayer, id: local.id, rating: 12345 };
     await repository.save(local.id, { player, records: [], source: fixtureSource, catalogSource: fixtureSource,
       best50: { player, currentVersion: { id: 1, title: 'v' }, b35: [], b15: [], unmatchedRecordCount: 0, rating: 12345, generatedAt: '', source: fixtureSource },
     });
-    await hydrateLocalAccountRatings();
+    await hydrateAccountSummaries();
     expect(useSession.getState().boundAccounts).toEqual([{ ...local, scoreDisplay: '12345' }, missing, generated]);
     const controller = new AbortController(); controller.abort();
-    useSession.setState({ boundAccounts: [local] });
-    await hydrateLocalAccountRatings(controller.signal);
+    useSession.getState().finishRestore(null, [local]);
+    await hydrateAccountSummaries(controller.signal);
     expect(useSession.getState().boundAccounts).toEqual([local]);
   });
 

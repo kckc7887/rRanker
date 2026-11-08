@@ -1,17 +1,17 @@
 import { JSDOM } from 'jsdom';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
+import type { ChunithmScoreCardData } from '@rranker/game-chunithm/domain/chunithm-score-presentation';
 import {
   appendChunithmSelectionScores,
   paginateChunithmBestImageSections,
-} from '@/features/chunithm-best-image/chunithm-best-image';
-import { buildChunithmBestImageHtml } from '@/features/chunithm-best-image/build-chunithm-best-image-html';
+} from '@rranker/tool-chunithm/features/chunithm-best-image/chunithm-best-image';
+import { buildChunithmBestImageHtml } from '@rranker/tool-chunithm/features/chunithm-best-image/build-chunithm-best-image-html';
 import {
   chunithmBestImageJacketUrl,
   resolveChunithmBestImageJacketId,
-} from '@/features/chunithm-best-image/load-chunithm-best-image-jackets';
-import { parseChunithmBestImageStylePreferences } from '@/features/chunithm-best-image/chunithm-best-image-preferences';
-import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
+} from '@rranker/tool-chunithm/features/chunithm-best-image/load-chunithm-best-image-jackets';
+import { parseChunithmBestImageStylePreferences } from '@rranker/tool-chunithm/features/chunithm-best-image/chunithm-best-image-preferences';
+import type { ChunithmCatalogSnapshot } from '@rranker/game-chunithm/domain/chunithm';
 
 vi.mock('expo-image', () => ({
   Image: {
@@ -303,4 +303,4 @@ describe('parseChunithmBestImageStylePreferences', () => {
   });
 });
 
-vi.mock('@/features/best-image/load-best-image-session', () => ({ loadImageFiles: vi.fn(async () => ({})) }));
+vi.mock('@rranker/sdk/features/best-image/load-best-image-session', () => ({ loadImageFiles: vi.fn(async () => ({})) }));

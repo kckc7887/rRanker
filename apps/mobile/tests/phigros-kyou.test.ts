@@ -1,4 +1,4 @@
-import type { CatalogSnapshot, Chart, Song } from '@/domain/models';
+import type { CatalogSnapshot, Chart, Song } from '@rranker/game-phigros/domain/models';
 import {
   buildPhigrosKyouChartTagIndex,
   buildPhigrosKyouSongMap,
@@ -8,14 +8,14 @@ import {
   presentPhigrosKyouChartTags,
   type PhigrosKyouChart,
   type PhigrosKyouChartTagsSnapshot,
-} from '@/domain/phigros-kyou';
+} from '@rranker/game-phigros/domain/phigros-kyou';
 import {
   buildSearchDocument,
   buildSongSearchIndex,
   EMPTY_SONG_FILTERS,
   searchDocumentMatches,
   searchSongs,
-} from '@/utils/search';
+} from '@rranker/sdk/utils/search';
 
 const source = { kind: 'kyou' as const, label: 'Kyou', updatedAt: '2026-08-09T00:00:00.000Z', isStale: false };
 

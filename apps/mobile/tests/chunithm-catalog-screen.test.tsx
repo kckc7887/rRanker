@@ -5,11 +5,11 @@ import { SearchScreen } from '../app/(tabs)/search';
 import {
   chunithmJacketUrl,
   ChunithmSongRow,
-} from '@/components/chunithm/ChunithmSongRow';
-import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import { useChunithmCatalogFilter } from '@/state/chunithm-catalog-filter';
+} from '@rranker/game-chunithm/components/ChunithmSongRow';
+import type { ChunithmCatalogSnapshot } from '@rranker/game-chunithm/domain/chunithm';
+import { useChunithmCatalogFilter } from '@rranker/game-chunithm/state/chunithm-catalog-filter';
 
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
   data: undefined, isLoading: false, isError: false, error: null,
 }) }));
 
@@ -94,7 +94,7 @@ jest.mock('expo-image', () => {
     ),
   };
 });
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#F7F8FA',
     surface: '#FFFFFF',
@@ -106,13 +106,13 @@ jest.mock('@/theme/app-theme', () => ({
     accent: '#246BFD',
   }),
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: { activeGameId: 'chunithm'; activeAccountId: string }) => unknown) => (
     selector({ activeGameId: 'chunithm', activeAccountId: 'chunithm:test' })
   ),
 }));
-jest.mock('@/hooks/use-chunithm-catalog', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: mockCatalog,
     isLoading: false,
@@ -121,7 +121,7 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({
     data: undefined,
     isLoading: false,
@@ -130,7 +130,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({
     refetch: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
     data: [],
     isLoading: false,
@@ -138,13 +138,13 @@ jest.mock('@/hooks/use-user-library', () => ({
     setSongFavorite: jest.fn(),
   }),
 }));
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({
   useNativeTabBottomInset: () => 0,
 }));
-jest.mock('@/hooks/use-debounced-value', () => ({
+jest.mock('@rranker/sdk/hooks/use-debounced-value', () => ({
   useDebouncedValue: <T,>(value: T) => value,
 }));
-jest.mock('@/state/catalog-filter', () => ({
+jest.mock('@rranker/game-maimai/state/catalog-filter', () => ({
   useCatalogFilter: () => ({
     keyword: '',
     collapsed: true,
@@ -165,7 +165,7 @@ jest.mock('@/state/catalog-filter', () => ({
     clearFilters: jest.fn(),
   }),
 }));
-jest.mock('@/components/MaimaiFilterBar', () => ({
+jest.mock('@rranker/game-maimai/components/MaimaiFilterBar', () => ({
   MaimaiFilterBar: () => {
     const RN = jest.requireActual<typeof import('react-native')>('react-native');
     return <RN.Text>高级筛选器</RN.Text>;
@@ -280,7 +280,7 @@ describe('Chunithm catalog screen', () => {
     const screen = await render(<ChunithmSongRow song={song} />);
     expect(screen.getByText('13.7')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('打开歌曲详情 B.B.K.K.B.K.K.'));
-    expect(router.push).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '3', gameId: 'chunithm' } });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: '3', gameId: 'chunithm' } });
   });
 
   it('does not show locked or disabled status labels', async () => {

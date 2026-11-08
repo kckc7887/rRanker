@@ -13,14 +13,14 @@ const mockRestore = jest.fn<() => Promise<void>>();
 const mockDiagnostics = jest.fn<() => Promise<void>>();
 const mockLogs = jest.fn<() => Promise<void>>();
 
-jest.mock('@/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ restoreStatus: mockRestoreStatus }) }));
-jest.mock('@/state/theme-store', () => ({ useThemeStore: (select: (state: unknown) => unknown) => select(mockTheme) }));
-jest.mock('@/state/debug-store', () => ({ useDebugStore: (select: (state: unknown) => unknown) => select(mockDebug) }));
-jest.mock('@/features/storage-management/ui-icon-fonts', () => ({ ensureUiIconFontsLoaded: () => mockFonts() }));
-jest.mock('@/services/account-restoration', () => ({ restoreAppAccounts: () => mockRestore() }));
-jest.mock('@/services/runtime-diagnostics', () => ({ initializeRuntimeDiagnostics: () => mockDiagnostics() }));
-jest.mock('@/services/runtime-logs', () => ({ initializeRuntimeLogs: () => mockLogs() }));
-jest.mock('@/utils/startup-timing', () => ({ startTimer: () => () => undefined }));
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ restoreStatus: mockRestoreStatus }) }));
+jest.mock('@rranker/sdk/state/theme-store', () => ({ useThemeStore: (select: (state: unknown) => unknown) => select(mockTheme) }));
+jest.mock('@rranker/sdk/state/debug-store', () => ({ useDebugStore: (select: (state: unknown) => unknown) => select(mockDebug) }));
+jest.mock('@rranker/sdk/features/storage-management/ui-icon-fonts', () => ({ ensureUiIconFontsLoaded: () => mockFonts() }));
+jest.mock('@rranker/sdk/services/account-restoration', () => ({ restoreAppAccounts: () => mockRestore() }));
+jest.mock('@rranker/sdk/services/runtime-diagnostics', () => ({ initializeRuntimeDiagnostics: () => mockDiagnostics() }));
+jest.mock('@rranker/sdk/services/runtime-logs', () => ({ initializeRuntimeLogs: () => mockLogs() }));
+jest.mock('@rranker/sdk/utils/startup-timing', () => ({ startTimer: () => () => undefined }));
 
 describe('app startup gates', () => {
   beforeEach(() => {

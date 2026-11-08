@@ -1,13 +1,13 @@
-import { chartVersionKey } from '@/domain/catalog';
-import { LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
-import type { CatalogSnapshot } from '@/domain/models';
-import { buildMaxedMaimaiRecords, MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
-import { isCatalogDrivenScoreProvider } from '@/providers/contracts';
+import { chartVersionKey } from '@rranker/game-maimai/domain/catalog';
+import { LOCAL_MAIMAI_ACCOUNT_ID } from '@rranker/game-maimai/accounts';
+import type { CatalogSnapshot } from '@rranker/game-maimai/domain/models';
+import { buildMaxedMaimaiRecords, MaxedMaimaiTestProvider } from '@rranker/provider-maimai-test/providers/maxed-maimai-test-provider';
+import { isCatalogDrivenScoreProvider } from '@rranker/game-maimai/data-source';
 import { DatabaseSync } from 'node:sqlite';
-let LocalMaimaiScoreProvider: typeof import('@/providers/local-score-provider')['LocalMaimaiScoreProvider'];
-let ScoreService: typeof import('@/services/score-service')['ScoreService'];
-let buildScoreSnapshot: typeof import('@/services/score-service')['buildScoreSnapshot'];
-let repository: InstanceType<typeof import('@/storage/sqlite-snapshot-repository')['SqliteSnapshotRepository']>;
+let LocalMaimaiScoreProvider: typeof import('@rranker/provider-local/providers/local-score-provider')['LocalMaimaiScoreProvider'];
+let ScoreService: typeof import('@rranker/game-maimai/services/score-service')['ScoreService'];
+let buildScoreSnapshot: typeof import('@rranker/game-maimai/services/score-service')['buildScoreSnapshot'];
+let repository: InstanceType<typeof import('@rranker/game-maimai/storage/score-repository')['SqliteSnapshotRepository']>;
 let database: DatabaseSync;
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
   execAsync: async (sql: string) => database.exec(sql),
@@ -16,10 +16,10 @@ vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
 }) }));
 beforeEach(async () => {
   database = new DatabaseSync(':memory:'); vi.resetModules();
-  ({ LocalMaimaiScoreProvider } = await import('@/providers/local-score-provider'));
-  ({ ScoreService, buildScoreSnapshot } = await import('@/services/score-service'));
-  const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
-  repository = new SqliteSnapshotRepository();
+  ({ LocalMaimaiScoreProvider } = await import('@rranker/provider-local/providers/local-score-provider'));
+  ({ ScoreService, buildScoreSnapshot } = await import('@rranker/game-maimai/services/score-service'));
+  const { ScoreRepository } = await import('@rranker/game-maimai/storage/score-repository');
+  repository = new ScoreRepository();
 });
 afterEach(() => database.close());
 

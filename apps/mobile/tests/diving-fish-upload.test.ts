@@ -1,5 +1,5 @@
 import { AbortController as NativeAbortController } from 'abort-controller';
-import { uploadRecordsToDivingFish } from '@/services/diving-fish-upload';
+import { uploadRecordsToDivingFish } from '@rranker/tool-maimai/services/diving-fish-upload';
 
 const record = { title: 'Test', type: 'DX' as const, level_index: 3, achievements: 100.5, dxScore: 1900, fc: 'app', fs: 'fsdp' };
 const remote = { title: 'Test', song_id: 123, type: 'DX', level_index: 3, achievements: 100.5, dxScore: 1900, fc: 'app', fs: 'fsdp', level: '14', ds: 14, ra: 315, rate: 'sssp' };

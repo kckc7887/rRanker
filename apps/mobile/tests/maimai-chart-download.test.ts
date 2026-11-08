@@ -1,7 +1,7 @@
-import { downloadSimaiPackage } from '@/features/chart-download-shared/simai-package';
-import { storedZipEnd, storedZipHeader } from '@/features/chart-download-shared/stored-zip';
-import { createChartPreviewCrc32 } from '@/features/chart-preview-shared/chart-preview-resource-budget';
-import { saveChartPackage } from '@/features/chart-download-shared/chart-download-shared';
+import { downloadSimaiPackage } from '@rranker/sdk/features/chart-download-shared/simai-package';
+import { storedZipEnd, storedZipHeader } from '@rranker/sdk/features/chart-download-shared/stored-zip';
+import { createChartPreviewCrc32 } from '@rranker/sdk/features/chart-preview-shared/chart-preview-resource-budget';
+import { saveChartPackage } from '@rranker/sdk/features/chart-download-shared/chart-download-shared';
 import { Directory } from 'expo-file-system';
 const native = vi.hoisted(() => ({
   downloadFileAsync: vi.fn(),
@@ -147,7 +147,7 @@ import {
   MaimaiChartDownloadCancelledError,
   MaimaiChartDownloadError,
   maimaiChartPackageName,
-} from '@/features/maimai-chart-download/maimai-chart-download';
+} from '@rranker/tool-simai/features/maimai-chart-download/maimai-chart-download';
 
 function pickedDirectoryMock() {
   return {

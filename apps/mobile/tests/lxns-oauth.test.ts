@@ -1,11 +1,11 @@
-import { mapLxnsScore } from '@/domain/schemas';
+import { mapLxnsScore } from '@rranker/provider-lxns/domain/schemas';
 import {
   buildAuthorizeUrl,
   createPkcePair,
   lxnsAccessTokenExpired,
   type PendingLxnsOAuth,
-} from '@/providers/lxns-oauth';
-import { LXNS_OAUTH_CLIENT_ID, LXNS_OAUTH_REDIRECT_URI } from '@/providers/lxns-config';
+} from '@rranker/provider-lxns/providers/lxns-oauth';
+import { LXNS_OAUTH_CLIENT_ID, LXNS_OAUTH_REDIRECT_URI } from '@rranker/provider-lxns/providers/lxns-config';
 
 vi.mock('expo-crypto', () => ({
   getRandomBytesAsync: async (count: number) => new Uint8Array(count).map((_, index) => index + 1),
@@ -77,7 +77,7 @@ async function loadLxnsOAuthModule(options: {
     }),
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
   }));
-  return import('@/providers/lxns-oauth');
+  return import('@rranker/provider-lxns/providers/lxns-oauth');
 }
 
 describe('落雪待授权数据', () => {
@@ -127,7 +127,7 @@ describe('rotateLxnsTokens', () => {
   it('records the failed refresh stage without credentials or the server description', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'invalid_grant', error_description: 'private upstream detail' }), { status: 400 }));
     const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
-    const { snapshotEmergencyRuntimeDiagnostics } = await import('@/services/runtime-diagnostics-recorder');
+    const { snapshotEmergencyRuntimeDiagnostics } = await import('@rranker/sdk/services/runtime-diagnostics-recorder');
 
     await expect(rotateLxnsTokens('private-refresh-token')).rejects.toMatchObject({ code: 'authentication', retryable: false });
     const events = snapshotEmergencyRuntimeDiagnostics();

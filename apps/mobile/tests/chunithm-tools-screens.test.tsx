@@ -1,8 +1,8 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import ChunithmRatingToolScreen from '../app/tools/chunithm-rating';
-import ChunithmCollectionsToolScreen from '../app/tools/chunithm-collections';
-import { calculateChunithmOverPower, parseChunithmChartInput } from '@/domain/chunithm-rating';
+import ChunithmRatingToolScreen from '@rranker/tool-chunithm/pages/chunithm-rating';
+import ChunithmCollectionsToolScreen from '@rranker/tool-chunithm/pages/chunithm-collections';
+import { calculateChunithmOverPower, parseChunithmChartInput } from '@rranker/game-chunithm/domain/chunithm-rating';
 
 const mockPush = jest.fn();
 let mockRouteParams: Record<string, string> = {};
@@ -30,27 +30,27 @@ let mockGameData: {
 let mockPinnedCollections: { kind: string; id: number }[] = [];
 const mockTogglePinnedCollection = jest.fn(async () => undefined);
 
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: string }) => unknown) => selector({ activeGameId: 'chunithm' }),
 }));
 
-jest.mock('@/state/toolbox-pins', () => ({
-  useToolboxPins: (selector: (state: {
-    pinnedCollectionIdsByGame: Record<string, { kind: string; id: number }[]>;
+jest.mock('@rranker/tool-chunithm/state/pins', () => ({
+  useCollectionPins: (selector: (state: {
+    pinsByGame: Record<string, { kind: string; id: number }[]>;
     hydrate: () => Promise<void>;
-    togglePinnedCollection: typeof mockTogglePinnedCollection;
+    toggle: typeof mockTogglePinnedCollection;
   }) => unknown) => selector({
-    pinnedCollectionIdsByGame: { maimai: [], chunithm: mockPinnedCollections, phigros: [], test: [] },
+    pinsByGame: { maimai: [], chunithm: mockPinnedCollections, phigros: [], test: [] },
     hydrate: jest.fn(async () => undefined),
-    togglePinnedCollection: mockTogglePinnedCollection,
+    toggle: mockTogglePinnedCollection,
   }),
 }));
 
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
 }));
 
-jest.mock('@/hooks/use-chunithm-collections', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-collections', () => ({
   useChunithmCollections: () => ({
     data: mockCollectionsData,
     isLoading: false,
@@ -60,11 +60,11 @@ jest.mock('@/hooks/use-chunithm-collections', () => ({
   }),
 }));
 
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => mockGameData,
 }));
 
-jest.mock('@/hooks/use-chunithm-catalog', () => ({
+jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: {
       songs: [
@@ -394,10 +394,10 @@ describe('chunithm tool screens', () => {
     await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
     expect(getByLabelText('添加到主页 LUNA ROUND')).toBeTruthy();
     await fireEvent.press(getByLabelText('查看歌曲 曲A'));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/songs/[songId]', params: { songId: '100', gameId: 'chunithm' } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/detail', params: { songId: '100', gameId: 'chunithm' } });
 
     await fireEvent.press(getByLabelText('添加到主页 LUNA ROUND'));
-    expect(mockTogglePinnedCollection).toHaveBeenCalledWith('chunithm', 'trophy', 866);
+    expect(mockTogglePinnedCollection).toHaveBeenCalledWith('chunithm', { kind: 'trophy', id: 866 });
   });
 
   it('shows the pinned state for a collection already on the home page', async () => {

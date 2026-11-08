@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { parseBeatmap } from '../../src/features/osu-chart-preview/webview-player/engine';
-import { resolvePlaybackRange } from '../../src/features/osu-chart-preview/webview-player/playback-range';
+import { parseBeatmap } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine';
+import { resolvePlaybackRange } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/playback-range';
 import { fixtureOsu } from './fixtures';
 
 function chart(objects: string[], mode: 0 | 1 | 2 | 3 = 0) {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { parseBeatmap } from '../../src/features/osu-chart-preview/webview-player/engine/parsers/BeatmapParser';
-import { decodeOsuText, findArchiveBytes, findArchiveResource, type PreviewResourceMap } from '../../src/features/osu-chart-preview/webview-player/osu-text';
-import { selectPreviewOsbPaths, selectPreviewResources } from '../../src/features/osu-chart-preview/webview-player/resource-plan';
+import { parseBeatmap } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/parsers/BeatmapParser';
+import { decodeOsuText, findArchiveBytes, findArchiveResource, type PreviewResourceMap } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/osu-text';
+import { selectPreviewOsbPaths, selectPreviewResources } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/resource-plan';
 import { fixtureOsu } from './fixtures';
-import { convertBeatmapToTaiko } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/converter';
-import { convertBeatmapToCatch } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/converter';
-import { computeModDifficulty, synthesizeAutoReplay } from '../../src/features/osu-chart-preview/webview-player/engine';
-import { slideDurationMs, sliderNestedEvents } from '../../src/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
+import { convertBeatmapToTaiko } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/taiko/converter';
+import { convertBeatmapToCatch } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/rulesets/catch/converter';
+import { computeModDifficulty, synthesizeAutoReplay } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine';
+import { slideDurationMs, sliderNestedEvents } from '@rranker/chart-osu/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
 
 describe('selected chart resource plan', () => {
   it('retains NaN inherited timing as normal velocity with slider ticks disabled', () => {

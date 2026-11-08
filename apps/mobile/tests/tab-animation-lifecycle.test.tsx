@@ -1,9 +1,9 @@
 import { act, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated } from 'react-native';
-import { CachedContentActivityScope, CachedTabScreen } from '@/components/CachedTabScreen';
-import { ScoreRecordCard } from '@/components/ScoreRecordCard';
-import { fixtureRecords } from '@/fixtures/sanitized';
+import { CachedContentActivityScope, CachedTabScreen } from '@rranker/sdk/components/CachedTabScreen';
+import { ScoreRecordCard } from '@rranker/game-maimai/components/ScoreRecordCard';
+import { fixtureRecords } from './fixtures/sanitized';
 
 let mockFocusEffect: (() => void | (() => void)) | null = null;
 jest.mock('expo-router', () => ({

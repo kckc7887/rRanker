@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { prepareBestImageWebViewSources } from '@/features/best-image/prepare-best-image-webview-sources';
+import { prepareBestImageWebViewSources } from '@rranker/sdk/features/best-image/prepare-best-image-webview-sources';
 
 const files = vi.hoisted(() => new Map<string, string>());
 const write = vi.hoisted(() => vi.fn(async (uri: string, content: string) => { files.set(uri, content); }));

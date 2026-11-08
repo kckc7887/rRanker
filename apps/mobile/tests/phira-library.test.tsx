@@ -2,17 +2,14 @@ import { imageDownloads } from './remote-image-native-mock';
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import UserLibraryScreen from '../app/library/index';
-import type { UserLibraryItem } from '@/domain/user-library';
+import type { UserLibraryItem } from '@rranker/sdk/domain/user-library';
 
 const mockPush = jest.fn();
 let mockLibraryItems: UserLibraryItem[] = [];
 let mockCharts: { id: number; name: string; illustration: string | null }[] = [];
 
 const timestamp = '2026-08-15T00:00:00.000Z';
-const phiraFavorite: UserLibraryItem = {
-  key: 'song:phira:66661', gameId: 'phira', kind: 'song', songId: '66661', favorite: true,
-  tags: ['交互'], createdAt: timestamp, updatedAt: timestamp,
-};
+const phiraFavorite: UserLibraryItem = { key: JSON.stringify(['phira', 'song', '66661']), gameId: 'phira', kind: 'song', id: '66661', target: { songId: '66661' }, favorite: true, tags: ['交互'], createdAt: timestamp, updatedAt: timestamp };
 
 jest.mock('expo-router', () => {
   const navigation = {
@@ -23,7 +20,7 @@ jest.mock('expo-router', () => {
     },
   };
   return {
-    router: { push: (...args: unknown[]) => mockPush(...args) },
+    Stack: { Screen: () => null }, router: { push: (...args: unknown[]) => mockPush(...args) },
     useNavigation: () => navigation,
     useIsFocused: () => true,
   };
@@ -38,26 +35,26 @@ jest.mock('expo-image', () => {
     ),
   };
 });
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: 'phira' }) => unknown) => (
     selector({ activeGameId: 'phira' })
   ),
 }));
-jest.mock('@/theme/app-theme', () => ({
+jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({
     accent: '#8D5BD6', background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7',
     border: '#DDD', text: '#111', textSecondary: '#4B5563', textMuted: '#666', danger: '#B42318',
   }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
     data: mockLibraryItems, isLoading: false, isError: false, isUpdating: false,
     refetch: jest.fn(), tagPresets: [], setSongFavorite: jest.fn(),
     setChartPractice: jest.fn(), setTags: jest.fn(), setTagPresets: jest.fn(),
-    songKey: (songId: string | number) => `song:phira:${songId}`,
+    key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
   }),
 }));
-jest.mock('@/hooks/use-phira', () => ({
+jest.mock('@rranker/game-phira/hooks/use-phira', () => ({
   usePhiraChartsByIds: () => ({ data: mockCharts, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
 
@@ -85,7 +82,7 @@ describe('Phira personal library', () => {
     const screen = await render(<UserLibraryScreen />);
     await fireEvent.press(screen.getByText('Help me, ERINNNNNN!!'));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: { songId: '66661', gameId: 'phira' },
     });
   });
@@ -97,3 +94,7 @@ describe('Phira personal library', () => {
     expect(screen.getByText(/个人数据已保留/)).toBeTruthy();
   });
 });
+
+jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }), NotificationOutlet: () => null, useNotificationModalRequestClose: () => () => false }));
+
+jest.mock('@/services/user-data-file-service', () => ({ pickUserDataBackup: jest.fn(), shareUserDataBackup: jest.fn() }));

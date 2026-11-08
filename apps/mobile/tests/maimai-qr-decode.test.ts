@@ -1,4 +1,4 @@
-import { extractMaimaiQrPayload } from '@/services/maimai-qr-payload';
+import { extractMaimaiQrPayload } from '@rranker/tool-maimai/services/maimai-qr-payload';
 
 describe('extractMaimaiQrPayload', () => {
   it('提取 SGWCMAID 前缀的玩家二维码', () => {

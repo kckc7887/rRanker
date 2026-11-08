@@ -1,5 +1,5 @@
-import { normalizeSongId } from '@/domain/catalog';
-import type { CatalogSnapshot, Song } from '@/domain/models';
+import { normalizeSongId } from '@rranker/game-maimai/domain/catalog';
+import type { CatalogSnapshot, Song } from '@rranker/game-maimai/domain/models';
 import type { ReactElement } from 'react';
 import { notifyManager } from '@tanstack/query-core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,10 +7,10 @@ import { act, fireEvent, render as renderScreen, waitFor, within } from '@testin
 import { jest } from '@jest/globals';
 import { Animated, Platform, processColor } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
-import SongDetailScreen from '../app/songs/[songId]';
-import { songDetailScreenOptions } from '@/components/game-content/SongDetailScreenOptions';
-import { useCatalogFilter } from '@/state/catalog-filter';
-import { loadCachedMaimaiDxTag } from '@/services/maimai-dxtag-cache';
+import SongDetailScreen from '../app/detail';
+import { songDetailScreenOptions } from '@rranker/sdk/components/game-content/SongDetailScreenOptions';
+import { useCatalogFilter } from '@rranker/game-maimai/state/catalog-filter';
+import { loadCachedMaimaiDxTag } from '@rranker/game-maimai/services/maimai-dxtag-cache';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
@@ -68,7 +68,7 @@ jest.mock('react-native-svg', () => ({
   ...jest.requireActual<typeof import('react-native-svg')>('react-native-svg'),
   Text: jest.requireActual<typeof import('react-native')>('react-native').Text,
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   NotificationOutlet: () => null,
   useNotification: () => ({
     dismissNotification: mockDismissNotification,
@@ -78,7 +78,7 @@ jest.mock('@/components/AppNotification', () => ({
   }),
   useNotificationModalRequestClose: () => () => false,
 }));
-jest.mock('@/features/maimai-chart-download/maimai-chart-download', () => ({
+jest.mock('@rranker/tool-simai/features/maimai-chart-download/maimai-chart-download', () => ({
   MaimaiChartDownloadError: class MaimaiChartDownloadError extends Error {},
   downloadMaimaiChartPackage: (request: Record<string, unknown>, options?: MockDownloadOptions) =>
     mockDownloadPackage(request, options),
@@ -86,7 +86,7 @@ jest.mock('@/features/maimai-chart-download/maimai-chart-download', () => ({
 jest.mock('expo/fetch', () => ({
   fetch: (url: string, init?: RequestInit) => mockVideoHead(url, init),
 }));
-jest.mock('@/storage/sqlite-snapshot-repository', () => {
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => {
   const values = new Map<string, unknown>();
   class MemorySnapshotRepository {
     async getResource(key: string) {
@@ -98,7 +98,7 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
   }
   return { SqliteSnapshotRepository: MemorySnapshotRepository, dxtagCache: values };
 });
-jest.mock('@/features/phigros-chart-download/chart-package-download', () => ({
+jest.mock('@rranker/tool-chart-json/features/phigros-chart-download/chart-package-download', () => ({
   downloadPhigrosChartAsPhiraPackage: jest.fn(),
   downloadPhiraChartPackage: jest.fn(),
 }));
@@ -129,16 +129,16 @@ jest.mock('expo-router', () => ({
   }),
   useLocalSearchParams: () => mockSongRouteParams,
 }));
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: { activeGameId: 'maimai'; activeAccountId: string }) => unknown) => selector({
     activeGameId: 'maimai',
     activeAccountId: 'maimai:diving-fish:demo',
   }),
 }));
-jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
-jest.mock('@/hooks/use-detailed-catalog', () => {
-  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+jest.mock('@rranker/game-maimai/components/SongCover', () => ({ SongCover: () => null }));
+jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => {
+  const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
   const utageSong = {
     id: '100123',
     title: '協 U·TA·GE',
@@ -222,8 +222,8 @@ jest.mock('@/hooks/use-detailed-catalog', () => {
     },
   };
 });
-jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
-  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+jest.mock('@rranker/game-maimai/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
+  const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
   const base = fixtures.fixtureRecords[0];
   const visualRecords = [
     { ...base, songId: '1', levelIndex: 0, difficulty: 'basic', achievements: 98.5, rating: 100, rate: 'sp', fc: 'fc', fs: 'fs' },
@@ -237,7 +237,7 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   ];
   return { data: { records: [...fixtures.fixtureRecords, ...visualRecords], source: fixtures.fixtureSource }, isLoading: false, isError: false, error: null, refetch: jest.fn() };
 } }));
-jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
+jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
   const { useMemo } = jest.requireActual<typeof import('react')>('react');
   const currentDxRatingTagState = mockDxRatingTagState;
   const currentDxRatingTagCount = mockDxRatingTagCount;
@@ -282,17 +282,17 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
   };
 
   }, [currentDxRatingTagState, currentDxRatingTagCount, currentDxRatingTagSongTitle, currentDxRatingTagSheetType, currentDxRatingTagDifficulty]); } }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: mockUserLibraryData, isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
-  songKey: (songId: string | number) => `maimai:song:${songId}`,
-  chartKey: (songId: string | number, type: string, levelIndex: number) => `maimai:chart:${songId}:${type}:${levelIndex}`,
+  key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
+
   tagPresets: ['爆发', '交互', '星星', '鬼歌', '大歌'], setTagPresets: jest.fn(),
 }) }));
-jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
+jest.mock('@rranker/game-maimai/hooks/use-collections', () => ({ useCollections: () => ({
   data: { items: [], source: { kind: 'fixture', label: 'fixture', updatedAt: new Date(0).toISOString(), isStale: false } },
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }) }));
-jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
+jest.mock('@rranker/game-maimai/components/CollectionImage', () => ({ CollectionImage: () => null }));
 
 async function render(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
@@ -319,7 +319,7 @@ describe('M2 song query screens', () => {
   });
 
   beforeEach(() => {
-    (jest.requireMock('@/storage/sqlite-snapshot-repository') as { dxtagCache: Map<string, unknown> }).dxtagCache.clear();
+    (jest.requireMock('@rranker/sdk/storage/sqlite-snapshot-repository') as { dxtagCache: Map<string, unknown> }).dxtagCache.clear();
     mockSongRouteParams = { songId: '1', gameId: 'maimai' };
     mockDetailedCatalogAvailable = true;
     mockDxRatingTagCount = 0;
@@ -549,10 +549,7 @@ describe('M2 song query screens', () => {
 
   it('filters the catalog by grouped DXRating tags with AND and same-chart semantics', async () => {
     mockDxRatingTagCount = 3;
-    mockUserLibraryData = [{
-      key: 'chart:maimai:7:DX:3', gameId: 'maimai', kind: 'chart', songId: '7', type: 'DX', levelIndex: 3,
-      practice: false, tags: ['标签2'], createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString(),
-    }];
+    mockUserLibraryData = [{ key: JSON.stringify(['maimai', 'chart', JSON.stringify([String('7'), 'DX', 3])]), gameId: 'maimai', kind: 'chart', id: JSON.stringify([String('7'), 'DX', 3]), target: { songId: String('7'), levelIndex: String(3), chartType: 'DX' }, practice: false, tags: ['标签2'], createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() }];
     const screen = await render(<SearchScreen />);
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     await fireEvent.press(screen.getByLabelText('谱面标签筛选，当前 全部'));
@@ -697,7 +694,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByLabelText('查看谱面确认：正常曲目 A DX MASTER')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('查看谱面确认：正常曲目 A DX MASTER'));
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
-      pathname: '/songs/chart-preview',
+      pathname: '/plugins/[pluginId]/[pageId]',
       params: expect.objectContaining({
         songId: '1',
         chartType: 'DX',
@@ -716,8 +713,8 @@ describe('M2 song query screens', () => {
     expect(screen.getByText('点击物量表，前往达成率与容错计算')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('使用此谱面物量计算容错'));
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
-      pathname: '/tools/tolerance',
-      params: { tap: '500', hold: '100', slide: '120', touch: '80', break: '20' },
+      pathname: '/plugins/[pluginId]/[pageId]',
+      params: { pluginId: 'tool.simai', pageId: 'tolerance', gameId: 'maimai', tap: '500', hold: '100', slide: '120', touch: '80', break: '20' },
     }));
 
     expect(screen.getByLabelText('下载谱面文件：正常曲目 A DX MASTER')).toBeTruthy();
@@ -903,7 +900,7 @@ describe('M2 song query screens', () => {
 
     await fireEvent.press(screen.getByLabelText('使用1P 谱面物量计算容错'));
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
-      pathname: '/tools/tolerance',
+      pathname: '/plugins/[pluginId]/[pageId]',
       params: expect.objectContaining({ tap: '51', hold: '10', slide: '20', touch: '10', break: '10' }),
     }));
 
@@ -920,7 +917,7 @@ describe('M2 song query screens', () => {
     } | undefined;
     notification?.actions?.find((action) => action.label === '1P 谱面')?.onPress?.();
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
-      pathname: '/songs/chart-preview',
+      pathname: '/plugins/[pluginId]/[pageId]',
       params: expect.objectContaining({
         songId: '100123',
         chartType: 'UTAGE',
@@ -945,7 +942,7 @@ describe('M2 song query screens', () => {
     mockDxRatingTagCount = 1;
     mockVideoHead.mockImplementation(async (url: string) => {
       if (url === `${DXTAG_BASE}/all.json`) {
-        const { data: catalog } = jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog();
+        const { data: catalog } = jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@rranker/game-maimai/hooks/use-detailed-catalog').useDetailedCatalog();
         const library = Object.fromEntries(catalog.songs.flatMap((song: Song) =>
           ['SD', 'DX'].flatMap(type => {
             const charts = song.charts.filter(chart => chart.type === type);
@@ -981,7 +978,7 @@ describe('M2 song query screens', () => {
     expect(within(screen.getByTestId('simai-difficulty-radar-master')).queryByText('1.2')).toBeNull();
 
     mockVideoHead.mockClear();
-    const cached = await loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog().data);
+    const cached = await loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@rranker/game-maimai/hooks/use-detailed-catalog').useDetailedCatalog().data);
     expect(cached.library['10001']?.find((chart) => chart.difficulty === 3)?.scores).toEqual([1.2, 3.4, 5.6, 7.8, 9]);
     expect(mockVideoHead).not.toHaveBeenCalled();
   });
@@ -992,7 +989,7 @@ describe('M2 song query screens', () => {
     expect(missing.queryByTestId('simai-difficulty-radar-master')).toBeNull();
     expect(missing.getByLabelText('谱面物量')).toBeTruthy();
     expect(missing.getByText('谱师：DX主谱师')).toBeTruthy();
-    await expect(loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog().data))
+    await expect(loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@rranker/game-maimai/hooks/use-detailed-catalog').useDetailedCatalog().data))
       .rejects.toMatchObject({ code: 'no_data' });
     expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/all.json`)).toHaveLength(2);
 
@@ -1014,8 +1011,8 @@ describe('M2 song query screens', () => {
   });
 });
 
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
   useStackScreenReady: () => true,
 }));

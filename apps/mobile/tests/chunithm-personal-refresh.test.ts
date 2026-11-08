@@ -1,15 +1,15 @@
-import type { ChunithmBests, ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
-import { CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION, chunithmPersonalResourceKey, emptyChunithmBests } from '@/domain/chunithm-personal';
-import type { DataSource } from '@/domain/models';
+import type { ChunithmBests, ChunithmPersonalSnapshot } from '@rranker/game-chunithm/domain/chunithm-personal';
+import { CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION, chunithmPersonalResourceKey, emptyChunithmBests } from '@rranker/game-chunithm/domain/chunithm-personal';
+import type { DataSource } from '@rranker/sdk/data';
 import { DatabaseSync } from 'node:sqlite';
 import {
   refreshNeedsLogin,
   snapshotMetadataOf,
-} from '@/domain/refresh-result';
-let ProviderError: typeof import('@/providers/errors')['ProviderError'];
-let ChunithmScoreProvider: typeof import('@/providers/chunithm-score-provider')['ChunithmScoreProvider'];
-let ChunithmPersonalService: typeof import('@/services/chunithm-personal-service')['ChunithmPersonalService'];
-let repository: InstanceType<typeof import('@/storage/sqlite-snapshot-repository')['SqliteSnapshotRepository']>;
+} from '@rranker/sdk/domain/refresh-result';
+let ProviderError: typeof import('@rranker/sdk/providers/errors')['ProviderError'];
+let ChunithmScoreProvider: typeof import('@rranker/provider-lxns/providers/chunithm-score-provider')['ChunithmScoreProvider'];
+let ChunithmPersonalService: typeof import('@rranker/provider-lxns/services/chunithm-personal-service')['ChunithmPersonalService'];
+let repository: InstanceType<typeof import('@rranker/sdk/storage/sqlite-snapshot-repository')['SqliteSnapshotRepository']>;
 let database: DatabaseSync;
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
   execAsync: async (sql: string) => database.exec(sql),
@@ -18,10 +18,10 @@ vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
 }) }));
 beforeEach(async () => {
   database = new DatabaseSync(':memory:'); vi.resetModules();
-  ({ ProviderError } = await import('@/providers/errors'));
-  ({ ChunithmScoreProvider } = await import('@/providers/chunithm-score-provider'));
-  ({ ChunithmPersonalService } = await import('@/services/chunithm-personal-service'));
-  const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
+  ({ ProviderError } = await import('@rranker/sdk/providers/errors'));
+  ({ ChunithmScoreProvider } = await import('@rranker/provider-lxns/providers/chunithm-score-provider'));
+  ({ ChunithmPersonalService } = await import('@rranker/provider-lxns/services/chunithm-personal-service'));
+  const { SqliteSnapshotRepository } = await import('@rranker/sdk/storage/sqlite-snapshot-repository');
   repository = new SqliteSnapshotRepository();
 });
 afterEach(() => { database.close(); vi.unstubAllGlobals(); });

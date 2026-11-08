@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import cases from './fixtures/maimai-simai-cases.json';
 import reference from './fixtures/maimai-simai-reference.json';
-import { parseSimaiBody, parseSimaiChartAsync, SimaiParseError } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
-import { prepareAudioEvents } from '@/features/simai-chart-preview/engine/core/audio/AudioManager';
+import { parseSimaiBody, parseSimaiChartAsync, SimaiParseError } from '@rranker/chart-simai/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { prepareAudioEvents } from '@rranker/chart-simai/features/simai-chart-preview/engine/core/audio/AudioManager';
 
 describe('Simai 解析与播放时序', () => {
   it.each(Object.entries(cases))('%s 保留谱面写入的音符时间', (name, body) => {

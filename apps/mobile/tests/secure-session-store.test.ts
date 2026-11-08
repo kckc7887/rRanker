@@ -1,15 +1,10 @@
-import {
-  CHUNITHM_TEST_ACCOUNT_ID,
-  CHUNITHM_TEMP_ACCOUNT_ID,
-  LOCAL_MAIMAI_ACCOUNT_ID,
-  MAIMAI_TEST_ACCOUNT_ID,
-  MUSEDASH_TEST_ACCOUNT_ID,
-  PHIGROS_TEST_ACCOUNT_ID,
-  createPhigrosBoundAccount,
-} from '@/domain/bound-account';
-import type { StoredProviderAccountInput } from '@/storage/secure-session-store';
-import { SessionPersistenceError } from '@/domain/session-vault';
-import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
+import { CHUNITHM_TEST_ACCOUNT_ID, CHUNITHM_TEMP_ACCOUNT_ID } from '@rranker/game-chunithm/accounts';
+import { LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID } from '@rranker/game-maimai/accounts';
+import { MUSEDASH_TEST_ACCOUNT_ID } from '@rranker/game-musedash/accounts';
+import { PHIGROS_TEST_ACCOUNT_ID, createPhigrosBoundAccount } from '@rranker/game-phigros/accounts';
+import type { StoredProviderAccountInput } from '@rranker/sdk/storage/secure-session-store';
+import { SessionPersistenceError } from '@rranker/sdk/domain/session-vault';
+import { LargeSecureValueStore } from '@rranker/sdk/storage/large-secure-value-store';
 
 const secure = vi.hoisted(() => ({ values: new Map<string, string>() }));
 const sqlite = vi.hoisted(() => ({ values: new Map<string, string>() }));
@@ -26,9 +21,9 @@ import * as SecureStore from 'expo-secure-store';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
   SecureSessionStore,
-} from '@/storage/secure-session-store';
+} from '@rranker/sdk/storage/secure-session-store';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { deleteRizlinePassword, hasRizlinePassword, readRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';
+import { deleteRizlinePassword, hasRizlinePassword, readRizlinePassword, writeRizlinePassword } from '@rranker/provider-rizline-official/storage/rizline-password-store';
 
 const kvStore = {
   getItem: async (key: string) => sqlite.values.get(key) ?? null,
@@ -52,6 +47,19 @@ function account(id: string): StoredProviderAccountInput {
 }
 
 describe('SecureSessionStore 当前账号', () => {
+
+  it('缺席的数据源凭据在读取和保存其它账号后保持完整', async () => {
+    const store = createStore();
+    const session = { mode: 'custom-cloud', persistable: true, secret: 'opaque-secret', scopes: ['scores'], extra: { endpoint: 'private-api' } };
+    const input = { id: 'custom:player', gameId: 'custom-game', providerId: 'custom-source', displayName: '插件玩家', scoreDisplay: '123', session };
+    await store.upsertAccount(input);
+    await store.upsertAccount(account('maimai:diving-fish:other'));
+    const restored = await store.loadVault();
+    expect(restored.accounts.find(item => item.id === input.id)).toMatchObject({ gameId: input.gameId, providerId: input.providerId, displayName: input.displayName });
+    expect(restored.credentials.find(item => item.providerId === input.providerId)?.session).toEqual(session);
+    await store.updateAccountMetadata('maimai:diving-fish:other', { displayName: '更新玩家', scoreDisplay: '16000' });
+    expect((await store.loadVault()).credentials.find(item => item.providerId === input.providerId)?.session).toEqual(session);
+  });
 
   it('identifies encrypted credential writes separately from local index commits', async () => {
     const nativeFailure = new Error('native options conversion failed');
@@ -346,14 +354,12 @@ describe('SecureSessionStore 当前账号', () => {
     await store.updateAccountMetadata(stored.id, {
       displayName: '评分玩家',
       scoreDisplay: '15.4321',
-      challengeModeRank: 523,
-      ratingPossession: 'gold',
+      displayData: { challengeModeRank: 523, ratingPossession: 'gold' },
     });
     const vault = await store.loadVault();
     expect(vault.activeAccountId).toBe(stored.id);
     expect(vault.accounts[0]).toMatchObject({
-      displayName: '评分玩家', scoreDisplay: '15.4321', challengeModeRank: 523,
-      ratingPossession: 'gold',
+      displayName: '评分玩家', scoreDisplay: '15.4321', displayData: { challengeModeRank: 523, ratingPossession: 'gold' },
     });
   });
 
@@ -951,7 +957,7 @@ describe('落雪共享凭据提交', () => {
     await store.removeAccount('maimai:lxns:1');
 
     await expect(store.updateCredentialSession(credentialId, shared('refresh-b'), {
-      acceptedRefreshTokens: ['refresh-a'],
+      expected: shared('refresh-a'),
     })).resolves.toBe('applied');
 
     const vault = await store.loadVault();
@@ -964,7 +970,7 @@ describe('落雪共享凭据提交', () => {
     await store.upsertAccount({ ...lxnsAccount('maimai:lxns:1', 'maimai'), session: shared('refresh-new') });
 
     await expect(store.updateCredentialSession(credentialId, shared('refresh-late'), {
-      acceptedRefreshTokens: ['refresh-a'],
+      expected: shared('refresh-a'),
     })).resolves.toBe('stale');
     expect((await store.loadVault()).credentials[0]?.session).toEqual(shared('refresh-new'));
   });
@@ -975,7 +981,7 @@ describe('落雪共享凭据提交', () => {
     await store.removeAccount('maimai:lxns:1');
 
     await expect(store.updateCredentialSession(credentialId, shared('refresh-b'), {
-      acceptedRefreshTokens: ['refresh-a'],
+      expected: shared('refresh-a'),
     })).resolves.toBe('missing');
     expect((await store.loadVault()).credentials).toEqual([]);
   });

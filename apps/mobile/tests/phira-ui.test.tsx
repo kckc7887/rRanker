@@ -1,15 +1,19 @@
+import { createClient as createDemoClient } from '@rranker/provider-phira-test/client';
+import { createCatalogTestAccount } from '@rranker/provider-phira-test/accounts';
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { CachedContentActivityScope } from '@/components/CachedTabScreen';
+import { CachedContentActivityScope } from '@rranker/sdk/components/CachedTabScreen';
 import { router as mockRouter } from 'expo-router';
-import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
-import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
-import { PHIRA_CATALOG_PAGE_SCAN_BUDGET, type PhiraChart, type PhiraChartPage } from '@/domain/phira';
-import { usePhiraDemoBests } from '@/hooks/use-phira';
-import { phiraProvider } from '@/providers/phira-provider';
-import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
+import { PhiraRandomChartsScreen } from '@rranker/tool-phira/screens/PhiraRandomChartsScreen';
+import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@rranker/game-phira/screens/PhiraScreens';
+import { PHIRA_CATALOG_PAGE_SCAN_BUDGET, type PhiraChart, type PhiraChartPage } from '@rranker/game-phira/domain/phira';
+import { usePhiraDemoBests } from '@rranker/game-phira/hooks/use-phira';
+import { phiraProvider } from '@rranker/provider-phira-community/providers/phira-provider';
+import { resolvePluginPagePayload } from '@rranker/sdk';
 
+const mockDemoClient = createDemoClient({ account: createCatalogTestAccount('phira'), credential: null,
+  assertCurrent: () => undefined, commitCredential: async () => 'applied' });
 const mockRefetch = jest.fn(async () => ({ data: undefined }));
 const mockRefreshAll = jest.fn(async () => ({ status: 'noop', requestedCount: 0, updatedCount: 0, failedChartIds: [] }));
 const mockRetryFailedBests = jest.fn(async () => ({ status: 'noop', requestedCount: 0, updatedCount: 0, failedChartIds: [] }));
@@ -48,15 +52,15 @@ let mockStackReady = true;
 let mockActualDetailQuery = false;
 let mockActualDemoQueries = false;
 let mockAccountId = 'phira:community:323528';
-jest.mock('@/components/CachedTabScreen', () => ({
-  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/components/CachedTabScreen')>('@rranker/sdk/components/CachedTabScreen'),
   useStackScreenReady: () => mockStackReady,
 }));
 
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: { push: jest.fn(), back: jest.fn() },
-  useNavigation: () => ({ getState: () => ({ index: 0, routes: [{ name: 'songs/[songId]' }] }) }),
+  useNavigation: () => ({ getState: () => ({ index: 0, routes: [{ name: 'detail' }] }) }),
 }));
 jest.mock('expo-image', () => ({ Image: (props: object) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props} />; } }));
 jest.mock('expo-linear-gradient', () => ({ LinearGradient: ({ children, ...props }: { children?: React.ReactNode }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props}>{children}</RN.View>; } }));
@@ -75,21 +79,21 @@ jest.mock('react-native-gesture-handler', () => {
     ScrollView: RN.ScrollView,
   };
 });
-jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: false, background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', input: '#F1F3F5',
   border: '#DDD', text: '#111', textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', danger: '#B42318',
 }) }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeAccountId: mockAccountId }) }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
-  data: [], tagPresets: [], isUpdating: false, songKey: (id: string) => `song:${id}`,
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeAccountId: mockAccountId, sourceClient: mockAccountId === 'phira:test' ? mockDemoClient : undefined }) }));
+jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({
+  data: [], tagPresets: [], isUpdating: false, key: (target: { gameId: string; kind: string; id: string }) => JSON.stringify([target.gameId, target.kind, target.id]),
   setTagPresets: jest.fn(), setTags: jest.fn(), setSongFavorite: jest.fn(),
 }) }));
-jest.mock('@/hooks/use-phira', () => ({
+jest.mock('@rranker/game-phira/hooks/use-phira', () => ({
   usePhiraPlayer: () => ({ data: { pool: { bestPool: mockBests['38294'] ? [{ chart: mockChart, record: mockBest.record, rks: 12 }] : [], recentPool: [] } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
   usePhiraBests: () => ({ data: { items: mockBests, source: { kind: 'phira', label: 'Phira', updatedAt: 'now', isStale: false } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
-  usePhiraDemoBests: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraDemoBests>) => mockActualDemoQueries
-    ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraDemoBests(...args)
+  usePhiraDemoBests: (...args: Parameters<typeof import('@rranker/game-phira/hooks/use-phira').usePhiraDemoBests>) => mockActualDemoQueries
+    ? jest.requireActual<typeof import('@rranker/game-phira/hooks/use-phira')>('@rranker/game-phira/hooks/use-phira').usePhiraDemoBests(...args)
     : ({ items: [], dataUpdatedAt: 0, isLoading: false, isError: false, error: null, refetch: mockRefetch, hasNextPage: false, isFetchingNextPage: false, isFetchNextPageError: false, fetchNextPage: mockFetchCatalogNextPage }),
   useRefreshAllPhiraBests: () => ({ refreshAll: mockRefreshAll, retryFailed: mockRetryFailedBests }),
   usePhiraCharts: () => ({
@@ -100,18 +104,18 @@ jest.mock('@/hooks/use-phira', () => ({
     isFetchNextPageError: mockCatalogFetchNextPageError,
     fetchNextPage: mockFetchCatalogNextPage,
   }),
-  usePhiraChart: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraChart>) => mockActualDetailQuery
-    ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraChart(...args)
+  usePhiraChart: (...args: Parameters<typeof import('@rranker/game-phira/hooks/use-phira').usePhiraChart>) => mockActualDetailQuery
+    ? jest.requireActual<typeof import('@rranker/game-phira/hooks/use-phira')>('@rranker/game-phira/hooks/use-phira').usePhiraChart(...args)
     : ({ data: mockChart, isPending: false, isLoading: false, isError: false, error: null }),
-  usePhiraChartBest: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraChartBest>) => mockActualDemoQueries
-    ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraChartBest(...args)
+  usePhiraChartBest: (...args: Parameters<typeof import('@rranker/game-phira/hooks/use-phira').usePhiraChartBest>) => mockActualDemoQueries
+    ? jest.requireActual<typeof import('@rranker/game-phira/hooks/use-phira')>('@rranker/game-phira/hooks/use-phira').usePhiraChartBest(...args)
     : ({ data: mockBest, isLoading: false, isError: false, error: null }),
-  usePhiraNotes: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraNotes>) => mockActualNotes
-    ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraNotes(...args)
+  usePhiraNotes: (...args: Parameters<typeof import('@rranker/game-phira/hooks/use-phira').usePhiraNotes>) => mockActualNotes
+    ? jest.requireActual<typeof import('@rranker/game-phira/hooks/use-phira')>('@rranker/game-phira/hooks/use-phira').usePhiraNotes(...args)
     : { data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false },
   usePhiraUploader: () => ({ data: undefined, isLoading: false, isError: true }),
 }));
-jest.mock('@/components/AppNotification', () => ({
+jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({
     dismissNotification: mockDismissNotification,
     showNotification: mockShowNotification,
@@ -119,7 +123,7 @@ jest.mock('@/components/AppNotification', () => ({
     updateNotification: mockUpdateNotification,
   }),
 }));
-jest.mock('@/hooks/use-game-data', () => ({
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: {
       payload: {
@@ -141,17 +145,17 @@ jest.mock('@/hooks/use-game-data', () => ({
     refetch: mockRefetch,
   }),
 }));
-jest.mock('@/features/phira-chart-download/chart-package-download', () => ({
+jest.mock('@rranker/tool-chart-json/features/phira-chart-download/chart-package-download', () => ({
   downloadPhiraChartPackage: (chart: unknown, options: unknown) =>
     mockDownloadPhiraPackage(chart, options),
 }));
-jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+jest.mock('@rranker/sdk/features/chart-download-shared/use-chart-package-download', () => ({
   useChartPackageDownload: () => ({ isRunning: false, start: mockStartChartDownload }),
 }));
-jest.mock('@/components/TagEditor', () => ({ TagEditor: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>本地标签</RN.Text>; } }));
-jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
-jest.mock('@/components/phira/PhiraScoreVisuals', () => ({
-  ...jest.requireActual<typeof import('@/components/phira/PhiraScoreVisuals')>('@/components/phira/PhiraScoreVisuals'),
+jest.mock('@rranker/sdk/components/TagEditor', () => ({ TagEditor: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>本地标签</RN.Text>; } }));
+jest.mock('@rranker/sdk/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
+jest.mock('@rranker/game-phira/components/PhiraScoreVisuals', () => ({
+  ...jest.requireActual<typeof import('@rranker/game-phira/components/PhiraScoreVisuals')>('@rranker/game-phira/components/PhiraScoreVisuals'),
   PhiraScoreValue: ({ score }: { score: number }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{score}</RN.Text>; },
   PhiraRateBadge: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>FC</RN.Text>; },
   resolvePhiraRate: () => 'v',
@@ -337,14 +341,14 @@ describe('Phira page contracts', () => {
       .toBe(detailActions.indexOf('查看谱面确认：初音未来的消失') + 1);
     await fireEvent.press(previewButton);
     expect(jest.mocked(mockRouter.push)).toHaveBeenCalledWith(expect.objectContaining({
-      pathname: '/songs/phigros-chart-preview',
-      params: { requestId: expect.stringMatching(/^cp-/) },
+      pathname: '/plugins/[pluginId]/[pageId]',
+      params: { pluginId: 'tool.chart-json', pageId: 'chart-preview', gameId: 'phira', requestId: expect.stringMatching(/^page-/) },
     }));
     const href = jest.mocked(mockRouter.push).mock.calls.at(-1)?.[0] as unknown as { params: { requestId: string } };
-    expect(resolveChartPreviewNavigation(href.params.requestId)).toEqual({ game: 'phira', chart: mockChart });
+    expect(resolvePluginPagePayload(href.params.requestId)).toEqual({ game: 'phira', chart: mockChart });
     await fireEvent.press(downloadButton);
     expect(mockDownloadPhiraPackage).toHaveBeenCalledWith(
-      mockChart,
+      { file: mockChart.file, name: mockChart.name, level: mockChart.level },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     await screen.unmount();
@@ -457,3 +461,8 @@ describe('Phira catalog pagination states', () => {
     await screen.unmount();
   });
 });
+
+jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
+  ...jest.requireActual<typeof import('@rranker/sdk/state/session-provider-resolver')>('@rranker/sdk/state/session-provider-resolver'),
+  resolveAccountClient: (accountId: string) => accountId === 'phira:test' ? mockDemoClient : undefined,
+}));

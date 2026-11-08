@@ -1,11 +1,13 @@
-import type { CatalogSnapshot } from '@/domain/models';
-import { resolveMaimaiCourseRank } from '@/domain/maimai-course-rank';
-import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
-import type { ProviderSession } from '@/providers/contracts';
-import { ProviderError } from '@/providers/errors';
-import { SessionPersistenceError } from '@/domain/session-vault';
-import { ScoreHubError } from '@/services/score-hub-client';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import type { Credential } from '@rranker/sdk/credentials';
+import type { CatalogSnapshot } from '@rranker/game-maimai/domain/models';
+import { resolveMaimaiCourseRank } from '@rranker/game-maimai/domain/maimai-course-rank';
+import { createLocalMaimaiAccount as localAccount, createMaimaiBoundAccount as remoteAccount } from '@rranker/game-maimai/accounts';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+
+import { ProviderError } from '@rranker/sdk/providers/errors';
+import { SessionPersistenceError } from '@rranker/sdk/domain/session-vault';
+import { ScoreHubError } from '@rranker/tool-maimai/services/score-hub-client';
+import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
 const mocks = vi.hoisted(() => ({
   readSave: vi.fn(),
@@ -27,9 +29,9 @@ const mocks = vi.hoisted(() => ({
   accountPatch: vi.fn(),
 }));
 
-vi.mock('@/services/score-hub-client', async () => {
-  const actual = await vi.importActual<typeof import('@/services/score-hub-client')>(
-    '@/services/score-hub-client',
+vi.mock('@rranker/tool-maimai/services/score-hub-client', async () => {
+  const actual = await vi.importActual<typeof import('@rranker/tool-maimai/services/score-hub-client')>(
+    '@rranker/tool-maimai/services/score-hub-client',
   );
   return {
     ...actual,
@@ -46,19 +48,19 @@ vi.mock('@/services/score-hub-client', async () => {
     fetchMe: mocks.fetchMe,
   };
 });
-vi.mock('@/services/maimai-save', () => ({ readMaimaiSave: mocks.readSave }));
-vi.mock('@/services/diving-fish-upload', () => ({
+vi.mock('@rranker/tool-maimai/services/maimai-save', () => ({ readMaimaiSave: mocks.readSave }));
+vi.mock('@rranker/tool-maimai/services/diving-fish-upload', () => ({
   uploadRecordsToDivingFish: mocks.uploadDivingFish,
 }));
-vi.mock('@/services/lxns-upload', () => ({
+vi.mock('@rranker/tool-maimai/services/lxns-upload', () => ({
   uploadRecordsToLxns: mocks.uploadLxns,
 }));
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({
-  SqliteSnapshotRepository: class {
+vi.mock('@rranker/game-maimai/storage/score-repository', () => ({
+  ScoreRepository: class {
     save = mocks.saveSnapshot;
   },
 }));
-vi.mock('@/storage/score-hub-account-store', () => ({
+vi.mock('@rranker/tool-maimai/storage/score-hub-account-store', () => ({
   scoreHubAccountStore: {
     load: (...args: unknown[]) => mocks.accountLoad(...args),
     patch: (...args: unknown[]) => mocks.accountPatch(...args),
@@ -88,7 +90,18 @@ import {
   uploadMaimaiFromQrLogin,
   uploadMaimaiPreferringSession,
   uploadMaimaiWithScoreHubSession,
-} from '@/services/upload-maimai-from-friend-code';
+} from '@rranker/tool-maimai/services/upload-maimai-from-friend-code';
+
+function createLocalMaimaiAccount(...args: Parameters<typeof localAccount>) {
+  const account = localAccount(...args);
+  useAccountStore.getState().upsertBoundAccount(account);
+  return account;
+}
+function createMaimaiBoundAccount(...args: Parameters<typeof remoteAccount>) {
+  const account = remoteAccount(...args);
+  useAccountStore.getState().upsertBoundAccount(account);
+  return account;
+}
 
 const catalog: CatalogSnapshot = {
   currentVersion: { id: 2, title: '当前版本' },
@@ -127,6 +140,7 @@ describe('好友码多目标写入', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    useAccountStore.setState({ boundAccounts: [], credentialsById: {}, selectedAccountId: 'unbound' });
     mocks.createFriendLoginJob.mockResolvedValue({
       jobId: 'login-job', botFriendCode: null, body: { __skipAuthToken: 'hub-token' },
     });
@@ -225,7 +239,7 @@ describe('好友码多目标写入', () => {
     const lxns = createMaimaiBoundAccount({
       providerId: 'lxns', displayName: '落雪玩家', rating: 0, playerId: 'lxns',
     });
-    const lxnsSession: ProviderSession = {
+    const lxnsSession: Credential = {
       mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
       expiresAt: Date.now() + 60_000, persistable: true,
     };
@@ -258,7 +272,7 @@ describe('好友码多目标写入', () => {
     const water = createMaimaiBoundAccount({
       providerId: 'diving-fish', displayName: '水鱼玩家', rating: 0, playerId: 'water',
     });
-    const session: ProviderSession = {
+    const session: Credential = {
       mode: 'import-token', value: 'import-token', persistable: true,
     };
     mocks.uploadDivingFish.mockRejectedValue(
@@ -293,11 +307,11 @@ describe('好友码多目标写入', () => {
     const water = createMaimaiBoundAccount({
       providerId: 'diving-fish', displayName: '未勾选水鱼', rating: 0, playerId: 'water',
     });
-    const lxnsSession: ProviderSession = {
+    const lxnsSession: Credential = {
       mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
       expiresAt: Date.now() + 60_000, persistable: true,
     };
-    const waterSession: ProviderSession = {
+    const waterSession: Credential = {
       mode: 'import-token', value: 'import-token', persistable: true,
     };
     const resolveCatalog = vi.fn(async () => catalog);
@@ -335,7 +349,7 @@ describe('好友码多目标写入', () => {
     const water = createMaimaiBoundAccount({
       providerId: 'diving-fish', displayName: '水鱼玩家', rating: 0, playerId: 'water',
     });
-    const session: ProviderSession = {
+    const session: Credential = {
       mode: 'import-token', value: 'import-token', persistable: true,
     };
     const resolveCatalog = vi.fn(async () => catalog);
@@ -600,7 +614,7 @@ describe('好友码多目标写入', () => {
   it('独立二维码同步将段位传给落雪，落雪失败时仍保存本地段位', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
     const lxns = createMaimaiBoundAccount({ providerId: 'lxns', playerId: 'lxns', displayName: '落雪', rating: 0 });
-    const sessions: Record<string, ProviderSession> = { [lxns.id]: {
+    const sessions: Record<string, Credential> = { [lxns.id]: {
       mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 120_000, persistable: true,
     } };
     mocks.uploadLxns.mockRejectedValueOnce(new ProviderError('permission', 'private detail', false));

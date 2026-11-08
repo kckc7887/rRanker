@@ -1,4 +1,4 @@
-import type { RizlineCatalog, RizlineChart, RizlineSave, RizlineSong } from '@/domain/rizline';
+import type { RizlineCatalog, RizlineChart, RizlineSave, RizlineSong } from '@rranker/game-rizline/domain/rizline';
 
 export function rizlineReleasePrefix(resourceVersion = 'r1'): string {
   return `rizline/releases/${resourceVersion}`;

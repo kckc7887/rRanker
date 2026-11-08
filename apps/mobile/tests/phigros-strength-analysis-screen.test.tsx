@@ -1,13 +1,13 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
-import PhigrosStrengthAnalysisScreen from '../app/tools/strength-analysis';
-import type { CatalogSnapshot } from '@/domain/models';
-import { buildPhigrosKyouChartTagIndex, type PhigrosKyouChartTagsSnapshot } from '@/domain/phigros-kyou';
+import PhigrosStrengthAnalysisScreen from '@rranker/tool-phigros/screens/PhigrosStrengthAnalysisScreen';
+import type { CatalogSnapshot } from '@rranker/game-phigros/domain/models';
+import { buildPhigrosKyouChartTagIndex, type PhigrosKyouChartTagsSnapshot } from '@rranker/game-phigros/domain/phigros-kyou';
 import {
   analyzePhigrosStrength,
   describePhigrosStrengthUnexpectedPrimaryAxes,
-} from '@/domain/phigros-strength-analysis';
+} from '@rranker/game-phigros/domain/phigros-strength-analysis';
 
 const unexpectedPrimaryAxes = describePhigrosStrengthUnexpectedPrimaryAxes();
 
@@ -20,7 +20,7 @@ let mockGameQuery: Record<string, unknown>;
 let mockCatalogQuery: Record<string, unknown>;
 let mockTagsQuery: Record<string, unknown>;
 
-jest.mock('@/state/session-store', () => ({
+jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (select: (state: { activeGameId: string; activeAccountId: string }) => unknown) =>
     select({ activeGameId: 'phigros', activeAccountId: 'phigros-player' }),
 }));
@@ -31,7 +31,7 @@ jest.mock('expo-router', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
-jest.mock('@/components/AppModal', () => {
+jest.mock('@rranker/sdk/components/AppModal', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     AppModal: ({ visible, children }: { visible?: boolean; children: ReactNode }) => (
@@ -39,9 +39,9 @@ jest.mock('@/components/AppModal', () => {
     ),
   };
 });
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => mockGameQuery }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
-jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => mockTagsQuery }));
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => mockGameQuery }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
+jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => mockTagsQuery }));
 
 const source = {
   kind: 'kyou' as const,
@@ -173,7 +173,7 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.getAllByLabelText('查看谱面 Song')).toHaveLength(analysis.recommendations.length);
     await fireEvent.press(screen.getAllByLabelText('查看谱面 Song')[0]!);
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: {
         songId: firstPractice!.songId,
         levelIndex: String(firstPractice!.levelIndex),
@@ -189,7 +189,7 @@ describe('Phigros strength analysis screen', () => {
     expect(within(sheet).getByText('15.90')).toBeTruthy();
     await fireEvent.press(within(sheet).getAllByLabelText('查看谱面 Song')[0]!);
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/songs/[songId]',
+      pathname: '/detail',
       params: {
         songId: readingTag!.charts[0]!.songId,
         levelIndex: String(readingTag!.charts[0]!.levelIndex),

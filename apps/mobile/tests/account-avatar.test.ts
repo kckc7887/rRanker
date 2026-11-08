@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildLxnsIconUrl,
-} from '@/domain/account-avatar';
+} from '@rranker/game-maimai/domain/account-avatar';
 
 describe('account avatar urls', () => {
   it('buildLxnsIconUrl maps icon id to LXNS asset path', () => {
