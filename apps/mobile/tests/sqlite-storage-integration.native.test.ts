@@ -1,3 +1,5 @@
+import { waitFor } from '@testing-library/react-native';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { z } from 'zod';
 import { DatabaseSync } from 'node:sqlite';
 import type { PhiraQueriedBest } from '@rranker/game-phira/domain/phira';
@@ -42,8 +44,8 @@ let hydrateBoundAccountThumbnails: typeof import('@rranker/sdk/services/account-
 let hydrateAccountSummaries: typeof import('@rranker/sdk/services/account-hydration')['hydrateAccountSummaries'];
 
 async function reloadStorage() {
-  vi.resetModules();
-  await import('./plugins');
+  jest.resetModules();
+  await import('./plugin-setup');
   ({ ScoreRepository } = await import('@rranker/game-maimai/storage/score-repository'));
   ({ SqliteUserLibraryRepository } = await import('@rranker/sdk/storage/sqlite-user-library-repository'));
   ({ UserLibraryService } = await import('@rranker/sdk/services/user-library-service'));
@@ -64,8 +66,8 @@ async function reloadStorage() {
   ({ hydrateAccountSummaries } = await import('@rranker/sdk/services/account-hydration'));
 }
 
-const bridge = vi.hoisted(() => ({ open: vi.fn() }));
-vi.mock('expo-sqlite', () => ({ openDatabaseAsync: bridge.open }));
+const mockBridge = { open: jest.fn<(...args: unknown[]) => Promise<unknown>>() };
+jest.mock('expo-sqlite', () => ({ openDatabaseAsync: (...args: unknown[]) => mockBridge.open(...args) }));
 
 const queriedBest = (chartId: number, score = 900_000): PhiraQueriedBest => ({
   chart: {
@@ -83,14 +85,14 @@ const queriedBest = (chartId: number, score = 900_000): PhiraQueriedBest => ({
 describe('SQLite storage and current backups', () => {
   let database: DatabaseSync;
   let repository: InstanceType<typeof ScoreRepository>;
-  let run: ReturnType<typeof vi.fn>;
-  let reads: ReturnType<typeof vi.fn>;
+  let run: jest.Mock<(sql: string, ...parameters: (string | number)[]) => Promise<ReturnType<ReturnType<DatabaseSync['prepare']>['run']>>>;
+  let reads: jest.Mock<(sql: string, ...parameters: (string | number)[]) => Promise<ReturnType<ReturnType<DatabaseSync['prepare']>['all']>>>;
   beforeEach(async () => {
-    bridge.open.mockClear();
+    mockBridge.open.mockClear();
     database = new DatabaseSync(':memory:');
-    run = vi.fn(async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).run(...parameters));
-    reads = vi.fn(async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).all(...parameters));
-    bridge.open.mockResolvedValue({
+    run = jest.fn(async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).run(...parameters));
+    reads = jest.fn(async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).all(...parameters));
+    mockBridge.open.mockResolvedValue({
       execAsync: async (sql: string) => database.exec(sql),
       runAsync: run,
       getFirstAsync: async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).get(...parameters) ?? null,
@@ -151,7 +153,7 @@ describe('SQLite storage and current backups', () => {
     let active = 0;
     let maximum = 0;
     const responses = new Map<string, ReturnType<typeof Promise.withResolvers<MajdataSong>>>();
-    const getSong = vi.spyOn(majdataProvider, 'getSong').mockImplementation((id, signal) => {
+    const getSong = jest.spyOn(majdataProvider, 'getSong').mockImplementation((id, signal) => {
       const response = Promise.withResolvers<MajdataSong>();
       responses.set(id, response); active++; maximum = Math.max(maximum, active);
       const cancel = () => response.reject(signal?.reason ?? new Error('cancelled'));
@@ -165,17 +167,17 @@ describe('SQLite storage and current backups', () => {
   it('keeps twelve persisted Majdata first paints immediate while actual background HTTP stays at four', async () => {
     const songs = await seedMajdataSongs();
     const requests = pendingMajdataRequests();
-    const onFresh = vi.fn();
+    const onFresh = jest.fn();
     try {
       expect(await Promise.all(songs.map(song => loadMajdataSong(song.id, undefined, onFresh)))).toEqual(songs);
-      await vi.waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(4));
+      await waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(4));
       expect(requests.active()).toBe(4);
       expect(onFresh).not.toHaveBeenCalled();
       for (let index = 0; index < songs.length; index++) {
         const song = songs[index];
-        await vi.waitFor(() => expect(requests.responses.has(song.id)).toBe(true));
+        await waitFor(() => expect(requests.responses.has(song.id)).toBe(true));
         requests.responses.get(song.id)!.resolve({ ...song, hash: 'fresh' });
-        await vi.waitFor(() => expect(onFresh).toHaveBeenCalledTimes(index + 1));
+        await waitFor(() => expect(onFresh).toHaveBeenCalledTimes(index + 1));
       }
       expect(requests.maximum()).toBe(4);
       expect(requests.active()).toBe(0);
@@ -190,17 +192,17 @@ describe('SQLite storage and current backups', () => {
     const songs = await seedMajdataSongs();
     const requests = pendingMajdataRequests();
     const controller = new AbortController();
-    const onFresh = vi.fn();
+    const onFresh = jest.fn();
     try {
       expect(await Promise.all(songs.map(song => loadMajdataSong(song.id, controller.signal, onFresh)))).toEqual(songs);
-      await vi.waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(4));
+      await waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(4));
       requests.responses.get(songs[0].id)!.resolve({ ...songs[0], hash: 'fresh' });
-      await vi.waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
-      await vi.waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(5));
+      await waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(5));
       if (reason === 'consumer') controller.abort();
       else if (reason === 'foreground') { abortForegroundWork(); beginForegroundWork(); }
       else { invalidateResourceWrites('majdata-net'); await repository.clearResources(songs.map(song => majdataSongKey(song.id))); }
-      await vi.waitFor(() => expect(requests.active()).toBe(0));
+      await waitFor(() => expect(requests.active()).toBe(0));
       await new Promise(resolve => setTimeout(resolve, 0));
       expect(requests.getSong).toHaveBeenCalledTimes(5);
       expect(requests.maximum()).toBe(4);
@@ -618,8 +620,8 @@ describe('SQLite storage and current backups', () => {
 
   it('does not clear a valid cache on read failure or delete a newer replacement', async () => {
     await repository.saveResource('keep', 1, 'now', { keep: true });
-    const nativeDatabase = await bridge.open.mock.results[0].value;
-    const first = vi.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
+    const nativeDatabase = await mockBridge.open.mock.results[0].value;
+    const first = jest.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
     await expect(repository.getResource('keep', 1)).rejects.toThrow('read failure');
     expect(await repository.getResource('keep', 1)).toEqual({ keep: true });
     first.mockRestore();
@@ -697,8 +699,8 @@ describe('SQLite storage and current backups', () => {
     const old = structuredClone(current);
     delete (old.data.bestScores[0] as { mods?: unknown }).mods;
     await cache.save('osu-mania', 2, old);
-    const nativeDatabase = await bridge.open.mock.results[0].value;
-    const read = vi.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
+    const nativeDatabase = await mockBridge.open.mock.results[0].value;
+    const read = jest.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
     await expect(cache.load('osu-mania', 2)).rejects.toThrow('read failure');
     read.mockRestore();
     expect(database.prepare('SELECT resource_key FROM resource_snapshots WHERE resource_key = ?').get(osuSnapshotCacheKey('osu-mania', 2))).toBeDefined();
@@ -753,8 +755,8 @@ describe('SQLite storage and current backups', () => {
     useSession.getState().finishRestore(null, [maimai, chuni]);
     await repository.saveResource(accountThumbnailResourceKey(maimai.id), 1, 'old', { scoreDisplay: 42 });
     await persistBoundAccountThumbnail(chuni.id, { scoreDisplay: '16.50' });
-    const nativeDatabase = await bridge.open.mock.results[0].value;
-    const read = vi.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
+    const nativeDatabase = await mockBridge.open.mock.results[0].value;
+    const read = jest.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
     await hydrateBoundAccountThumbnails();
     read.mockRestore();
     expect(database.prepare('SELECT resource_key FROM resource_snapshots WHERE resource_key = ?').get(accountThumbnailResourceKey(maimai.id))).toBeDefined();
@@ -848,10 +850,10 @@ describe('SQLite storage and current backups', () => {
       { key: 'phigros-save:a', load: () => new PhigrosSaveCache().load('a') },
     ];
     await repository.saveResource('keep', 1, 'now', { current: true });
-    const nativeDatabase = await bridge.open.mock.results[0].value;
+    const nativeDatabase = await mockBridge.open.mock.results[0].value;
     for (const { key, load } of cases) {
       await repository.saveResource(key, 1, 'now', {});
-      const read = vi.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
+      const read = jest.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
       await expect(load()).rejects.toThrow('read failure');
       expect(database.prepare('SELECT resource_key FROM resource_snapshots WHERE resource_key = ?').get(key)).toBeDefined();
       read.mockRestore();
@@ -874,10 +876,10 @@ describe('SQLite storage and current backups', () => {
       { key: 'rizline:account:rizline:official:old', value: { ...rizline, save: { ...rizline.save, userId: 'old', levelsRks: undefined } }, load: () => loadRizlineCached('rizline:official:old') },
       { key: 'rizline:account:rizline:official:wrong', value: rizline, load: () => loadRizlineCached('rizline:official:wrong') },
     ];
-    const nativeDatabase = await bridge.open.mock.results[0].value;
+    const nativeDatabase = await mockBridge.open.mock.results[0].value;
     for (const { key, value, load } of cases) {
       await repository.saveResource(key, 1, 'old', value);
-      const read = vi.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
+      const read = jest.spyOn(nativeDatabase, 'getFirstAsync').mockRejectedValueOnce(new Error('read failure'));
       await expect(load()).rejects.toThrow('read failure'); read.mockRestore();
       expect(database.prepare('SELECT resource_key FROM resource_snapshots WHERE resource_key = ?').get(key)).toBeDefined();
       expect(await load()).toBeNull();

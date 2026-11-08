@@ -30,7 +30,7 @@
 
 `navigation.ts` 的 `DetailTarget` 为 `{ gameId, params }`，`params` 是字符串记录；`detailHref` 生成 `/detail` 地址。`PluginPageTarget` 通过 `pluginHref` 生成 `/plugins/[pluginId]/[pageId]` 地址。平台只封装导航，歌曲 ID、难度、谱面类型和模式等字段由游戏自己的 `domain/targets.ts` 解析，字符串身份保留前导零。 难度参数按各游戏现有领域范围校验，详情与备份导入共用该解析；舞萌宴谱使用固定索引 0。
 
-`components/game-content/OverviewPageShell.tsx` 接收游戏提供的显示名、评分卡参数、个人库汇总方式及提示。公共壳负责账号选择、查询状态、滚动、下拉刷新、工具箱、普通置顶工具和个人曲库入口。`accountRating` 为账号列表贡献评分展示，`scoreCardPreview` 为个性化页贡献卡片示例；无专属评分组件时使用游戏声明的公共主题。
+`components/game-content/OverviewPageShell.tsx` 接收游戏提供的显示名、评分卡参数、个人库汇总方式、空数据状态及提示。公共壳负责账号选择、查询状态、滚动、下拉刷新、工具箱、普通置顶工具和个人曲库入口。`accountRating` 为账号列表贡献评分展示，`scoreCardPreview` 为个性化页贡献卡片示例；无专属评分组件时使用游戏声明的公共主题。
 
 总览操作由 `ToolPlugin.overviewActions` 贡献，额外卡片由 `overviewCards` 贡献。公共壳提供 `syncBusy`、`onSync`、操作互斥和 `registerRefresh`；注册刷新操作返回取消注册函数，组件卸载时释放。没有操作贡献时保留默认同步按钮。普通工具置顶使用 `state/toolbox-pins.ts` 的 `pinsByGame`，牌子、收藏品等专属置顶由工具自己保存并渲染。
 
@@ -38,7 +38,7 @@
 
 `BestListPage`、`RecordsListPage`、`CatalogListPage` 统一列表边距、安全区和可见性。`GameScoreCard`、`ScoreCardMetric`、`ScoreCardBadges`、`GameSongRow`、`GameDifficultyBadge` 接收所属游戏的展示值；评分档位、状态规则和筛选条件不进入公共组件。`FilterShell` 管理折叠、摘要和重置，具体选项由游戏或工具提供。
 
-详情共用 `SongDetailChrome`、`SongDetailHero`、`SongMetadataTable`、`GameChartResultCard`，操作通过 `ChartAction` 提供。`GameNoteTable`、`JudgementTable` 接收实际行和汇总。`CollectionArtwork` 处理素材比例和预览，游戏自己的封装决定图片地址及语义。Simai 通用成绩布局、状态和雷达组件复用 SDK，舞萌档位、宴谱规则与 Majdata 展示规则由各自适配器维护。
+详情共用 `SongDetailChrome`、`SongDetailHero`、`SongMetadataTable`、`GameChartResultCard`，操作通过 `ChartAction` 提供。`GameNoteTable`、`JudgementTable` 接收实际行和汇总。`CollectionArtwork` 处理素材比例和预览，游戏自己的封装决定图片地址及语义。Simai 通用成绩布局、状态和雷达组件复用 SDK，舞萌档位、宴谱规则与 Majdata 展示规则由各自适配器维护。 物量表在容错工具可用时提供跳转，工具不可用时只展示物量。
 
 `ChartCarousel` 按谱面键保存标签草稿，只装配当前与相邻卡片；下载、弹层和保存中的卡片继续保留。活动状态传给当前卡，显式初始目标及 `resetKey` 变化才重置定位，宽度变化保留当前卡。详情在首次有效查询尚未返回时显示加载状态，刷新保留已有内容。
 
@@ -73,6 +73,8 @@ Query 归属通过 `meta.pluginId`、`meta.sourcePluginId`、`meta.gameId`、`me
 账号删除先提交索引与凭据引用，再清理失去引用的凭据和数据源附属内容；共享凭据继续保留。`DataSourcePlugin.removeAccount`、`cleanupAccount`、`cleanupCredential` 通过平台提供的提交和清理步骤执行，附属清理失败单独反馈，不撤销已经完成的索引移除。
 
 `services/session-credential-service.ts` 提交轮换时检查预期凭据、当前归属与写入资格。共用凭据的账号读取同一份新值；解绑、重新绑定或较新轮换使旧请求失效。持久化失败保留待写结果，前台恢复时重试。`LargeSecureValueStore` 按当前清单和分片保存长值，正常写入以 SecureStore 的结果为准。
+
+落雪与 osu! 的凭据比较直接读取各来源的轻量轮换历史；OAuth 请求负责更新与裁剪该历史。解析凭据不加载授权请求或原生授权存储。
 
 `services/account-write-scope.ts` 为账号请求捕获游戏、来源和账号写入代次，并检查账号仍绑定且来源可用；`captureAccountWrites` 为上传的读取账号与目标账号复用同一资格。`cancelBoundAccountQueries` 先失效账号写入，再取消和删除查询。`services/account-hydration.ts` 通过数据源的 `hydrateAccount` 补全资料，账号缩略图统一保存头像、评分显示及 `displayData`；需要持久化的显示名由账号元数据入口提交。共享资料请求在游戏、来源或账号代次失效时取消，资料仅在仍属于当前账号时提交，缩略图保存跳过没有实际变化的字段。
 

@@ -1,5 +1,5 @@
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Credential } from '@rranker/sdk/credentials';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createChunithmBoundAccount } from '@rranker/game-chunithm/accounts';
 import { createOsuBoundAccount } from '@rranker/game-osu/accounts';
 import { createLocalMaimaiAccount } from '@rranker/game-maimai/accounts';
@@ -9,9 +9,11 @@ import type { MaimaiDataSource } from '@rranker/game-maimai/data-source';
 import type { OsuDataSource } from '@rranker/game-osu/data-source';
 import { useAccountStore } from '@rranker/sdk/state/account-store';
 import { useSession } from '@rranker/sdk/state/session-store';
+const originalFetch = globalThis.fetch;
 
-vi.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class { async getLatest() { return null; } } }));
-vi.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: class {} }));
+
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class { async getAccountScore() { return null; } } }));
+jest.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: class {} }));
 
 const lxnsSession: Credential = {
   mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
@@ -19,7 +21,7 @@ const lxnsSession: Credential = {
 };
 
 beforeEach(() => useAccountStore.getState().finishRestore(null));
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { globalThis.fetch = originalFetch; });
 
 describe('当前账号的 Provider', () => {
   it('切换本地账号后查分显示对应玩家名，改名立即生效', async () => {
@@ -41,12 +43,12 @@ describe('当前账号的 Provider', () => {
     const next = { ...lxnsSession, accessToken: 'new-access', refreshToken: 'new-refresh' };
     useAccountStore.getState().bindAccounts({ accounts: [account], session: next, credentialId: 'shared', activeAccountId: account.id });
     const requests: Headers[] = [];
-    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+    (globalThis.fetch = (async (_url: string, init: RequestInit) => {
       requests.push(new Headers(init.headers));
       return new Response(JSON.stringify({ success: true, code: 200, data: { name: '中二玩家', rating: 17, friend_code: 2, level: 99,
         class_emblem: { base: 0, medal: 0 }, reborn_count: 0, over_power: 0, over_power_progress: 0,
         currency: 0, total_currency: 0, total_play_count: 0 } }));
-    });
+    }) as typeof fetch);
     const provider = useSession.getState().sourceClient as ChunithmDataSource;
     await expect(provider.getPlayer!()).resolves.toMatchObject({ name: '中二玩家', rating: 17 });
     expect(requests[0].get('Authorization')).toBe('Bearer new-access');
@@ -59,11 +61,11 @@ describe('当前账号的 Provider', () => {
       expiresAt: Date.now() + 600_000, persistable: true } as const;
     useAccountStore.getState().bindAccounts({ accounts, session, credentialId: 'osu:shared', activeAccountId: accounts[0].id });
     const requests: { url: string; authorization: string | null }[] = [];
-    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+    (globalThis.fetch = (async (url: string, init: RequestInit) => {
       requests.push({ url: String(url), authorization: new Headers(init.headers).get('Authorization') });
       return Response.json(String(url).includes('/scores/best') ? []
         : { id: 7, username: '玩家', avatar_url: '', country_code: 'CN', statistics: { pp: 50 } });
-    });
+    }) as typeof fetch);
     const standard = useSession.getState().sourceClient as OsuDataSource;
     await standard.readFresh(new AbortController().signal);
     useAccountStore.getState().selectBoundAccount(accounts[1].id);

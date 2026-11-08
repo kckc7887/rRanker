@@ -1,3 +1,4 @@
+import { useAccountStore } from '@rranker/sdk/state/account-store';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Linking } from 'react-native';
@@ -19,7 +20,7 @@ jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
   getAppLifecycleSnapshot: () => mockLifecycle,
 }));
 
-const phiProvider = findGame('phigros')?.providers.find((p) => p.id === 'phi-taptap') ?? null;
+const initial = useAccountStore.getState();
 
 const mockDevice = {
   deviceCode: 'dc-1',
@@ -37,7 +38,6 @@ const mockSession = {
   persistable: true,
 } as const;
 const mockSave = jest.fn(async (_account: unknown, _signal?: AbortSignal) => 'credential');
-const mockSetSession = jest.fn();
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -64,15 +64,6 @@ jest.mock('@rranker/provider-chunithm-temp/storage/chunithm-temp-account-store',
 jest.mock('@rranker/sdk/state/query-client', () => ({
   queryClient: { invalidateQueries: jest.fn() },
 }));
-jest.mock('@rranker/sdk/state/session-store', () => ({
-  useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
-    boundAccounts: [],
-    sessionsByAccountId: {},
-    credentialIdsByAccountId: {},
-    setSession: mockSetSession,
-    removeBoundAccount: jest.fn(),
-  }),
-}));
 jest.mock('@rranker/provider-phi-taptap/providers/phigros-score-provider', () => ({
   PhigrosScoreProvider: {
     beginLogin: jest.fn(),
@@ -87,14 +78,14 @@ type Screen = Awaited<ReturnType<typeof render>>;
 
 function LoginSheet({ visible = true, onSuccess = () => undefined }: { visible?: boolean; onSuccess?: () => void }) {
   return <ProviderLoginSheet
-    visible={visible} provider={phiProvider} gameId="phigros" gameTitle="Phigros"
+    visible={visible} provider={findGame('phigros')?.providers.find(provider => provider.id === 'phi-taptap') ?? null} gameId="phigros" gameTitle="Phigros"
     onClose={() => undefined} onSuccess={onSuccess}
   />;
 }
 
 describe('ProviderLoginSheet Phigros polling', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.clearAllMocks(); useAccountStore.setState(initial, true);
     jest.useFakeTimers();
     mockLifecycle = {
       appState: 'active', phase: 'foreground-ready', foregroundReady: true,
@@ -108,6 +99,7 @@ describe('ProviderLoginSheet Phigros polling', () => {
   });
 
   afterEach(() => {
+    useAccountStore.setState(initial, true);
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
@@ -134,7 +126,7 @@ describe('ProviderLoginSheet Phigros polling', () => {
     if (transition === 'unmount') await screen.unmount();
     expect(signal.aborted).toBe(true);
     await act(async () => { release(mockSession); });
-    expect(mockSave).not.toHaveBeenCalled(); expect(mockSetSession).not.toHaveBeenCalled(); expect(success).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled(); expect(useAccountStore.getState().boundAccounts).toEqual([]); expect(success).not.toHaveBeenCalled();
     if (transition !== 'unmount') await screen.unmount();
   });
 
@@ -148,7 +140,7 @@ describe('ProviderLoginSheet Phigros polling', () => {
     await fireEvent.press(screen.getByText('开始绑定'));
     await waitFor(() => expect(success).toHaveBeenCalledTimes(1));
     await act(async () => { release(mockSession); });
-    expect(mockSave).toHaveBeenCalledTimes(1); expect(mockSetSession).toHaveBeenCalledTimes(1);
+    expect(mockSave).toHaveBeenCalledTimes(1); expect(useAccountStore.getState().boundAccounts).toEqual([expect.objectContaining({ id: 'phigros:phi-taptap:player-1', displayName: '玩家', credentialId: 'credential' })]);
     expect(success).toHaveBeenCalledTimes(1); await screen.unmount();
   });
 

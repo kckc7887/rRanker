@@ -1,3 +1,4 @@
+import type { SourceSyncContext as MockSourceSyncContext } from '@rranker/sdk/data-load';
 import type { Credential } from '@rranker/sdk/credentials';
 import { cleanup, act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
@@ -27,7 +28,7 @@ const mockSetTags = jest.fn(async () => []);
 const mockRefetchScore = jest.fn<() => Promise<unknown>>(async () => undefined);
 const mockCancelQueries = jest.fn<(input: unknown) => Promise<undefined>>(async () => undefined);
 const mockUpdateBoundAccountScore = jest.fn();
-const mockRefreshDivingFishAccounts = jest.fn<(input: unknown) => Promise<unknown>>();
+const mockSyncDivingFish = jest.fn<(input: MockSourceSyncContext) => Promise<void>>(async () => undefined);
 const mockSessionState: {
   session: Credential | null;
   sessionsByAccountId: Record<string, Credential | undefined>;
@@ -190,6 +191,7 @@ jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => {
     },
     profile,
     activeGameId: 'maimai' as const,
+    activeAccountId: mockSessionState.activeAccountId,
     activeProviderId: 'diving-fish' as const,
     isLoading: false,
     isError: false,
@@ -203,11 +205,11 @@ jest.mock('@rranker/sdk/state/query-client', () => ({
     cancelQueries: (input: unknown) => mockCancelQueries(input),
     invalidateQueries: jest.fn(),
     removeQueries: jest.fn(),
+    getQueryData: jest.fn(),
   },
 }));
-jest.mock('@rranker/tool-maimai/services/refresh-diving-fish-accounts', () => ({
-  refreshDivingFishAccounts: (input: unknown) => mockRefreshDivingFishAccounts(input),
-}));
+jest.mock('@rranker/provider-diving-fish/sync', () => ({ sync: (context: MockSourceSyncContext) => mockSyncDivingFish(context) }));
+jest.mock('@rranker/game-maimai/services/maimai-catalog-query', () => ({ refreshMaimaiCatalog: jest.fn(async () => undefined) }));
 jest.mock('@rranker/sdk/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: {
     expandedGameId: 'maimai';
@@ -219,6 +221,7 @@ jest.mock('@rranker/sdk/state/game-picker-ui', () => ({
     toggleExpandedGameId: jest.fn(),
   }),
 }));
+jest.mock('@rranker/sdk/hooks/use-visible-bound-accounts', () => ({ useVisibleBoundAccounts: () => mockSessionState.boundAccounts }));
 jest.mock('@rranker/sdk/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: Object.assign((selector: (state: typeof mockSessionState) => unknown) => selector(mockSessionState), {
@@ -244,7 +247,7 @@ describe('M3A personal library screens', () => {
       session: null,
       sessionsByAccountId: {},
       activeAccountId: 'maimai:local',
-      boundAccounts: [],
+      boundAccounts: [{ id: 'maimai:local', gameId: 'maimai', providerId: 'local', displayName: '本地玩家', scoreLabel: 'DX Rating', scoreDisplay: '0', providerTitle: '本地查分器' }],
     });
   });
 
@@ -356,7 +359,6 @@ describe('M3A personal library screens', () => {
   });
 
   it('uses the active Import-Token session for a user-triggered water-fish sync', async () => {
-    const fixtures = jest.requireActual<typeof import('./fixtures/sanitized')>('./fixtures/sanitized');
     const account: BoundAccount = {
       id: 'maimai:diving-fish:android-user', gameId: 'maimai', providerId: 'diving-fish',
       displayName: 'Android 玩家', scoreLabel: 'DX Rating', scoreDisplay: '15000', providerTitle: '水鱼查分器',
@@ -364,26 +366,10 @@ describe('M3A personal library screens', () => {
     const session: Credential = { mode: 'import-token', value: 'android-token', persistable: true };
     Object.assign(mockSessionState, {
       session,
-      sessionsByAccountId: {},
+      sessionsByAccountId: { [account.id]: session },
       activeAccountId: account.id,
       boundAccounts: [account],
     });
-    const snapshot = {
-      player: fixtures.fixturePlayer,
-      records: fixtures.fixtureRecords,
-      source: fixtures.fixtureSource,
-      catalogSource: fixtures.fixtureSource,
-      best50: {
-        player: fixtures.fixturePlayer, currentVersion: fixtures.fixtureCatalog.currentVersion,
-        b35: [], b15: [], unmatchedRecordCount: 0, rating: 15000,
-        generatedAt: timestamp, source: fixtures.fixtureSource,
-      },
-    };
-    mockRefreshDivingFishAccounts.mockResolvedValue({
-      refreshed: [{ account, snapshot }],
-      failed: [],
-    });
-
     const screen = await render(<OverviewScreen />);
     await fireEvent.press(screen.getByLabelText('同步数据，当前 水鱼查分器'));
 
@@ -391,18 +377,9 @@ describe('M3A personal library screens', () => {
     const cancelled = mockCancelQueries.mock.calls[0]?.[0] as { predicate: (query: { queryKey: unknown[] }) => boolean };
     expect(cancelled.predicate({ queryKey: ['game-data', 18, account.id] })).toBe(true);
     expect(cancelled.predicate({ queryKey: ['game-data', 18, 'other-account'] })).toBe(false);
-    await waitFor(() => expect(mockRefreshDivingFishAccounts).toHaveBeenCalledWith({
-      accounts: [account],
-      sessionsByAccountId: { [account.id]: session },
-      catalog: fixtures.fixtureCatalog,
-      signal: expect.any(AbortSignal),
-      assertAccount: expect.any(Function),
-    }));
-    expect(mockUpdateBoundAccountScore).toHaveBeenCalledWith(
-      account.id,
-      expect.any(String),
-      fixtures.fixturePlayer.displayName,
-    );
+    await waitFor(() => expect(mockSyncDivingFish).toHaveBeenCalledWith(expect.objectContaining({
+      account, credential: session, signal: expect.any(AbortSignal), assertCurrent: expect.any(Function),
+    })));
     expect(mockRefetchScore).toHaveBeenCalledTimes(1);
   });
 

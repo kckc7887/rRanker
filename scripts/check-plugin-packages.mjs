@@ -28,7 +28,11 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value, null, 2)}
 try {
   await mkdir(artifacts);
   await mkdir(consumer);
-  const dependencies = {};
+  const dependencies = Object.fromEntries(['react', 'react-dom', 'react-native', 'react-native-web', 'expo', 'expo-router']
+    .map(name => [name, mobile.dependencies[name]]));
+  const hostRequire = createRequire(path.join(root, 'apps/mobile/package.json'));
+  const router = JSON.parse(await readFile(hostRequire.resolve('expo-router/package.json'), 'utf8'));
+  dependencies['@expo/metro-runtime'] = router.dependencies['@expo/metro-runtime'];
   const names = [];
   const entries = [];
   for (const workspace of manifest.workspaces.filter(value => !value.startsWith('apps/'))) {

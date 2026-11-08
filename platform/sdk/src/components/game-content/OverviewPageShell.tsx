@@ -29,9 +29,10 @@ export type OverviewPresentation = {
   librarySummary?: 'songs' | 'charts';
   notice?: string;
   emptyText?: string;
+  isEmpty?: boolean;
 };
 
-export function OverviewPageShell({ query, displayName, ratingCard, librarySummary = 'charts', notice, emptyText = '暂无数据' }:
+export function OverviewPageShell({ query, displayName, ratingCard, librarySummary = 'charts', notice, emptyText = '暂无数据', isEmpty = false }:
   OverviewPresentation & { query: ReturnType<typeof useGameData> }) {
   usePluginRevision();
   const theme = useAppTheme();
@@ -79,7 +80,7 @@ export function OverviewPageShell({ query, displayName, ratingCard, librarySumma
   const sourceHint = source?.bindingKind === 'fixture' ? '示例查分器' : source?.title ?? '本地';
   return <View collapsable={false} style={[styles.page, { backgroundColor: theme.background }]}>
     <QueryStateView<GameDataBundle> isLoading={query.isLoading} isError={query.isError} error={query.error}
-      isEmpty={false} onRetry={() => void query.refetch()} emptyText={emptyText} data={query.data}
+      isEmpty={isEmpty} onRetry={() => void query.refetch()} emptyText={emptyText} data={isEmpty ? undefined : query.data}
       renderData={bundle => <ScrollView contentInsetAdjustmentBehavior="automatic" style={styles.scroll} testID="overview-scroll"
         alwaysBounceVertical refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {
           if (refreshAction.current) refreshAction.current(); else void syncData();

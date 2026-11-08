@@ -1,3 +1,4 @@
+import type { SourceClientContext as MockSourceClientContext } from '@rranker/sdk/credentials';
 import { setDisabledPlugins } from '@rranker/sdk';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
@@ -206,12 +207,12 @@ jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
   resolveAccountClient: () => {
     const key = mockActiveGameId + ':' + mockDemoAccount + ':' + mockBoundAccount;
     if (mockSourceClients.has(key)) return mockSourceClients.get(key);
-    const value = (() => mockDemoAccount ? jest.requireActual<typeof import('@rranker/provider-osu-test/client')>('@rranker/provider-osu-test/client').createClient({ account: { id: 'osu-standard:test', gameId: mockActiveGameId, providerId: 'osu-test' }, credential: null, assertCurrent() {}, commitCredential: async () => 'applied' } as import('@rranker/sdk/credentials').SourceClientContext) : !mockBoundAccount ? undefined
+    const value = (() => mockDemoAccount ? jest.requireActual<typeof import('@rranker/provider-osu-test/client')>('@rranker/provider-osu-test/client').createClient({ account: { id: 'osu-standard:test', gameId: mockActiveGameId, providerId: 'osu-test', displayName: 'test', scoreLabel: 'PP', scoreDisplay: '—', providerTitle: '示例查分器' }, credential: null, assertCurrent() {}, commitCredential: async () => 'applied' } as MockSourceClientContext) : !mockBoundAccount ? undefined
     : jest.requireActual<typeof import('@rranker/provider-osu/client')>('@rranker/provider-osu/client').createClient({
-      account: { id: mockActiveGameId + ':osu:2', gameId: mockActiveGameId, providerId: 'osu', displayName: 'peppy' },
+      account: { id: mockActiveGameId + ':osu:2', gameId: mockActiveGameId, providerId: 'osu', displayName: 'peppy', scoreLabel: 'PP', scoreDisplay: '—', providerTitle: 'osu!' },
       credential: { mode: 'osu-oauth', accessToken: 'test-access', refreshToken: 'test-refresh', expiresAt: Number.MAX_SAFE_INTEGER, persistable: true },
       assertCurrent() {}, commitCredential: async () => 'applied',
-    } as import('@rranker/sdk/credentials').SourceClientContext))();
+    } as MockSourceClientContext))();
     mockSourceClients.set(key, value);
     return value;
   },

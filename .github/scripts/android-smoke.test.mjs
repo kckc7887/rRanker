@@ -23,7 +23,7 @@ function fixture(options = {}) {
       if (recorded && !logging) add('分享日志，最新记录，测试');
       if (options.storageFailure && logging) add('', { text: '保存失败' });
     } else if (route === 'game-management') add('', { text: '游戏管理' });
-    else if (route === 'tools/arcade-finder' && !options.missingArcade) {
+    else if (route === 'plugins/tool.arcade-finder/arcade-finder?gameId=maimai' && !options.missingArcade) {
       if (!options.amapConfigured) add('', { text: '当前使用机厅列表' });
       else if (mapEnabled) add('', { 'resource-id': 'arcade-map-zoom-in', enabled: String(!options.mapNotReady) });
       else if (consentVisible) { add('', { text: '使用列表' }); add('', { text: '同意并启用' }); }
@@ -65,7 +65,7 @@ function fixture(options = {}) {
       const tapped = current[Math.floor(Number(args[3]) / 100)]; assert(tapped);
       if (route === 'personalization') selected = ['主题色 蓝','主题色 紫','主题色 绿'].indexOf(tapped['content-desc']);
       else if (tapped['content-desc'] === '记录日志') { logging = !logging; recorded = true; }
-      else if (route === 'tools/arcade-finder') {
+      else if (route === 'plugins/tool.arcade-finder/arcade-finder?gameId=maimai') {
         if (tapped.text === '使用列表') consentVisible = false;
         else if (tapped.text === '启用地图') consentVisible = true;
         else if (tapped.text === '同意并启用') mapEnabled = true;

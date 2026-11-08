@@ -1,3 +1,4 @@
+import type { SourceClientContext as MockSourceClientContext } from '@rranker/sdk/credentials';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { jest } from '@jest/globals';
@@ -31,9 +32,9 @@ jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
     if (mockSourceClients.has(key)) return mockSourceClients.get(key);
     const value = (() => mockProviderId === 'osu-test'
     ? jest.requireActual<typeof import('@rranker/provider-osu-test/client')>('@rranker/provider-osu-test/client').createClient({
-      account: { id: mockAccountId, gameId: mockAccountId.split(':')[0], providerId: mockProviderId, displayName: 'test' },
+      account: { id: mockAccountId, gameId: mockAccountId.split(':')[0], providerId: mockProviderId, displayName: 'test', scoreLabel: 'PP', scoreDisplay: '—', providerTitle: '示例查分器' },
       credential: null, assertCurrent() {}, commitCredential: async () => 'applied',
-    } as import('@rranker/sdk/credentials').SourceClientContext) : undefined)();
+    } as MockSourceClientContext) : undefined)();
     mockSourceClients.set(key, value);
     return value;
   },

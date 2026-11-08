@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 let LocalMaimaiScoreProvider: typeof import('@rranker/provider-local/providers/local-score-provider')['LocalMaimaiScoreProvider'];
 let ScoreService: typeof import('@rranker/game-maimai/services/score-service')['ScoreService'];
 let buildScoreSnapshot: typeof import('@rranker/game-maimai/services/score-service')['buildScoreSnapshot'];
-let repository: InstanceType<typeof import('@rranker/game-maimai/storage/score-repository')['SqliteSnapshotRepository']>;
+let repository: InstanceType<typeof import('@rranker/game-maimai/storage/score-repository')['ScoreRepository']>;
 let database: DatabaseSync;
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
   execAsync: async (sql: string) => database.exec(sql),

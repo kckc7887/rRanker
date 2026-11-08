@@ -35,7 +35,8 @@ describe('adapter detail targets', () => {
 
   it('rejects missing identifiers and invalid indices without catalog data', () => {
     const adapter = getGameAdapter('phigros')!;
-    for (const params of [{}, { songId: ' ' }, ...['abc', '-1', '1.5', '9007199254740992'].map(levelIndex => ({ songId: 'Song.A', levelIndex }))]) {
+    const invalidParams: DetailParams[] = [{}, { songId: ' ' }, ...['abc', '-1', '1.5', '9007199254740992'].map(levelIndex => ({ songId: 'Song.A', levelIndex }))];
+    for (const params of invalidParams) {
       expect(adapter.parseDetailParams('phigros', params)).toBeNull();
     }
     expect(adapter.parseLibraryTarget({ kind: 'chart', gameId: 'phigros', id: 'wrong', target: { songId: 'Song.A', levelIndex: '2' } })).toBeNull();

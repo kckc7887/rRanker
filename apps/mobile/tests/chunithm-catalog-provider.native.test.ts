@@ -8,6 +8,8 @@ import {
 import { loadChunithmAliases, loadChunithmCatalog } from '@rranker/game-chunithm/services/chunithm-catalog-loader';
 import { loadChunithmCollections } from '@rranker/game-chunithm/services/chunithm-collection-loader';
 
+const originalFetch = globalThis.fetch;
+
 const responsePayload = {
   versions: [
     { id: 18, title: 'CHUNITHM LUMINOUS PLUS', version: 22000 },
@@ -88,14 +90,14 @@ const detailPayload = {
 };
 
 describe('ChunithmCatalogProvider', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => (globalThis.fetch = originalFetch));
 
   it('fetches the public song list without auth or maimai query parameters', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
+    const fetchMock = jest.fn().mockResolvedValue(new Response(
       JSON.stringify(responsePayload),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     ));
-    vi.stubGlobal('fetch', fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const catalog = await new ChunithmCatalogProvider().getCatalog();
 
@@ -122,11 +124,11 @@ describe('ChunithmCatalogProvider', () => {
     let requestSignal: AbortSignal | undefined;
     let start: () => void = () => undefined;
     const started = new Promise<void>(resolve => { start = resolve; });
-    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    globalThis.fetch = jest.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       requestSignal = init?.signal ?? undefined;
       requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason), { once: true });
       start();
-    })));
+    })) as typeof fetch;
     const failure = expect(load(controller.signal)).rejects.toThrow('cancelled catalog request');
     await started;
     controller.abort(new Error('cancelled catalog request'));
@@ -162,11 +164,11 @@ describe('ChunithmCatalogProvider', () => {
 
   it('reads the current new-song version set from the public Diving Fish endpoint', async () => {
     const versions = ['CHUNITHM X-VERSE', 'CHUNITHM X-VERSE-X'];
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
+    const fetchMock = jest.fn().mockResolvedValue(new Response(
       JSON.stringify({ version: versions }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     ));
-    vi.stubGlobal('fetch', fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     await expect(new ChunithmCatalogProvider().getNewVersionTitles()).resolves.toEqual(versions);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
@@ -178,7 +180,7 @@ describe('ChunithmCatalogProvider', () => {
   it.each([{ version: [] }, { version: [''] }, { version: 'CHUNITHM X-VERSE' }])(
     'rejects malformed new-song version metadata: %j',
     async (payload) => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
+      globalThis.fetch = jest.fn().mockResolvedValue(new Response(JSON.stringify(payload))) as typeof fetch;
 
       await expect(new ChunithmCatalogProvider().getNewVersionTitles()).rejects.toMatchObject({
         code: 'upstream_schema',
@@ -217,7 +219,7 @@ describe('ChunithmCatalogProvider', () => {
   });
 
   it('fetches and maps the chunithm alias list without auth', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
+    const fetchMock = jest.fn().mockResolvedValue(new Response(
       JSON.stringify({
         aliases: [
           { song_id: 3, aliases: ['bbkkbkk', 'bk'] },
@@ -226,7 +228,7 @@ describe('ChunithmCatalogProvider', () => {
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     ));
-    vi.stubGlobal('fetch', fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const aliases = await new ChunithmCatalogProvider().getAliases();
 
@@ -256,11 +258,11 @@ describe('ChunithmCatalogProvider', () => {
   });
 
   it('fetches and maps unauthenticated song detail notes including WORLD’S END', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
+    const fetchMock = jest.fn().mockResolvedValue(new Response(
       JSON.stringify(detailPayload),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     ));
-    vi.stubGlobal('fetch', fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const detail = await new ChunithmCatalogProvider().getSongDetail(3);
 
@@ -295,7 +297,7 @@ describe('ChunithmCatalogProvider', () => {
   });
 
   it('maps a missing song detail response to the no-data error state', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 404 })));
+    globalThis.fetch = jest.fn().mockResolvedValue(new Response('', { status: 404 })) as typeof fetch;
 
     await expect(new ChunithmCatalogProvider().getSongDetail(404)).rejects.toMatchObject({
       code: 'no_data',
@@ -330,11 +332,11 @@ describe('ChunithmCatalogProvider', () => {
         },
       ],
     };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
+    const fetchMock = jest.fn().mockResolvedValue(new Response(
       JSON.stringify(payload),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     ));
-    vi.stubGlobal('fetch', fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     const snapshot = await new ChunithmCatalogProvider().getCollections('trophy');
 

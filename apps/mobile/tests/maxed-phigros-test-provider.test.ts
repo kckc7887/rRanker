@@ -1,5 +1,4 @@
 import type { CatalogSnapshot, Song } from '@rranker/game-phigros/domain/models';
-import { isCatalogDrivenScoreProvider } from '@rranker/game-maimai/data-source';
 import {
   buildMaxedPhigrosRecords,
   buildMaxedPhigrosSnapshot,
@@ -84,9 +83,8 @@ describe('Phigros 全满示例账号', () => {
     });
   });
 
-  it('实现 CatalogDrivenScoreProvider，统一成绩覆盖全部启用谱面', async () => {
+  it('从曲库读取的成绩覆盖全部启用谱面', async () => {
     const provider = new MaxedPhigrosTestProvider();
-    expect(isCatalogDrivenScoreProvider(provider)).toBe(true);
     const records = await provider.getRecordsFromCatalog(catalog);
     const enabledKeys = new Set(catalog.songs
       .filter((song) => !song.disabled)

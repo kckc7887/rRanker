@@ -50,7 +50,7 @@ describe('BoundAccountGroupedList osu! 家族三级结构', () => {
     );
     expect(screen.getByText('osu玩家')).toBeTruthy();
     expect(screen.getByText('当前')).toBeTruthy();
-    expect(screen.getByText('osu! 官方')).toBeTruthy();
+    expect(screen.getByText('osu! OAuth')).toBeTruthy();
   });
 
   it('显示当前模式的 PP', async () => {

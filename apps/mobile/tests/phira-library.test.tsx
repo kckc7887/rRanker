@@ -36,9 +36,9 @@ jest.mock('expo-image', () => {
   };
 });
 jest.mock('@rranker/sdk/state/session-store', () => ({
-  useSession: (selector: (state: { activeGameId: 'phira' }) => unknown) => (
+  useSession: (() => { const hook = (selector: (state: { activeGameId: 'phira' }) => unknown) => (
     selector({ activeGameId: 'phira' })
-  ),
+  ); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })(),
 }));
 jest.mock('@rranker/sdk/theme/app-theme', () => ({
   useAppTheme: () => ({

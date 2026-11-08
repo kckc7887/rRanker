@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bindHeatTimelineKeyboard, buildHeatDensity, HeatTimelineView } from '@rranker/sdk/features/chart-preview-shared/webview-player/heat-timeline';
 import { PlayerEventScope } from '@rranker/sdk/features/chart-preview-shared/webview-player/event-scope';
@@ -70,7 +70,8 @@ describe('热度时间轴', () => {
 
 describe('公共播放控制', () => {
   it.each(['simai', 'phigros', 'osu', 'rizline'])('%s 调整布局后仍可重播与修改参数', feature => {
-    const html = readFileSync(resolve(process.cwd(), `assets/${feature === 'simai' ? 'maimai' : feature}-chart-preview/index.html`), 'utf8');
+    const packageName = feature === 'simai' ? 'chart-simai' : feature === 'osu' ? 'chart-osu' : 'chart-json';
+    const html = readFileSync(createRequire(import.meta.url).resolve(`@rranker/${packageName}/assets/${feature === 'simai' ? 'maimai' : feature}-chart-preview/index.html`), 'utf8');
     const parsed = new DOMParser().parseFromString(html, 'text/html');
     document.body.className = parsed.body.className;
     document.body.innerHTML = parsed.body.innerHTML;

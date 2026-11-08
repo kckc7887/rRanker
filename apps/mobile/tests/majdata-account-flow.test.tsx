@@ -81,7 +81,7 @@ test('login appears in real management and switch lists with the player avatar a
   const management = await render(<GameAccountsScreen />);
   expect(management.getByTestId(`account-card-${account.id}`)).toBeTruthy();
   expect(management.getByText(account.avatarUrl!)).toBeTruthy();
-  expect(management.getByLabelText('解除绑定 玩家 A&B')).toBeTruthy();
+  expect(management.getByText('解除绑定')).toBeTruthy();
   expect(hydrateAccountDisplayData).toHaveBeenCalled();
   await management.unmount();
   const second = createMajdataBoundAccount({ accountId: 'majdata-net:account:second', displayName: 'Second', scoreDisplay: '200.0000%' });

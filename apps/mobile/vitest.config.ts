@@ -6,6 +6,7 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   root,
+  define: { __DEV__: false },
   resolve: {
     alias: {
       '@': resolve(root, 'src'),
@@ -22,7 +23,8 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['tests/**/*.test.ts'],
-    setupFiles: ['tests/plugins.ts'],
+    exclude: ['tests/**/*.native.test.ts'],
+    setupFiles: ['tests/plugin-setup.ts'],
     server: { deps: { inline: [/@rranker\//] } },
   },
 });

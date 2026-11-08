@@ -9,7 +9,6 @@ import type { PhiraChart, PhiraQueriedBest } from '@rranker/game-phira/domain/ph
 import type { RizlineRecord } from '@rranker/game-rizline/domain/rizline';
 import type { TufPass } from '@rranker/game-adofai/domain/tuf';
 import type { OsuBestScore } from '@rranker/game-osu/domain/osu';
-import { fixtureRecords } from './fixtures/sanitized';
 import { getGameAdapter, type DetailTarget } from '@rranker/sdk';
 import { GameScoreCard } from '@rranker/sdk/components/game-content/GameScoreCard';
 import { GameSongRow } from '@rranker/sdk/components/game-content/GameSongRow';
@@ -31,6 +30,7 @@ const mockPush = jest.fn();
 const mockCrossAccount = { ...createLocalMaimaiAccount('Phigros 玩家', 0), id: 'phigros:test', gameId: 'phigros' as const };
 const mockSwitch = jest.fn(async (_id: string, _options: unknown) => { mockActiveGameId = 'phigros'; });
 jest.mock('@rranker/sdk/services/switch-bound-account', () => ({ switchBoundAccount: (id: string, options: unknown) => mockSwitch(id, options), notifyAccountSwitchError: jest.fn() }));
+jest.mock('@rranker/sdk/hooks/use-visible-bound-accounts', () => ({ useVisibleBoundAccounts: () => [mockCrossAccount] }));
 jest.mock('@rranker/sdk/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: (props: { visible: boolean; onClose: () => void; onSelectAccount: (account: unknown) => void }) => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -175,8 +175,9 @@ const maimaiRecord = {
 };
 
 const phigrosRecord = {
-  ...fixtureRecords[0]!, songId: 'Song.A', title: '测试曲', levelIndex: 3,
+  songId: 'Song.A', title: '测试曲', type: 'SD' as const, levelIndex: 3, level: 'AT',
   difficulty: 'expert' as const, difficultyConstant: 14.8, achievements: 99.5, dxScore: 900000,
+  rating: 14.5, fc: null, fs: null, rate: 's', version: 'test',
 };
 
 const chunithmCard: ChunithmScoreCardData = {

@@ -462,7 +462,7 @@ describe('Phigros song detail', () => {
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/detail', params: { songId: 'Song.A', gameId: 'phigros' } });
 
     await fireEvent.press(row.getByLabelText('收藏 测试曲'));
-    expect(mockSetSongFavorite).toHaveBeenCalledWith({ gameId: 'phigros', kind: 'song', id: 'Song.A', target: { songId: 'Song.A' } }, true);
+    expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);
 
     mockPush.mockClear();
     const card = await render(

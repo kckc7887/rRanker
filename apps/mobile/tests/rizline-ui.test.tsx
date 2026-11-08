@@ -42,7 +42,7 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
-jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeGameId: 'rizline', activeAccountId: 'rizline:1' }) }));
+jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (() => { const hook = (selector: (state: object) => unknown) => selector({ activeGameId: 'rizline', activeAccountId: 'rizline:1' }); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })() }));
 jest.mock('@rranker/sdk/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn() }), useNotificationModalRequestClose: () => () => false }));
 jest.mock('@rranker/game-rizline/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => {
   if (mockSongs[0] !== mockSong) mockSongs = [mockSong];

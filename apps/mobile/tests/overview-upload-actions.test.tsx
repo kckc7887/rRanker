@@ -8,6 +8,7 @@ import type { ProviderId } from '@rranker/sdk/domain/game-bind-options';
 let mockProviderId: ProviderId = 'local';
 let mockGameId = 'maimai';
 const mockRefreshPhigros = jest.fn(async () => undefined);
+jest.mock('@rranker/game-maimai/services/maimai-catalog-query', () => ({ refreshMaimaiCatalog: jest.fn(async () => undefined) }));
 jest.mock('@rranker/game-phigros/services/phigros-catalog-query', () => ({ refreshPhigrosCatalog: () => mockRefreshPhigros() }));
 let mockPinnedToolIds: string[] = [];
 let mockPinnedPlateIds: number[] = [];
@@ -143,6 +144,8 @@ jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
 }));
 jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
+    activeGameId: mockGameId,
+    activeAccountId: mockProviderId === 'phi-taptap' ? mockPhigros.id : mockProviderId === 'local' ? mockExtraLocal.id : mockProviderId === 'lxns' ? mockLxns.id : mockExtraWater.id,
     data: {
       gameId: mockGameId,
       providerId: mockProviderId,
@@ -184,9 +187,9 @@ jest.mock('@rranker/game-maimai/hooks/use-plates', () => ({
     },
   }),
 }));
-jest.mock('@rranker/sdk/state/session-store', () => ({
-  applyLxnsTokenRotation: jest.fn(),
-  useSession: (selector: (state: unknown) => unknown) => selector({
+jest.mock('@rranker/sdk/state/session-store', () => {
+  const getState = () => ({
+    activeProviderId: mockProviderId,
     boundAccounts: [mockLocal, mockExtraLocal, mockWater, mockExtraWater, mockLxns, mockPhigros],
     activeGameId: mockGameId,
     activeAccountId: mockProviderId === 'phi-taptap' ? mockPhigros.id : mockProviderId === 'local'
@@ -217,8 +220,11 @@ jest.mock('@rranker/sdk/state/session-store', () => ({
     },
     selectBoundAccount: jest.fn(),
     updateBoundAccountScore: jest.fn(),
-  }),
-}));
+  });
+  return { useSession: Object.assign((selector: (state: unknown) => unknown) => selector(getState()), {
+    getState, subscribe: () => () => undefined,
+  }) };
+});
 jest.mock('@rranker/sdk/state/toolbox-pins', () => ({
   useToolboxPins: (selector: (state: {
     pinsByGame: { maimai: string[]; chunithm: string[]; phigros: string[]; test: string[] };
@@ -253,6 +259,7 @@ jest.mock('@rranker/sdk/storage/secure-session-store', () => ({
 describe('总览上传和同步操作', () => {
   beforeEach(() => {
     mockGameId = 'maimai';
+    mockProviderId = 'local';
     mockRefreshPhigros.mockClear();
     mockTemporarySelectedAccountIds = undefined;
     mockPinnedToolIds = [];

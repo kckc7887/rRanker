@@ -59,8 +59,8 @@ describe('Phigros push screen input rules', () => {
       ['0.01', '1', true],
       ['0.01', '30', true],
       ['0.1', '30', true],
-      ['0.015', '7', false],
-      ['0.014', '7', false],
+      ['0.015', '7', true],
+      ['0.014', '7', true],
       ['1', '1', true],
       ['0', '1', false],
       ['-1', '1', false],
@@ -99,6 +99,14 @@ describe('Phigros push screen input rules', () => {
     mockPush.mockResolvedValueOnce(result);
     await expect(lastQueryOptions!.queryFn({ signal })).resolves.toBe(result);
     expect(mockPush).toHaveBeenCalledWith(0.01, 1, true, signal);
+  });
+
+  it.each([['0.015', 0.02], ['0.014', 0.01]] as const)('rounds %s before requesting recommendations', async (input, delta) => {
+    const screen = await render(<PushRksToolScreen />);
+    await fireEvent.changeText(screen.getByLabelText('期望加值'), input);
+    const signal = new AbortController().signal;
+    await lastQueryOptions!.queryFn({ signal });
+    expect(mockPush).toHaveBeenCalledWith(delta, 1, true, signal);
   });
 
   it('shows unavailable state when the source has no calculation capability', async () => {

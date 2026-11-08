@@ -37,15 +37,15 @@ jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({ usePhigrosKyo
 jest.mock('@rranker/game-maimai/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
 jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
 jest.mock('@rranker/game-chunithm/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
-jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({ data: mockBundle, isLoading: false, isError: false, error: null, refetch: mockRefetch, profile: mockBundle.profile }) }));
+jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({ activeGameId: 'rizline', activeAccountId: mockAccount.id, data: mockBundle, isLoading: false, isError: false, error: null, refetch: mockRefetch, profile: mockBundle.profile }) }));
 jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({ data: [], isError: false }) }));
 jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: undefined, error: null, refetch: jest.fn(async () => ({ data: undefined })) }) }));
 jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => ({ data: undefined, isLoading: false, isError: false }) }));
 jest.mock('@rranker/game-rizline/services/rizline-catalog-query', () => ({ refreshRizlineCatalog: () => mockRefreshCatalog() }));
-jest.mock('@rranker/sdk/state/session-store', () => ({ applyLxnsTokenRotation: jest.fn(), useSession: (selector: (state: object) => unknown) => selector({
+jest.mock('@rranker/sdk/state/session-store', () => ({ applyLxnsTokenRotation: jest.fn(), useSession: (() => { const hook = (selector: (state: object) => unknown) => selector({
   boundAccounts: [mockAccount], activeGameId: 'rizline', activeAccountId: mockAccount.id, session: null, sessionsByAccountId: {}, updateBoundAccountScore: jest.fn(),
-}) }));
+}); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })() }));
 jest.mock('@rranker/sdk/state/toolbox-pins', () => ({ useToolboxPins: (selector: (state: object) => unknown) => selector({
   pinsByGame: { rizline: [] },   hydrate: jest.fn(async () => undefined),
 }) }));
@@ -64,7 +64,7 @@ describe('Rizline overview', () => {
   it('shows the player and official total independently of estimated group contributions', async () => {
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('Rizline · 玩家概览')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '当前玩家 Rizline 玩家，点击切换账号' })).toBeTruthy();
+    expect(screen.getByLabelText('当前玩家 Rizline 玩家，点击切换账号')).toBeTruthy();
     const rating = within(screen.getByTestId('dx-rating-card'));
     expect(rating.getByText('Ranking Score')).toBeTruthy();
     expect(rating.getByTestId('dx-rating-card-value')).toHaveTextContent('136.1235');
@@ -74,11 +74,11 @@ describe('Rizline overview', () => {
 
   it('calls the shared refresh flow from synchronization', async () => {
     const screen = await render(<OverviewScreen />);
-    const sync = screen.getByRole('button', { name: '同步数据，当前 官方账号' });
+    const sync = screen.getByLabelText('同步数据，当前 官方账号');
     await fireEvent.press(sync);
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(mockSyncOrder).toEqual(['catalog', 'scores']);
-    await waitFor(() => expect(screen.getByRole('button', { name: '同步数据，当前 官方账号' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByLabelText('同步数据，当前 官方账号')).toBeEnabled());
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
 

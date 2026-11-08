@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { QueryClient } from '@tanstack/react-query';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
+import { debugPreferencesStore } from '@rranker/sdk/storage/debug-preferences-store';
 import { applyRizlineCatalog, ensureRizlineCatalog, refreshRizlineCatalog, RIZLINE_CATALOG_QUERY_KEY } from '@rranker/game-rizline/services/rizline-catalog-query';
 import { rizlinePayloadFromSnapshot } from '@rranker/game-rizline/domain/game-data';
 import { type GameDataBundle } from '@rranker/sdk/data';
@@ -11,18 +13,34 @@ import { rizlineCatalog, rizlineSave, rizlineSong, rizlineChart } from './fixtur
 import { buildMaxedRizlineSnapshot } from '@rranker/provider-rizline-test/providers/maxed-rizline-test-provider';
 import type { RizlineCatalogData } from '@rranker/game-rizline/domain/rizline';
 
-vi.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
-vi.mock('@rranker/sdk/state/query-client', () => ({ queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) }));
-vi.mock('@rranker/game-rizline/services/rizline-resources', () => ({ rizlineResources: { load: vi.fn(), loadFresh: vi.fn() } }));
+jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
+jest.mock('@rranker/sdk/state/query-client', () => {
+  const { QueryClient } = jest.requireActual<typeof import('@tanstack/react-query')>('@tanstack/react-query');
+  return { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) };
+});
+jest.mock('@rranker/game-rizline/services/rizline-resources', () => ({ rizlineResources: { load: jest.fn(), loadFresh: jest.fn() } }));
 
 const source = { kind: 'rizline' as const, label: 'Rizline 曲库', updatedAt: '2026-09-13', isStale: false };
 const key = gameDataQueryKey('rizline:u1', 'rizline', 'rizline-official', 'rizline');
-beforeEach(() => { queryClient.clear(); vi.clearAllMocks(); });
+const initialAccounts = useAccountStore.getState();
+const initialDebug = useDebugStore.getState();
+beforeAll(async () => {
+  jest.spyOn(debugPreferencesStore, 'load').mockResolvedValue({ testAccountsEnabled: true });
+  jest.spyOn(debugPreferencesStore, 'save').mockResolvedValue();
+  await useDebugStore.getState().setTestAccountsEnabled(true);
+});
+afterAll(() => { useDebugStore.setState(initialDebug, true); jest.restoreAllMocks(); });
+beforeEach(() => { queryClient.clear(); jest.clearAllMocks(); useAccountStore.setState(initialAccounts, true); });
+afterEach(() => { useAccountStore.setState(initialAccounts, true); });
+async function seedAccountQuery(accountId: string, providerId: string, queryKey: readonly unknown[], bundle: GameDataBundle) {
+  useAccountStore.getState().upsertBoundAccount({ id: accountId, gameId: 'rizline', providerId, displayName: '示例玩家', scoreLabel: 'RKS', scoreDisplay: '0', providerTitle: providerId });
+  await queryClient.fetchQuery({ queryKey, meta: { pluginId: 'game.rizline', gameId: 'rizline', sourcePluginId: `provider.${providerId}`, accountId }, queryFn: async () => bundle });
+}
 describe('Rizline catalog and account query coordination', () => {
   it('rebuilds example scores and total RKS when songs are added, revised or removed', async () => {
     const demoKey = gameDataQueryKey('rizline:test', 'rizline', 'rizline-test', 'rizline');
     const catalog = rizlineCatalog();
-    queryClient.setQueryData<GameDataBundle>(demoKey, { gameId: 'rizline', providerId: 'rizline-test', profile: getGameProfile('rizline'),
+    await seedAccountQuery('rizline:test', 'rizline-test', demoKey, { gameId: 'rizline', providerId: 'rizline-test', profile: getGameProfile('rizline'),
       payload: rizlinePayloadFromSnapshot(buildMaxedRizlineSnapshot(catalog, '示例玩家'), { snapshot: catalog, source }) });
     const replacement = { ...catalog, resourceVersion: 'r2', songs: [rizlineSong({
       id: 'new-song', title: '新歌曲', charts: [rizlineChart({ id: 'new-chart', songId: 'new-song', constant: 15, maxScore: 1_003_000 })],
@@ -37,10 +55,10 @@ describe('Rizline catalog and account query coordination', () => {
   });
   it('updates derived best groups after background metadata arrives without changing official RKS', async () => {
     const snapshot = { save: rizlineSave(), source };
-    queryClient.setQueryData<GameDataBundle>(key, { gameId: 'rizline', providerId: 'rizline-official', profile: getGameProfile('rizline'),
+    await seedAccountQuery('rizline:u1', 'rizline-official', key, { gameId: 'rizline', providerId: 'rizline-official', profile: getGameProfile('rizline'),
       payload: rizlinePayloadFromSnapshot(snapshot) });
     let onFresh!: (data: RizlineCatalogData) => void;
-    vi.mocked(rizlineResources.load).mockImplementation(async (_signal, callback) => {
+    jest.mocked(rizlineResources.load).mockImplementation(async (_signal, callback) => {
       onFresh = callback!;
       return { snapshot: { ...rizlineCatalog(), songs: [] }, source: { ...source, isStale: true } };
     });
@@ -58,7 +76,7 @@ describe('Rizline catalog and account query coordination', () => {
     queryClient.setQueryData(RIZLINE_CATALOG_QUERY_KEY, cached);
     const entered = Promise.withResolvers<AbortSignal>();
     const response = Promise.withResolvers<RizlineCatalogData>();
-    vi.mocked(rizlineResources.loadFresh).mockImplementation(signal => {
+    jest.mocked(rizlineResources.loadFresh).mockImplementation(signal => {
       entered.resolve(signal!);
       return response.promise;
     });
@@ -83,7 +101,7 @@ describe('Rizline catalog and account query coordination', () => {
     const bundle: GameDataBundle = { gameId: 'rizline', providerId: 'rizline-official', profile: getGameProfile('rizline'),
       payload: rizlinePayloadFromSnapshot({ save: rizlineSave(), source }, { snapshot: rizlineCatalog(), source }) };
     queryClient.setQueryData(key, bundle);
-    vi.mocked(rizlineResources.loadFresh).mockRejectedValue(new Error('corrupt release'));
+    jest.mocked(rizlineResources.loadFresh).mockRejectedValue(new Error('corrupt release'));
     await expect(refreshRizlineCatalog(queryClient)).rejects.toThrow('corrupt release');
     expect(queryClient.getQueryData(key)).toEqual(bundle);
   });

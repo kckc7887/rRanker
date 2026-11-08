@@ -1,3 +1,4 @@
+import { useAccountStore } from '@rranker/sdk/state/account-store';
 import type { Credential } from '@rranker/sdk/credentials';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
@@ -7,7 +8,7 @@ import type { Player } from '@rranker/game-maimai/domain/models';
 
 
 let mockLifecycle: AppLifecycleSnapshot;
-const mockSetSession = jest.fn();
+const initial = useAccountStore.getState();
 const mockSave = jest.fn<(account: unknown, signal?: AbortSignal) => Promise<string>>();
 const mockPlayer = jest.fn<(signal?: AbortSignal) => Promise<Player>>();
 const mockRecords = jest.fn(async (_signal?: AbortSignal) => []);
@@ -19,7 +20,6 @@ const player: Player = { id: 'player', displayName: '玩家', rating: 15000,
 jest.mock('@rranker/sdk/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
 jest.mock('@rranker/sdk/theme/app-theme', () => ({ useAppTheme: () => ({ text: '#111', textMuted: '#777', input: '#fff', border: '#ddd', accent: '#246BFD' }) }));
 jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: { invalidateQueries: jest.fn(async () => undefined) } }));
-jest.mock('@rranker/sdk/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ setSession: mockSetSession }) }));
 jest.mock('@rranker/sdk/storage/secure-session-store', () => ({ SecureSessionStore: class { upsertAccount = (...args: Parameters<typeof mockSave>) => mockSave(...args); } }));
 jest.mock('@rranker/provider-diving-fish/providers/diving-fish-provider', () => ({ DivingFishProvider: class {
   getPlayer = (signal?: AbortSignal) => mockPlayer(signal);
@@ -32,10 +32,12 @@ jest.mock('@rranker/provider-diving-fish/providers/diving-fish-auth', () => ({ D
 jest.mock('@rranker/sdk/services/invalidate-account-data', () => ({ cancelBoundAccountQueries: jest.fn(async () => undefined) }));
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.clearAllMocks(); useAccountStore.setState(initial, true);
   mockLifecycle = { appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 1, memoryWarningGeneration: 0 };
   mockSave.mockResolvedValue('credential'); mockPlayer.mockResolvedValue(player); mockLogin.mockResolvedValue(session);
 });
+
+afterEach(() => useAccountStore.setState(initial, true));
 
 function panel(visible: boolean, onSuccess: () => void) {
   return <DivingFishLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={jest.fn()} />;
@@ -57,7 +59,7 @@ describe('水鱼绑定请求寿命', () => {
     }
     expect(signal.aborted).toBe(true);
     await act(async () => { release(player); });
-    expect(mockSave).not.toHaveBeenCalled(); expect(mockSetSession).not.toHaveBeenCalled(); expect(success).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled(); expect(useAccountStore.getState().boundAccounts).toEqual([]); expect(success).not.toHaveBeenCalled();
   });
 
   it('keeps a newer reopened login when an older validation completes', async () => {
@@ -70,8 +72,9 @@ describe('水鱼绑定请求寿命', () => {
     await fireEvent.press(screen.getByText('验证并保存凭证'));
     await waitFor(() => expect(success).toHaveBeenCalledTimes(1));
     await act(async () => { release({ ...player, id: 'old', displayName: '旧玩家' }); });
-    expect(mockSave).toHaveBeenCalledTimes(1); expect(mockSetSession).toHaveBeenCalledTimes(1);
-    expect(mockSetSession.mock.calls[0]![1]).toMatchObject({ playerId: 'player' });
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState().boundAccounts).toEqual([expect.objectContaining({ id: 'maimai:diving-fish:player', displayName: '玩家', credentialId: 'credential' })]);
+    expect(useAccountStore.getState().credentialsById.credential).toEqual(session);
     expect(success).toHaveBeenCalledTimes(1);
   });
 
@@ -85,6 +88,6 @@ describe('水鱼绑定请求寿命', () => {
     await screen.rerender(panel(false, success));
     expect(signal.aborted).toBe(true);
     await act(async () => { finishSave('credential'); });
-    expect(mockSetSession).not.toHaveBeenCalled(); expect(success).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().boundAccounts).toEqual([]); expect(success).not.toHaveBeenCalled();
   });
 });

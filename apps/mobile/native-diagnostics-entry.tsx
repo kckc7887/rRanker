@@ -2,7 +2,7 @@ import { registerRootComponent } from 'expo';
 import Constants from 'expo-constants';
 import { useEffect, useState } from 'react';
 import { ScrollView, Text } from 'react-native';
-import { runNativeStorageProbe, type NativeProbeResult } from './src/services/native-storage-probe';
+import { runNativeStorageProbe, type NativeProbeResult } from '@rranker/sdk/services/native-storage-probe';
 
 function NativeDiagnostics() {
   const [results, setResults] = useState<NativeProbeResult[]>([]);

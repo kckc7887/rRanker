@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ScoreRecord } from '@rranker/game-maimai/domain/models';
+import type { ScoreRecord as PhigrosScoreRecord } from '@rranker/game-phigros/domain/models';
 import { presentChunithmScore } from '@rranker/game-chunithm/presentation';
 import { presentMaimaiScore } from '@rranker/game-maimai/presentation';
 import { presentPhigrosScore } from '@rranker/game-phigros/presentation';
@@ -21,8 +22,7 @@ const maimaiRecord: ScoreRecord = {
   version: 'current',
 };
 
-const phigrosRecord: ScoreRecord = {
-  ...maimaiRecord,
+const phigrosRecord: PhigrosScoreRecord = {
   songId: 'phi.0',
   title: 'Phigros Song',
   type: 'SD',
@@ -36,6 +36,7 @@ const phigrosRecord: ScoreRecord = {
   fc: 'ap',
   fs: null,
   rate: 'phi',
+  version: 'current',
 };
 
 describe('game content adapters', () => {

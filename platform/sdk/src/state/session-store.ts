@@ -15,7 +15,9 @@ function sessionView(state: AccountState) {
   const account = activeAccount(state);
   const activeAccountId = account?.id ?? UNBOUND_ACCOUNT_ID;
   const session = accountSession(state, activeAccountId);
-  const activeGameId = account?.gameId ?? getGameDefinitions().find(game => isGameAvailable(game.id))?.id ?? '';
+  const debug = useDebugStore.getState();
+  const activeGameId = account?.gameId ?? getGameDefinitions().find(game => isGameAvailable(game.id)
+    && (!game.fixture || (debug.hydrated && debug.testAccountsEnabled)))?.id ?? '';
   const sessionsByAccountId: Record<string, Credential> = {};
   const credentialIdsByAccountId: Record<string, string> = {};
   for (const item of state.boundAccounts) {

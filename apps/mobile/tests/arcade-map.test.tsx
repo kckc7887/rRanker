@@ -34,7 +34,7 @@ jest.mock('@rranker/tool-arcade-finder/services/arcade-map-platform', () => ({
   getArcadeMapAvailability: () => mockAvailability,
   acceptArcadeMapPrivacy: () => { mockAgree(); mockAvailability = 'available'; },
 }));
-jest.mock('@rranker/tool-arcade-finder/components/NativeArcadeMap', () => ({
+jest.mock('@rranker/tool-arcade-finder/components/NativeArcadeMap.ios', () => ({
   NativeArcadeMap: (props: NativeArcadeMapProps) => {
     mockNative = props;
     const { NativeArcadeMap } = jest.requireActual<typeof import('@rranker/tool-arcade-finder/components/NativeArcadeMap.ios')>('@rranker/tool-arcade-finder/components/NativeArcadeMap.ios');

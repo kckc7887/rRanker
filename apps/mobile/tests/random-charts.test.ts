@@ -1,4 +1,5 @@
 import type { CatalogSnapshot, ScoreRecord, Song } from '@rranker/game-maimai/domain/models';
+import type { CatalogSnapshot as PhigrosCatalogSnapshot, ScoreRecord as PhigrosScoreRecord } from '@rranker/game-phigros/domain/models';
 import { chartVersionKey } from '@rranker/game-maimai/domain/catalog';
 import { filterMaimaiRandomCharts, type MaimaiRandomChartFilters } from '@rranker/game-maimai/domain/random-charts';
 import { filterPhigrosRandomCharts, type PhigrosRandomChartFilters } from '@rranker/game-phigros/domain/random-charts';
@@ -245,7 +246,7 @@ describe('pickRandomItems', () => {
 });
 
 describe('filterPhigrosRandomCharts', () => {
-  const phigrosCatalog: CatalogSnapshot = {
+  const phigrosCatalog: PhigrosCatalogSnapshot = {
     currentVersion: { id: 0, title: 'test' },
     versions: [{ id: 0, title: 'test' }],
     source: fixtureSource,
@@ -261,7 +262,7 @@ describe('filterPhigrosRandomCharts', () => {
       ],
     }],
   };
-  const phigrosRecords: ScoreRecord[] = [{
+  const phigrosRecords: PhigrosScoreRecord[] = [{
     songId: 'song',
     title: 'Song',
     type: 'SD',
@@ -301,7 +302,7 @@ describe('filterPhigrosRandomCharts', () => {
   });
 
   it('filters charts by chapter version id', () => {
-    const catalog: CatalogSnapshot = {
+    const catalog: PhigrosCatalogSnapshot = {
       ...phigrosCatalog,
       songs: [
         { ...phigrosCatalog.songs[0]!, id: 'c1', versionId: 0, charts: [phigrosCatalog.songs[0]!.charts[0]!] },

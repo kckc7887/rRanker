@@ -63,11 +63,11 @@ jest.mock('expo-image', () => {
   };
 });
 jest.mock('@rranker/sdk/state/session-store', () => ({
-  useSession: (selector: (state: {
+  useSession: (() => { const hook = (selector: (state: {
     activeGameId: 'osu-standard'; activeProviderId: 'osu-test'; activeAccountId: string; session: null;
   }) => unknown) => (
     selector({ activeGameId: 'osu-standard', activeProviderId: 'osu-test', activeAccountId: 'osu-standard:osu-test:demo', session: null })
-  ),
+  ); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })(),
 }));
 jest.mock('@rranker/provider-osu/providers/osu-public-catalog-provider', () => ({ OsuPublicCatalogProvider: class {
   getBeatmapset(id: string) { return mockGetBeatmapset(id); }

@@ -104,14 +104,14 @@ it('treats a terminal background result that only kept the cache as a failure', 
 });
 
 it.each([
-  ['network fallback', { data: bundle({ stale: true }), isError: false }],
-  ['expired token', { data: bundle({ stale: true, requiresLogin: true }), isError: false }],
-  ['failed refetch retaining old fresh data', { data: bundle(), isError: true, error: new ProviderError('network', 'offline', false) }],
-])('does not treat %s as a successful sync', async (_label, response) => {
+  ['network fallback', { data: bundle({ stale: true }), isError: false }, { title: '同步失败', variant: 'error' }],
+  ['expired token', { data: bundle({ stale: true, requiresLogin: true }), isError: false }, { title: '同步失败', variant: 'error' }],
+  ['failed refetch retaining old fresh data', { data: bundle(), isError: true, error: new ProviderError('network', 'offline', false) }, { title: '刷新失败', variant: 'warning' }],
+])('does not treat %s as a successful sync', async (_label, response, notice) => {
   const hook = await renderHook(() => useOverviewSync(options(jest.fn(async () => response))));
   let result: boolean | undefined;
   await act(async () => { result = await hook.result.current.syncData(); });
-  expect(result).toBe(false); expect(mockNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '同步失败', variant: 'error' }));
+  expect(result).toBe(false); expect(mockNotification).toHaveBeenCalledWith(expect.objectContaining(notice));
 });
 
 it.each(['account switch', 'account rebind', 'cache clear', 'background', 'unmount'] as const)('suppresses late sync completion after %s', async mode => {

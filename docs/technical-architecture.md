@@ -31,7 +31,7 @@ rRanker 使用根 npm workspace 和根 `package-lock.json`。`plugins` 是固定
 
 依赖方向为插件依赖 SDK，数据源与工具依赖目标游戏的公开合同，应用依赖实际装配的插件。SDK 不导入具体插件，游戏不导入数据源或工具。适配器在 `GamePayloads` 上做模块扩充，保留自己的数据模型；平台只处理 `GameDataBundle` 与通用摘要。
 
-适配器和数据源入口只装配轻量元数据。页面、客户端、引擎及存储实现按访问加载。Simai、Phigros、Rizline、osu! 的谱面能力参与工具可用性判断，包的类型导出约束具体调用。
+适配器和数据源入口装配轻量元数据、目标解析与摘要规则。异步取数、账号操作和解析引擎通过 `import()` 按访问加载，页面、客户端及存储实现由原生模块加载器按需取得。Simai、Phigros、Rizline、osu! 的谱面能力参与工具可用性判断，包的类型导出约束具体调用。
 
 官方示例由 `game-example`、`provider-example-test`、`tool-example` 组成，使用与其他插件相同的绑定、取数、页面、收藏和工具入口。示例账号与示例游戏由调试偏好控制显示。
 
@@ -49,7 +49,7 @@ rRanker 使用根 npm workspace 和根 `package-lock.json`。`plugins` 是固定
 
 `state/account-store.ts` 保存账号列表、`selectedAccountId` 和按凭据 ID 保存的一份凭据。账号通过 `credentialId` 引用凭据。`state/session-store.ts` 派生活动账号、游戏、数据源和会话，`sourceClient` 通过 `state/session-provider-resolver.ts` 的 `resolveAccountClient(accountId)` 按需构造与缓存。
 
-实际活动账号从当前可用账号中选择。停用依赖时暂时回退到其他可用账号，没有则显示未绑定；保存的选择和账号信息继续保留，依赖恢复后重新使用原选择。
+实际活动账号从当前可用账号中选择。停用依赖时暂时回退到其他可用账号，没有则显示未绑定，默认游戏跳过调试开关隐藏的示例；保存的选择和账号信息继续保留，依赖恢复后重新使用原选择。
 
 客户端收到 `SourceClientContext`，包含账号、实时只读的 `credential`、数据提交资格和 `commitCredential`。凭据读取与回写固定到构造时的凭据 ID 和来源代次。普通数据请求受游戏和账号写入代次约束，重新绑定或移除账号使旧提交失效。共享凭据的其他可用账号仍存在时可以完成凭据轮换；同 ID 重绑、清除会话或插件停用使旧轮换失效，重新启用后旧请求仍不可提交。
 
@@ -124,6 +124,8 @@ npm run check:packages
 ```
 
 `check:packages` 将 SDK、适配器、数据源、工具、格式库和原生包实际打包，安装到独立消费工程，再编译只使用公开接口的外部游戏、数据源和工具。其解析环境不使用应用的路径别名。
+
+Vitest 执行纯业务与异步模块测试；Jest 执行页面和 `*.native.test.ts` 的原生客户端、存储集成测试。两者通过 `tests/plugin-setup.ts` 装配轻量插件清单，原生外部依赖由各业务用例模拟。
 
 CI 的 push 与 PR 入口均检出固定子模块提交，使用根锁文件安装。质量检查覆盖 lint、类型、业务和 UI、生成物一致性、外部包消费及 CI 脚本。生成物不一致时，云端额外生成播放器资源并上传供维护；该次一致性检查仍失败，提交资源后重新检查。
 

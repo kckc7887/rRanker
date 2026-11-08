@@ -1,4 +1,4 @@
-import { resolveDxRatingTheme } from '@rranker/game-maimai/domain/dx-rating-theme';
+import { resolveRatingTheme } from '@rranker/game-maimai/domain/dx-rating-theme';
 
 import { render } from '@testing-library/react-native';
 import { RatingCard } from '@rranker/sdk/components/RatingCard';
@@ -11,7 +11,7 @@ import {
 
 describe('DX Rating components', () => {
   it('shows the rating tier and stars', async () => {
-    const screen = await render(<RatingCard label="DX RATING" display="16750" meta="测试玩家" themeOverride={resolveDxRatingTheme(16750)} />);
+    const screen = await render(<RatingCard label="DX RATING" display="16750" meta="测试玩家" themeOverride={resolveRatingTheme(16750)} />);
     expect(screen.getByTestId('dx-rating-card-stars')).toHaveTextContent('★★★★');
     expect(screen.queryByTestId('dx-rating-medal')).toBeNull();
     expect(screen.getByLabelText(/档位 彩极/)).toBeTruthy();

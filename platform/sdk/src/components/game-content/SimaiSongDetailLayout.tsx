@@ -59,14 +59,14 @@ export function SimaiChartResultLayout({ identity, level, secondaryLevel, result
 }
 
 export function SimaiNoteTable({ group, label, onPress, accessibilityLabel }: {
-  group: NoteGroupPresentation; label?: string; onPress: () => void; accessibilityLabel: string;
+  group: NoteGroupPresentation; label?: string; onPress?: () => void; accessibilityLabel: string;
 }) {
   const theme = useAppTheme();
-  return <DetailPressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress}
+  return <DetailPressable accessibilityRole="button" accessibilityLabel={onPress ? accessibilityLabel : undefined} onPress={onPress} disabled={!onPress}
     style={({ pressed }) => [styles.notesAction, pressed && styles.notesActionPressed]}>
     {label ? <Text style={[styles.notesPlayerLabel, { color: theme.text }]}>{label}</Text> : null}
     <GameNoteTable mode="grid" group={group} accessibilityLabel="谱面物量" />
-    <Text style={[styles.notesHint, { color: theme.textMuted }]}>点击物量表，前往达成率与容错计算</Text>
+    {onPress ? <Text style={[styles.notesHint, { color: theme.textMuted }]}>点击物量表，前往达成率与容错计算</Text> : null}
   </DetailPressable>;
 }
 

@@ -83,7 +83,7 @@ test('catalog row displays raw levels and toggles favorites', async () => {
   expect(screen.queryByText(/MASTER/)).toBeNull(); expect(screen.queryByText('SD')).toBeNull();
   const favorite = screen.getByLabelText(`收藏 ${mockSong.title}`);
   await fireEvent.press(favorite);
-  expect(onFavoriteChange).toHaveBeenCalledWith(mockSong.id, true);
+  expect(onFavoriteChange).toHaveBeenCalledWith({ gameId: 'majdata-net', kind: 'song', id: mockSong.id, target: { songId: mockSong.id } }, true);
   expect(screen.getByLabelText('歌曲封面').props).toMatchObject({ contentFit: 'cover', transition: 120,
     source: expect.stringContaining(mockSong.id) });
 });
@@ -209,7 +209,7 @@ test('a filtered empty page continues the upstream cursor, while exhaustion show
 test('catalog favorites use the shared local library and records show DX with the existing count header', async () => {
   const catalog = await render(<MajdataCatalogScreen />);
   await fireEvent.press(catalog.getByLabelText(`收藏 ${mockSong.title}`));
-  expect(mockFavorite).toHaveBeenCalledWith(mockSong.id, true);
+  expect(mockFavorite).toHaveBeenCalledWith({ gameId: 'majdata-net', kind: 'song', id: mockSong.id, target: { songId: mockSong.id } }, true);
   await catalog.unmount();
   const records = await render(<MajdataRecordsScreen />);
   expect(await records.findByText('共 1 条成绩')).toBeTruthy();

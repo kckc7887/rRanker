@@ -1,10 +1,10 @@
+import { setDisabledPlugins } from '@rranker/sdk';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createMuseDashBoundAccount } from '@rranker/game-musedash/accounts';
 
-let mockHasTools = true;
 const mockAccount = createMuseDashBoundAccount({
   userId: '6ea4f986ffd211e8aa980242ac110011', displayName: 'SiMOOOOOON', rl: 3.45,
 });
@@ -21,7 +21,7 @@ const mockBundle = {
     return {
       id: 'musedash', title: '喵斯快跑', ratingLabel: 'Rating', ratingDigits: 0,
       bestSections: [{ id: 'best30', title: 'Best 30', size: 30 }],
-      capabilities: { hasTools: mockHasTools },
+
     };
   },
   payload: {
@@ -96,16 +96,17 @@ jest.mock('@rranker/game-chunithm/domain/chunithm-maintenance', () => ({
 }));
 
 describe('overview capability contract', () => {
-  beforeEach(() => { mockHasTools = true; });
+  beforeEach(() => { setDisabledPlugins([]); });
+  afterEach(() => { setDisabledPlugins([]); });
 
-  it('shows the toolbox entry only while the profile declares tools', async () => {
+  it('shows the toolbox entry only while a contributing tool is available', async () => {
     const withTools = await render(<OverviewScreen />);
     expect(withTools.getByText('工具箱')).toBeTruthy();
     expect(withTools.getByText('打开工具箱 →')).toBeTruthy();
     expect(withTools.getByText('随机歌曲 · 音游地图')).toBeTruthy();
     await withTools.unmount();
 
-    mockHasTools = false;
+    setDisabledPlugins(['tool.musedash', 'tool.arcade-finder']);
     const withoutTools = await render(<OverviewScreen />);
     expect(withoutTools.queryByText('工具箱')).toBeNull();
     expect(withoutTools.queryByText('打开工具箱 →')).toBeNull();

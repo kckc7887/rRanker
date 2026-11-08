@@ -464,5 +464,5 @@ describe('Phira catalog pagination states', () => {
 
 jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
   ...jest.requireActual<typeof import('@rranker/sdk/state/session-provider-resolver')>('@rranker/sdk/state/session-provider-resolver'),
-  resolveAccountClient: (accountId: string) => accountId === 'phira:test' ? mockDemoClient : undefined,
+  resolveAccountClient: (accountId: string) => ['phira:test', 'phira:test-old'].includes(accountId) ? mockDemoClient : undefined,
 }));

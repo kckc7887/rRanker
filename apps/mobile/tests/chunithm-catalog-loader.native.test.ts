@@ -1,22 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadChunithmAliases } from '@rranker/game-chunithm/services/chunithm-catalog-loader';
 
-const aliasPayload = {
+const mockAliasPayload = {
   aliases: [
     { song_id: 3, aliases: ['bbkkbkk', 'bk'] },
     { song_id: 7, aliases: ['初音未来的消失', '消失'] },
   ],
 };
 
-vi.mock('@rranker/provider-lxns/providers/chunithm-catalog-provider', async () => {
-  const actual = await vi.importActual<typeof import('@rranker/provider-lxns/providers/chunithm-catalog-provider')>(
+jest.mock('@rranker/provider-lxns/providers/chunithm-catalog-provider', () => {
+  const actual = jest.requireActual<typeof import('@rranker/provider-lxns/providers/chunithm-catalog-provider')>(
     '@rranker/provider-lxns/providers/chunithm-catalog-provider',
   );
   return {
     ...actual,
     ChunithmCatalogProvider: class {
       async getAliases() {
-        return actual.mapChunithmAliases({ ...aliasPayload });
+        return actual.mapChunithmAliases({ ...mockAliasPayload });
       }
     },
   };
@@ -24,7 +23,7 @@ vi.mock('@rranker/provider-lxns/providers/chunithm-catalog-provider', async () =
 
 describe('loadChunithmAliases', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   it('loads the public alias snapshot for the current session', async () => {
@@ -46,7 +45,7 @@ describe('loadChunithmAliases', () => {
     const prototype = providerModule.ChunithmCatalogProvider.prototype as {
       getAliases: () => Promise<unknown>;
     };
-    vi.spyOn(prototype, 'getAliases').mockRejectedValueOnce(new Error('network'));
+    jest.spyOn(prototype, 'getAliases').mockRejectedValueOnce(new Error('network'));
 
     await expect(loadChunithmAliases()).rejects.toThrow('network');
   });

@@ -1,3 +1,5 @@
+import { useAccountStore } from '@rranker/sdk/state/account-store';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
 import type { Credential } from '@rranker/sdk/credentials';
 import { jest } from '@jest/globals';
 import { QueryClient } from '@tanstack/react-query';
@@ -29,6 +31,16 @@ import { buildScoreSnapshot } from '@rranker/game-maimai/services/score-service'
 import { getDataSource } from '@rranker/sdk/registry';
 import { LxnsCatalogProvider } from '@rranker/provider-lxns/providers/lxns-catalog-provider';
 import { ScoreRepository } from '@rranker/game-maimai/storage/score-repository';
+
+jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => ({
+  SqliteSnapshotRepository: class {
+    async getResource() { return null; }
+    async saveResource() { return undefined; }
+    async updateResource() { return null; }
+    async clearResources() { return undefined; }
+    async listResourceSizes() { return []; }
+  },
+}));
 
 jest.mock('@rranker/game-maimai/storage/score-repository', () => {
   class MemorySnapshotRepository {
@@ -117,8 +129,12 @@ it('舞萌示例从曲库生成成绩并保留已有的持久化内容', async (
   });
 });
 function createClient() { const client = new QueryClient(); clients.add(client); return client; }
+const initialAccounts = useAccountStore.getState();
+const initialDebug = useDebugStore.getState();
 beforeEach(() => { jest.restoreAllMocks(); });
 afterEach(() => {
+  useAccountStore.setState(initialAccounts, true);
+  useDebugStore.setState(initialDebug, true);
   for (const client of clients) client.clear();
   clients.clear();
   for (const key of backgroundKeys.splice(0)) registerGameDataBackground(key, null);
@@ -318,12 +334,14 @@ it('Rizline 示例总览随曲库更新重建所有满成绩和总 RKS，SP 不�
   const catalog = { snapshot: rizlineCatalog(), source: fixtureSource };
   client.setQueryData(RIZLINE_CATALOG_QUERY_KEY, catalog);
   const account = createCatalogTestAccount('rizline', 'Rizline 示例玩家');
+  useDebugStore.setState({ hydrated: true, testAccountsEnabled: true });
+  useAccountStore.getState().upsertBoundAccount(account);
   const input = context({ gameId: 'rizline', providerId: account.providerId!, accountId: account.id, client });
   input.activeAccount = account;
   const { bundle } = await loadGameDataBundle(input);
   expect(bundle.payload).toMatchObject({ kind: 'rizline', player: { username: account.displayName },
     playerScore: { value: 3.5625 }, records: [{ score: 1002000, achievements: 120, ap: true, rks: 142.5 }] });
-  client.setQueryData(input.queryKey, bundle);
+  await client.fetchQuery({ queryKey: input.queryKey, meta: { pluginId: 'game.rizline', sourcePluginId: 'provider.rizline-test', gameId: 'rizline', accountId: account.id }, queryFn: async () => bundle });
 
   const nextCatalog = rizlineCatalog('r2');
   nextCatalog.songs[0].charts = [rizlineChart({ constant: 13, maxScore: 1003000 }),

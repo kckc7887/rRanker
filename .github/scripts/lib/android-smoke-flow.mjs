@@ -218,7 +218,7 @@ try {
       phase = 'arcade-map';
       shell('pm', 'grant', 'com.rranker.app', 'android.permission.ACCESS_COARSE_LOCATION');
       shell('pm', 'grant', 'com.rranker.app', 'android.permission.ACCESS_FINE_LOCATION');
-      route('tools/arcade-finder');
+      route('plugins/tool.arcade-finder/arcade-finder?gameId=maimai');
       if (amapConfigured) {
         current = await waitFor(list => ownNodes(list).some(node => node.text === '使用列表'), 'arcade consent');
         tap(ownNodes(current).find(node => node.text === '使用列表'));

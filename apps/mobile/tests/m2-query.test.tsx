@@ -379,7 +379,7 @@ describe('M2 song query screens', () => {
       expect(screen.getByText('谱师：SD主谱师')).toBeTruthy();
 
       await fireEvent.press(screen.getByLabelText('收藏 正常曲目 A'));
-      expect(mockSetSongFavorite).toHaveBeenCalledWith('1', true);
+      expect(mockSetSongFavorite).toHaveBeenCalledWith({ gameId: 'maimai', kind: 'song', id: '1', target: { songId: '1' } }, true);
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
     }
@@ -754,7 +754,7 @@ describe('M2 song query screens', () => {
       .toEqual(['MASTER', 'BASIC']);
 
     await fireEvent.press(screen.getByLabelText('收藏 正常曲目 A'));
-    expect(mockSetSongFavorite).toHaveBeenCalledWith('1', true);
+    expect(mockSetSongFavorite).toHaveBeenCalledWith({ gameId: 'maimai', kind: 'song', id: '1', target: { songId: '1' } }, true);
 
     await fireEvent(screen.getByTestId('alias-overflow-measure'), 'textLayout', { nativeEvent: { lines: [{}, {}] } });
     await fireEvent.press(screen.getByLabelText('展开别名'));

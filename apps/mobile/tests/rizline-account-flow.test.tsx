@@ -8,7 +8,7 @@ import { ProviderError } from '@rranker/sdk/providers/errors';
 import { createRizlineBoundAccount } from '@rranker/game-rizline/accounts';
 import { useAccountStore } from '@rranker/sdk/state/account-store';
 import { useSession } from '@rranker/sdk/state/session-store';
-import { invalidateResourceWrites, resourceWriteGeneration } from '@rranker/sdk/services/snapshot-cache-utils';
+import { captureResourceWrites, invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 import type { RizlineSave } from '@rranker/game-rizline/domain/rizline';
 import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle';
 
@@ -149,7 +149,7 @@ test('an old cleanup cannot unlock a newer login after backgrounding', async () 
 test('binds through the real login sheet, invalidates old account requests, and exposes unlink in management', async () => {
   const onSuccess = jest.fn(); const game = findGame('rizline')!;
   const accountId = `rizline:official:${mockPlayer.userId}`;
-  const generation = resourceWriteGeneration(`account:${accountId}`);
+  const assertPreviousRequest = captureResourceWrites('rizline', undefined, accountId);
   const sheet = await render(<ProviderLoginSheet visible provider={game.providers[0]} gameId="rizline" gameTitle="Rizline" onClose={jest.fn()} onSuccess={onSuccess} />);
   await fireEvent.changeText(sheet.getByLabelText('手机号'), mockSession.phone);
   await fireEvent.changeText(sheet.getByLabelText('验证码'), '123456');
@@ -161,13 +161,13 @@ test('binds through the real login sheet, invalidates old account requests, and 
   expect(JSON.stringify(mockUpsert.mock.calls[0][0])).not.toContain('123456');
   expect(mockCancelQueries).toHaveBeenCalledTimes(1);
   expect(mockRemoveQueries).toHaveBeenCalledTimes(1);
-  expect(resourceWriteGeneration(`account:${accountId}`)).toBe(generation + 1);
+  expect(assertPreviousRequest).toThrow();
   expect(useSession.getState()).toMatchObject({ activeAccountId: accountId, activeGameId: 'rizline', session: mockSession });
   expect(useSession.getState().boundAccounts[0]).toMatchObject({ displayName: '律动玩家', scoreDisplay: '135.4321' });
   await sheet.unmount();
   const management = await render(<GameAccountsScreen />);
   expect(management.getByText('135.4321')).toBeTruthy();
-  await fireEvent.press(management.getByLabelText('解除绑定 律动玩家'));
+  await fireEvent.press(management.getByText('解除绑定'));
   const keepAction = mockNotification.mock.calls[0][0].actions?.find(action => action.label === '确认解绑并保留个人数据');
   expect(keepAction).toBeDefined();
   await act(async () => { keepAction?.onPress?.(); });

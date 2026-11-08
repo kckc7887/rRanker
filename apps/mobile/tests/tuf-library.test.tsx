@@ -65,9 +65,9 @@ jest.mock('@rranker/sdk/theme/app-theme', () => ({
   }),
 }));
 jest.mock('@rranker/sdk/state/session-store', () => ({
-  useSession: (selector: (state: unknown) => unknown) => selector({
+  useSession: (() => { const hook = (selector: (state: unknown) => unknown) => selector({
     activeAccountId: 'adofai:tuf:25', activeGameId: 'adofai',
-  }),
+  }); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })(),
 }));
 jest.mock('@rranker/game-adofai/hooks/use-tuf', () => ({
   ...jest.requireActual<typeof import('@rranker/game-adofai/hooks/use-tuf')>('@rranker/game-adofai/hooks/use-tuf'),

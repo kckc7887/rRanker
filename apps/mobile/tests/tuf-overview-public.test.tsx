@@ -1,6 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
+import { emptyGamePayload as mockEmptyGamePayload } from '@rranker/sdk/data';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createTufBoundAccount } from '@rranker/game-adofai/accounts';
 
@@ -10,7 +11,7 @@ const mockShowNotification = jest.fn();
 const mockNotifySwitchError = jest.fn((error: unknown, notify: (value: unknown) => unknown) => {
   notify({ title: '当前账号未保存', message: '当前已切换，账号选择未保存，请重新选择', variant: 'error' });
 });
-let mockNullPayload = false;
+let mockEmptyPayload = false;
 const mockFirstAccount = createTufBoundAccount({ playerId: 25, displayName: '公开玩家', rankedScore: 1824.52 });
 const mockSecondAccount = createTufBoundAccount({ playerId: 26, displayName: '公开二号', rankedScore: 1600 });
 const mockPlayer = {
@@ -36,6 +37,7 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
 }));
+jest.mock('@rranker/sdk/hooks/use-visible-bound-accounts', () => ({ useVisibleBoundAccounts: () => [mockFirstAccount, mockSecondAccount] }));
 jest.mock('@rranker/sdk/components/AccountSwitchSheet', () => ({
   AccountSwitchSheet: ({
     visible, accounts, onSelectAccount,
@@ -77,8 +79,9 @@ jest.mock('@rranker/sdk/components/QueryStateView', () => ({
   },
 }));
 jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({
-  data: mockNullPayload ? { ...mockBundle, payload: null } : mockBundle,
+  data: mockEmptyPayload ? { ...mockBundle, payload: mockEmptyGamePayload('adofai', '未绑定玩家') } : mockBundle,
   isLoading: false, isError: false, error: null, refetch: mockRefetch,
+  activeGameId: 'adofai', activeAccountId: mockFirstAccount.id,
   profile: { ratingLabel: 'RANKED SCORE', ratingDigits: 0 },
 }) }));
 jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
@@ -91,10 +94,10 @@ jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({ useChuni
 }) }));
 jest.mock('@rranker/sdk/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
-  useSession: (selector: (state: unknown) => unknown) => selector({
+  useSession: (() => { const hook = (selector: (state: unknown) => unknown) => selector({
     boundAccounts: [mockFirstAccount, mockSecondAccount], activeGameId: 'adofai', activeAccountId: mockFirstAccount.id,
     session: null, sessionsByAccountId: {}, updateBoundAccountScore: jest.fn(),
-  }),
+  }); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })(),
 }));
 jest.mock('@rranker/sdk/state/toolbox-pins', () => ({ useToolboxPins: (selector: (state: unknown) => unknown) => selector({
   pinsByGame: { maimai: [], chunithm: [], phigros: [], adofai: [], test: [] },
@@ -125,7 +128,7 @@ describe('TUF public overview', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSwitchBoundAccount.mockReset(); mockSwitchBoundAccount.mockResolvedValue(true);
-    mockNullPayload = false;
+    mockEmptyPayload = false;
     mockRefetch.mockResolvedValue({ data: mockBundle });
   });
 
@@ -164,8 +167,8 @@ describe('TUF public overview', () => {
     expect(screen.queryByText(/读取方式/)).toBeNull();
   });
 
-  it('rejects a stale null payload before the public shell reads player fields', async () => {
-    mockNullPayload = true;
+  it('shows the binding prompt for an empty account payload', async () => {
+    mockEmptyPayload = true;
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('请在游戏管理中绑定 TUF 玩家')).toBeTruthy();
     expect(screen.queryByTestId('overview-scroll')).toBeNull();

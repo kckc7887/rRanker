@@ -108,6 +108,7 @@ jest.mock('@rranker/game-maimai/hooks/use-detailed-catalog', () => ({
     refetch: jest.fn(async () => ({ data: undefined })),
   }),
 }));
+jest.mock('@rranker/game-chunithm/services/chunithm-catalog-query', () => ({ refreshChunithmCatalog: jest.fn(async () => undefined) }));
 jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: {
@@ -125,6 +126,8 @@ jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
 }));
 jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
   useGameData: () => ({
+    activeGameId: 'chunithm',
+    activeAccountId: mockAccount.id,
     data: { ...mockBundle, providerId: mockProviderId },
     isLoading: false,
     isError: false,
@@ -133,9 +136,9 @@ jest.mock('@rranker/sdk/hooks/use-game-data', () => ({
     profile: { ratingLabel: 'RATING', ratingDigits: 2 },
   }),
 }));
-jest.mock('@rranker/sdk/state/session-store', () => ({
-  applyLxnsTokenRotation: jest.fn(),
-  useSession: (selector: (state: unknown) => unknown) => selector({
+jest.mock('@rranker/sdk/state/session-store', () => {
+  const getState = () => ({
+    activeProviderId: mockProviderId,
     boundAccounts: [mockAccount],
     activeGameId: 'chunithm',
     activeAccountId: mockAccount.id,
@@ -148,8 +151,11 @@ jest.mock('@rranker/sdk/state/session-store', () => ({
     },
     sessionsByAccountId: {},
     updateBoundAccountScore: jest.fn(),
-  }),
-}));
+  });
+  return { useSession: Object.assign((selector: (state: unknown) => unknown) => selector(getState()), {
+    getState, subscribe: () => () => undefined,
+  }) };
+});
 let mockPinnedCollections: { kind: string; id: number }[] = [];
 jest.mock('@rranker/sdk/state/toolbox-pins', () => ({
   useToolboxPins: (selector: (state: unknown) => unknown) => selector({

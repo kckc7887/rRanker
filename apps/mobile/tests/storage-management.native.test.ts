@@ -1,7 +1,7 @@
+import { waitFor } from '@testing-library/react-native';
 import { createHash } from 'node:crypto';
 import { QueryClient } from '@tanstack/react-query';
 import { loadPhigrosKyouAliases, resetPhigrosKyouAliasesCache } from '@rranker/provider-phi-taptap/services/phigros-kyou-cache';
-import { describe, expect, it, vi } from 'vitest';
 import {
   parseStorageClearPreferences,
   type StorageClearCategoryId,
@@ -28,38 +28,40 @@ import { SqliteSnapshotRepository } from '@rranker/sdk/storage/sqlite-snapshot-r
 import { captureResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 import { useAccountStore } from '@rranker/sdk/state/account-store';
 
-vi.mock('@rranker/tool-rizline/features/rizline-best-image/rizline-ui-cache', () => ({ clearRizlineUiCache: () => undefined }));
+const originalFetch = globalThis.fetch;
 
-vi.mock('@rranker/tool-chunithm/features/chunithm-best-image/chunithm-ui-cache', () => ({ clearChunithmUiCache: () => undefined }));
+jest.mock('@rranker/tool-rizline/features/rizline-best-image/rizline-ui-cache', () => ({ clearRizlineUiCache: () => undefined }));
 
-const mocks = vi.hoisted(() => ({
-  execAsync: vi.fn(async () => undefined),
-  getFirstAsync: vi.fn(async (_sql: string) => null as Record<string, number> | null),
-  measureDirectoryBytes: vi.fn(async (_directory?: { uri: string } | null) => 0),
-  clearMaimaiUiCache: vi.fn(),
-  clearPhigrosUiCache: vi.fn(),
-  clearGameRemoteImageCache: vi.fn(async (): Promise<void> => undefined),
-  listRemoteImageCacheUsage: vi.fn(async () => []),
-  clearDirectoryContentsStrict: vi.fn(),
-  clearDiskCache: vi.fn(async () => true),
-  clearMemoryCache: vi.fn(async () => true),
-}));
+jest.mock('@rranker/tool-chunithm/features/chunithm-best-image/chunithm-ui-cache', () => ({ clearChunithmUiCache: () => undefined }));
 
-vi.mock('expo-sqlite', () => ({
-  openDatabaseAsync: vi.fn(async () => ({
-    execAsync: mocks.execAsync,
-    getFirstAsync: mocks.getFirstAsync,
-    getAllAsync: vi.fn(async () => []),
-    runAsync: vi.fn(async () => undefined),
+const mocks = ({
+  execAsync: jest.fn(async () => undefined),
+  getFirstAsync: jest.fn(async (_sql: string) => null as Record<string, number> | null),
+  measureDirectoryBytes: jest.fn(async (_directory?: { uri: string } | null) => 0),
+  clearMaimaiUiCache: jest.fn(),
+  clearPhigrosUiCache: jest.fn(),
+  clearGameRemoteImageCache: jest.fn(async (): Promise<void> => undefined),
+  listRemoteImageCacheUsage: jest.fn(async () => []),
+  clearDirectoryContentsStrict: jest.fn(),
+  clearDiskCache: jest.fn(async () => true),
+  clearMemoryCache: jest.fn(async () => true),
+});
+
+jest.mock('expo-sqlite', () => ({
+  openDatabaseAsync: jest.fn(async () => ({
+    get execAsync() { return mocks.execAsync; },
+    get getFirstAsync() { return mocks.getFirstAsync; },
+    getAllAsync: jest.fn(async () => []),
+    runAsync: jest.fn(async () => undefined),
   })),
 }));
 
-vi.mock('expo-image', () => ({ Image: {
-  clearDiskCache: mocks.clearDiskCache,
-  clearMemoryCache: mocks.clearMemoryCache,
+jest.mock('expo-image', () => ({ Image: {
+  get clearDiskCache() { return mocks.clearDiskCache; },
+  get clearMemoryCache() { return mocks.clearMemoryCache; },
 } }));
 
-vi.mock('expo-file-system', () => {
+jest.mock('expo-file-system', () => {
   class Entry {
     uri: string;
     exists = false;
@@ -70,10 +72,10 @@ vi.mock('expo-file-system', () => {
   return { Directory: Entry, File: Entry, Paths: { document: 'file:///document', cache: 'file:///cache' } };
 });
 
-vi.mock('@rranker/sdk/features/storage-management/fs-storage', () => ({
-  measureDirectoryBytesAsync: mocks.measureDirectoryBytes,
-  measureDirectoryBytesStrictAsync: mocks.measureDirectoryBytes,
-  clearDirectoryContentsStrict: mocks.clearDirectoryContentsStrict,
+jest.mock('@rranker/sdk/features/storage-management/fs-storage', () => ({
+  get measureDirectoryBytesAsync() { return mocks.measureDirectoryBytes; },
+  get measureDirectoryBytesStrictAsync() { return mocks.measureDirectoryBytes; },
+  get clearDirectoryContentsStrict() { return mocks.clearDirectoryContentsStrict; },
   runSharedCacheFileOperation: async <T>(operation: () => Promise<T>) => operation(),
   APP_CACHE_ROOT: () => ({ uri: 'file:///cache' }),
   APP_DOCUMENT_ROOT: () => null,
@@ -85,22 +87,22 @@ vi.mock('@rranker/sdk/features/storage-management/fs-storage', () => ({
   CHUNITHM_ASSETS_ROOT: () => null,
 }));
 
-vi.mock('@rranker/sdk/services/remote-image-cache', () => ({
-  clearGameRemoteImageCache: mocks.clearGameRemoteImageCache,
-  listRemoteImageCacheUsage: mocks.listRemoteImageCacheUsage,
+jest.mock('@rranker/sdk/services/remote-image-cache', () => ({
+  get clearGameRemoteImageCache() { return mocks.clearGameRemoteImageCache; },
+  get listRemoteImageCacheUsage() { return mocks.listRemoteImageCacheUsage; },
 }));
 
-vi.mock('@rranker/sdk/features/storage-management/ui-icon-fonts', () => ({
+jest.mock('@rranker/sdk/features/storage-management/ui-icon-fonts', () => ({
   reloadUiIconFonts: async () => undefined,
 }));
 
-vi.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache', () => ({
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache', () => ({
   clearPhigrosFontCache: () => undefined,
 }));
-vi.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache', () => ({ clearPhigrosUiCache: mocks.clearPhigrosUiCache }));
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache', () => ({ get clearPhigrosUiCache() { return mocks.clearPhigrosUiCache; } }));
 
-vi.mock('@rranker/tool-maimai/features/best-image/maimai-ui-cache', () => ({
-  clearMaimaiUiCache: mocks.clearMaimaiUiCache,
+jest.mock('@rranker/tool-maimai/features/best-image/maimai-ui-cache', () => ({
+  get clearMaimaiUiCache() { return mocks.clearMaimaiUiCache; },
 }));
 
 describe('storage-clear-prefs', () => {
@@ -138,7 +140,7 @@ it('measures and clears a game account without a game prefix in its ID', async (
       scores: [{ accountId: id, bytes: 40 }, { accountId: 'unrelated', bytes: 500 }],
       resources: [{ key: `account-thumbnail:${id}`, bytes: 8 }, { key: 'account-thumbnail:unrelated', bytes: 90 }],
     };
-    const snapshots = { clearAccountScores: vi.fn(async () => undefined), clearResources: vi.fn(async () => undefined) };
+    const snapshots = { clearAccountScores: jest.fn(async () => undefined), clearResources: jest.fn(async () => undefined) };
     await expect(adapter.measure(inventory)).resolves.toBe(48);
     await adapter.clear(snapshots as never, inventory);
     expect(snapshots.clearAccountScores).toHaveBeenCalledWith([id]);
@@ -189,11 +191,11 @@ describe('app-owned cache entries', () => {
 describe('phira storage segment', () => {
 
   it('measures and clears every Phira resource through the common adapter', async () => {
-    const clearAccountScores = vi.fn(async () => undefined);
-    const clearResources = vi.fn(async () => undefined);
+    const clearAccountScores = jest.fn(async () => undefined);
+    const clearResources = jest.fn(async () => undefined);
     const snapshots = {
-      listAccountScoreSizes: vi.fn(async () => []),
-      listResourceSizes: vi.fn(async () => [
+      listAccountScoreSizes: jest.fn(async () => []),
+      listResourceSizes: jest.fn(async () => [
         { key: 'phira:player:323528', bytes: 10 },
         { key: 'phira:bests:323528', bytes: 20 },
         { key: 'phira:charts:ranked:0:', bytes: 30 },
@@ -220,9 +222,9 @@ describe('phira storage segment', () => {
   it('removes Phira in-memory queries after clearing persistent cache', async () => {
     mocks.clearGameRemoteImageCache.mockClear();
     const client = {
-      invalidateQueries: vi.fn(async () => undefined),
-      removeQueries: vi.fn(),
-      cancelQueries: vi.fn(async () => undefined),
+      invalidateQueries: jest.fn(async () => undefined),
+      removeQueries: jest.fn(),
+      cancelQueries: jest.fn(async () => undefined),
     };
     await expect(clearStorageByCategories(['phira'], client as never)).resolves.toEqual({
       clearedIds: ['phira'],
@@ -240,7 +242,7 @@ describe('osu storage segment', () => {
 
 
   it('cancels and removes detail scores only for the selected osu mode', async () => {
-    const client = { cancelQueries: vi.fn(async (_filter: { predicate: (query: { queryKey: unknown[] }) => boolean }) => undefined), removeQueries: vi.fn() };
+    const client = { cancelQueries: jest.fn(async (_filter: { predicate: (query: { queryKey: unknown[] }) => boolean }) => undefined), removeQueries: jest.fn() };
     await clearStorageByCategories(['osu-standard'], client as never);
     const predicate = client.cancelQueries.mock.calls[0]?.[0]?.predicate as (query: { queryKey: unknown[] }) => boolean;
     expect(predicate({ queryKey: ['osu-beatmapset-user-scores', 'osu-standard:osu:2', 'osu-standard', 2, 123] })).toBe(true);
@@ -249,11 +251,11 @@ describe('osu storage segment', () => {
   });
 
   it('measures and clears only the matching mode snapshot and account resources', async () => {
-    const clearAccountScores = vi.fn(async () => undefined);
-    const clearResources = vi.fn(async () => undefined);
+    const clearAccountScores = jest.fn(async () => undefined);
+    const clearResources = jest.fn(async () => undefined);
     const snapshots = {
-      listAccountScoreSizes: vi.fn(async () => []),
-      listResourceSizes: vi.fn(async () => [
+      listAccountScoreSizes: jest.fn(async () => []),
+      listResourceSizes: jest.fn(async () => [
         { key: 'osu:osu-standard:2', bytes: 100 },
         { key: 'osu-known-scores:osu-standard:2', bytes: 50 },
         { key: 'osu:osu-mania:2', bytes: 200 },
@@ -322,13 +324,13 @@ describe('storage measurement inventory', () => {
   it('invalidates every selected game before one inventory scan and continues other categories after failure', async () => {
     const maimai = captureResourceWrites('maimai');
     const phira = captureResourceWrites('phira');
-    const readScores = vi.spyOn(SqliteSnapshotRepository.prototype, 'listAccountScoreSizes').mockImplementation(async () => {
+    const readScores = jest.spyOn(SqliteSnapshotRepository.prototype, 'listAccountScoreSizes').mockImplementation(async () => {
       expect(maimai).toThrow('缓存请求已失效');
       expect(phira).toThrow('缓存请求已失效');
       return [];
     });
-    const readResources = vi.spyOn(SqliteSnapshotRepository.prototype, 'listResourceSizes').mockResolvedValue([]);
-    const failed = vi.spyOn(SqliteSnapshotRepository.prototype, 'clearAccountScores').mockRejectedValueOnce(new Error('failed'));
+    const readResources = jest.spyOn(SqliteSnapshotRepository.prototype, 'listResourceSizes').mockResolvedValue([]);
+    const failed = jest.spyOn(SqliteSnapshotRepository.prototype, 'clearAccountScores').mockRejectedValueOnce(new Error('failed'));
     try {
       await expect(clearStorageByCategories(['maimai', 'phira', 'maimai', 'shared'], new QueryClient())).resolves.toMatchObject({
         clearedIds: ['phira', 'shared'], failures: ['maimai'],
@@ -337,7 +339,7 @@ describe('storage measurement inventory', () => {
   });
 
   it('still clears shared files when the game inventory cannot be read', async () => {
-    const read = vi.spyOn(SqliteSnapshotRepository.prototype, 'listResourceSizes').mockRejectedValueOnce(new Error('unavailable'));
+    const read = jest.spyOn(SqliteSnapshotRepository.prototype, 'listResourceSizes').mockRejectedValueOnce(new Error('unavailable'));
     try {
       await expect(clearStorageByCategories(['phira', 'maimai', 'shared'], new QueryClient())).resolves.toMatchObject({
         clearedIds: ['shared'], failures: ['phira', 'maimai'],
@@ -418,11 +420,11 @@ describe('storage usage report', () => {
 
 describe('phigros resource coverage', () => {
   it('measures and clears the cloud save snapshot and account thumbnails', async () => {
-    const clearAccountScores = vi.fn(async () => undefined);
-    const clearResources = vi.fn(async () => undefined);
+    const clearAccountScores = jest.fn(async () => undefined);
+    const clearResources = jest.fn(async () => undefined);
     const snapshots = {
-      listAccountScoreSizes: vi.fn(async () => []),
-      listResourceSizes: vi.fn(async () => [
+      listAccountScoreSizes: jest.fn(async () => []),
+      listResourceSizes: jest.fn(async () => [
         { key: 'phigros-save:phigros:phi-taptap:1', bytes: 100 },
         { key: 'account-thumbnail:phigros:phi-taptap:1', bytes: 20 },
         { key: 'phigros-kyou-aliases', bytes: 30 },
@@ -447,16 +449,16 @@ describe('phigros resource coverage', () => {
 
 describe('chunithm resource coverage', () => {
   it('clears the collection list snapshot through the game adapter', async () => {
-    const clearResources = vi.fn(async () => undefined);
+    const clearResources = jest.fn(async () => undefined);
     const snapshots = {
-      listAccountScoreSizes: vi.fn(async () => []),
-      listResourceSizes: vi.fn(async () => [
+      listAccountScoreSizes: jest.fn(async () => []),
+      listResourceSizes: jest.fn(async () => [
         { key: 'chunithm-collections:character', bytes: 10 },
         { key: 'chunithm-collections:trophy', bytes: 20 },
         { key: 'chunithm-song-detail:803', bytes: 30 },
         { key: 'maimai:collections', bytes: 999 },
       ]),
-      clearAccountScores: vi.fn(async () => undefined),
+      clearAccountScores: jest.fn(async () => undefined),
       clearResources,
     };
     const adapter = getGameStorageAdapter('chunithm');
@@ -472,15 +474,15 @@ describe('chunithm resource coverage', () => {
 
 describe('maimai resource coverage', () => {
   it('keeps durable local account thumbnails and clears the maimai-assets directory', async () => {
-    const clearAccountScores = vi.fn(async () => undefined);
-    const clearResources = vi.fn(async () => undefined);
+    const clearAccountScores = jest.fn(async () => undefined);
+    const clearResources = jest.fn(async () => undefined);
     mocks.measureDirectoryBytes.mockResolvedValueOnce(1000);
     const snapshots = {
-      listAccountScoreSizes: vi.fn(async () => [
+      listAccountScoreSizes: jest.fn(async () => [
         { accountId: 'maimai:lxns:u1', bytes: 100 },
         { accountId: 'maimai:local:a', bytes: 200 },
       ]),
-      listResourceSizes: vi.fn(async () => [
+      listResourceSizes: jest.fn(async () => [
         { key: 'account-thumbnail:maimai:lxns:u1', bytes: 10 },
         { key: 'account-thumbnail:maimai:local:a', bytes: 20 },
         { key: 'account-thumbnail:maimai:local:a', bytes: 30 },
@@ -501,7 +503,7 @@ describe('maimai resource coverage', () => {
 describe('clearing storage compacts the database and resets in-memory caches', () => {
   it('waits for image cleanup after SQL cleanup fails before measuring reclaimed bytes', async () => {
     const images = Promise.withResolvers<void>();
-    const clear = vi.spyOn(SqliteSnapshotRepository.prototype, 'clearAccountScores').mockRejectedValueOnce(new Error('SQL unavailable'));
+    const clear = jest.spyOn(SqliteSnapshotRepository.prototype, 'clearAccountScores').mockRejectedValueOnce(new Error('SQL unavailable'));
     mocks.clearGameRemoteImageCache.mockClear();
     mocks.clearGameRemoteImageCache.mockReturnValueOnce(images.promise);
     mocks.measureDirectoryBytes.mockClear();
@@ -509,10 +511,10 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     mocks.measureDirectoryBytes.mockImplementation(async (directory) => directory?.uri === 'file:///cache' ? cacheBytes : 0);
     let settled = false;
     const pending = clearStorageByCategories(['phira'], {
-      cancelQueries: vi.fn(async () => undefined), removeQueries: vi.fn(),
+      cancelQueries: jest.fn(async () => undefined), removeQueries: jest.fn(),
     } as never).then(result => { settled = true; return result; });
     try {
-      await vi.waitFor(() => expect(mocks.clearGameRemoteImageCache).toHaveBeenCalledWith('phira'));
+      await waitFor(() => expect(mocks.clearGameRemoteImageCache).toHaveBeenCalledWith('phira'));
       await Promise.resolve(); await Promise.resolve();
       expect(settled).toBe(false);
       cacheBytes = 40;
@@ -524,9 +526,9 @@ describe('clearing storage compacts the database and resets in-memory caches', (
   it('runs wal checkpoint and VACUUM after clearing', async () => {
     mocks.execAsync.mockClear();
     const client = {
-      invalidateQueries: vi.fn(async () => undefined),
-      removeQueries: vi.fn(),
-      cancelQueries: vi.fn(async () => undefined),
+      invalidateQueries: jest.fn(async () => undefined),
+      removeQueries: jest.fn(),
+      cancelQueries: jest.fn(async () => undefined),
     };
     await clearStorageByCategories(['maimai'], client as never);
     expect(mocks.execAsync).toHaveBeenCalledWith(expect.stringContaining('VACUUM'));
@@ -536,7 +538,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     let alias = '初次别名';
     const hash = (text: string) => createHash('sha256').update(text).digest('hex');
     const bodies = new Map<string, string>();
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+    globalThis.fetch = jest.fn(async (input: string | URL | Request) => {
       const path = new URL(String(input)).pathname.slice(1);
       if (path === 'kyou/latest.json') {
         const tables = [
@@ -555,7 +557,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
         return Response.json({ schemaVersion: 2, resourceVersion: alias, manifestPath, manifestSha256 });
       }
       return new Response(bodies.get(path));
-    }));
+    }) as typeof fetch;
     const client = new QueryClient();
     try {
       expect((await loadPhigrosKyouAliases()).aliases[0]?.alias).toBe('初次别名');
@@ -564,15 +566,15 @@ describe('clearing storage compacts the database and resets in-memory caches', (
       expect((await loadPhigrosKyouAliases()).aliases[0]?.alias).toBe('初次别名');
       await clearStorageByCategories(['phigros'], client);
       expect((await loadPhigrosKyouAliases()).aliases[0]?.alias).toBe('更新别名');
-    } finally { resetPhigrosKyouAliasesCache(); client.clear(); vi.unstubAllGlobals(); }
+    } finally { resetPhigrosKyouAliasesCache(); client.clear(); (globalThis.fetch = originalFetch); }
   });
 
   it('does not evict unrelated game queries when only shared files are cleared', async () => {
     mocks.clearDirectoryContentsStrict.mockClear();
     const client = {
-      invalidateQueries: vi.fn(async () => undefined),
-      removeQueries: vi.fn(),
-      cancelQueries: vi.fn(async () => undefined),
+      invalidateQueries: jest.fn(async () => undefined),
+      removeQueries: jest.fn(),
+      cancelQueries: jest.fn(async () => undefined),
     };
     await clearStorageByCategories(['shared'], client as never);
     expect(client.removeQueries).not.toHaveBeenCalled();
@@ -592,9 +594,9 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     mocks.clearDiskCache.mockResolvedValueOnce(false);
     mocks.clearMemoryCache.mockResolvedValueOnce(false);
     const client = {
-      invalidateQueries: vi.fn(async () => undefined),
-      removeQueries: vi.fn(),
-      cancelQueries: vi.fn(async () => undefined),
+      invalidateQueries: jest.fn(async () => undefined),
+      removeQueries: jest.fn(),
+      cancelQueries: jest.fn(async () => undefined),
     };
     await expect(clearStorageByCategories(['shared'], client as never)).resolves.toMatchObject({
       clearedIds: ['shared'],
@@ -609,7 +611,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     mocks.measureDirectoryBytes.mockImplementation(async (directory) => directory?.uri === 'file:///cache' ? cacheBytes : 0);
     mocks.clearDirectoryContentsStrict.mockImplementationOnce(async () => { cacheBytes = 40; });
     try {
-      await expect(clearStorageByCategories(['shared'], { cancelQueries: vi.fn(), removeQueries: vi.fn() } as never)).resolves.toMatchObject({
+      await expect(clearStorageByCategories(['shared'], { cancelQueries: jest.fn(), removeQueries: jest.fn() } as never)).resolves.toMatchObject({
         clearedIds: ['shared'], failures: ['图片磁盘缓存'], reclaimedBytes: 40,
       });
     } finally { mocks.measureDirectoryBytes.mockResolvedValue(0); }
@@ -641,12 +643,12 @@ describe('SQLite physical allocation estimate', () => {
 describe('Majdata storage segment', () => {
   it('clears only Majdata resources and owns account queries as well as catalog pages', async () => {
     const resources = ['majdata-net:account:a', 'majdata-net:song:uuid', 'majdata-net:chart:uuid:hash', 'majdata-net:parsed:uuid:hash:6'];
-    const snapshots = { listAccountScoreSizes: vi.fn(async () => []), listResourceSizes: vi.fn(async () => [...resources.map(key => ({ key, bytes: 10 })), { key: 'local-tags', bytes: 100 }, { key: 'phira:chart:1', bytes: 99 }]), clearAccountScores: vi.fn(async () => undefined), clearResources: vi.fn(async () => undefined) };
+    const snapshots = { listAccountScoreSizes: jest.fn(async () => []), listResourceSizes: jest.fn(async () => [...resources.map(key => ({ key, bytes: 10 })), { key: 'local-tags', bytes: 100 }, { key: 'phira:chart:1', bytes: 99 }]), clearAccountScores: jest.fn(async () => undefined), clearResources: jest.fn(async () => undefined) };
     const adapter = getGameStorageAdapter('majdata-net')!;
     expect(await adapter.measure(await collectStorageMeasurementInventory(snapshots as never))).toBe(40); await adapter.clear(snapshots as never, await collectStorageMeasurementInventory(snapshots as never)); expect(snapshots.clearResources).toHaveBeenCalledWith(resources);
   });
 });
 
-vi.mock('expo-file-system/legacy', () => ({ deleteAsync: async () => undefined }));
+jest.mock('expo-file-system/legacy', () => ({ deleteAsync: async () => undefined }));
 
-vi.mock('@rranker/sdk/features/best-image/load-best-image-session', () => ({ clearUnusedBestImageAssets: async () => undefined }));
+jest.mock('@rranker/sdk/features/best-image/load-best-image-session', () => ({ clearUnusedBestImageAssets: async () => undefined }));

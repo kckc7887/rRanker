@@ -1,3 +1,4 @@
+import type { SourceClientContext as MockSourceClientContext } from '@rranker/sdk/credentials';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
@@ -26,9 +27,9 @@ jest.mock('@rranker/sdk/state/session-provider-resolver', () => ({
     const key = 'musedash';
     if (mockSourceClients.has(key)) return mockSourceClients.get(key);
     const value = (() => jest.requireActual<typeof import('@rranker/provider-musedash-moe/client')>('@rranker/provider-musedash-moe/client').createClient({
-    account: { id: 'musedash:musedash-moe:user-1', gameId: 'musedash', providerId: 'musedash-moe' }, credential: null,
+    account: { id: 'musedash:musedash-moe:user-1', gameId: 'musedash', providerId: 'musedash-moe', displayName: 'test', scoreLabel: 'Rank', scoreDisplay: '—', providerTitle: 'MuseDash.moe' }, credential: null,
     assertCurrent() {}, commitCredential: async () => 'applied',
-  } as import('@rranker/sdk/credentials').SourceClientContext))();
+  } as MockSourceClientContext))();
     mockSourceClients.set(key, value);
     return value;
   },

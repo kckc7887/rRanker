@@ -11,6 +11,7 @@ type MockSessionState = {
   activeAccountId: string;
   activeProviderId: string | null;
   session: { mode: string } | null;
+  sourceClient?: object;
 };
 let mockSessionState: MockSessionState;
 jest.mock('@rranker/sdk/state/session-store', () => ({

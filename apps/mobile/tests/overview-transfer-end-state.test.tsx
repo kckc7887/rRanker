@@ -5,6 +5,7 @@ import { UploadTaskController, uploadTaskController } from '@rranker/tool-maimai
 import { useOverviewUpload } from '@rranker/tool-maimai/hooks/use-overview-upload';
 import { createMaimaiBoundAccount } from '@rranker/game-maimai/accounts';
 import type { BoundAccount } from '@rranker/sdk/account';
+import { getAppLifecycleSnapshot, publishAppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle-core';
 
 import { type UploadResult, type UploadTargetResult } from '@rranker/tool-maimai/services/upload-maimai-from-friend-code';
 import type { transferMaimaiFromLxns } from '@rranker/tool-maimai/services/transfer-maimai-from-lxns';
@@ -129,10 +130,8 @@ describe('总览从落雪传输成绩的页面终态', () => {
       hook.result.current.setMaimaiSourceAccountId(source.id);
       hook.result.current.setMaimaiTransferTargetIds([water.id]);
     });
-    let pauseFirst = true;
-    const unsubscribe = uploadTaskController.subscribe(snapshot => {
-      if (pauseFirst && snapshot.status === 'running') { pauseFirst = false; uploadTaskController.pause(); }
-    });
+    const foreground = getAppLifecycleSnapshot();
+    publishAppLifecycleSnapshot({ ...foreground, appState: 'background', phase: 'background', foregroundReady: false });
     mockTransfer.mockResolvedValue(transferResult({ targetResults: [targetResult(water, 'success')] }));
     let pending!: Promise<boolean>;
     try {
@@ -140,11 +139,11 @@ describe('总览从落雪传输成绩的页面终态', () => {
       expect(uploadTaskController.getSnapshot().status).toBe('paused');
       expect(refetch).not.toHaveBeenCalled();
       expect(mockTransfer).not.toHaveBeenCalled();
-      await act(async () => { uploadTaskController.resume(); await pending; });
+      await act(async () => { publishAppLifecycleSnapshot(foreground); await pending; });
       expect(refetch).toHaveBeenCalledTimes(1);
       expect(mockTransfer).toHaveBeenCalledTimes(1);
       expect(uploadTaskController.getSnapshot().status).toBe('done');
-    } finally { unsubscribe(); await hook.unmount(); }
+    } finally { publishAppLifecycleSnapshot(foreground); await hook.unmount(); }
   });
 
   it('卸载后已发送的传输正常结算但不触发页面通知', async () => {

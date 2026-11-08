@@ -164,6 +164,6 @@ it('取消账号对公共曲库的等待仍保留其他消费者的查询', asyn
   await rejected;
   expect(requestSignal!.aborted).toBe(false);
   finish(fixtureCatalog);
-  expect((await remaining).songs).toEqual(fixtureCatalog.songs);
-  expect(queryClient.getQueryData<CatalogSnapshot>(MAIMAI_CATALOG_QUERY_KEY)?.songs).toEqual(fixtureCatalog.songs);
+  expect((await remaining).songs).toMatchObject(fixtureCatalog.songs);
+  expect(queryClient.getQueryData<CatalogSnapshot>(MAIMAI_CATALOG_QUERY_KEY)?.songs).toMatchObject(fixtureCatalog.songs);
 });

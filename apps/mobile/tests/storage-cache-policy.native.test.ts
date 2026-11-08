@@ -1,12 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
-const mocks = vi.hoisted(() => ({
+const mocks = ({
   entries: new Map<string, { isDirectory: boolean; modificationTime: number }>(),
-  beforeInfo: vi.fn(async (_uri: string) => undefined),
-  beforeDelete: vi.fn(async (_uri: string) => undefined),
-}));
+  beforeInfo: jest.fn(async (_uri: string) => undefined),
+  beforeDelete: jest.fn(async (_uri: string) => undefined),
+});
 
-vi.mock('expo-file-system', () => {
+jest.mock('expo-file-system', () => {
   const join = (...parts: (string | { uri: string })[]) => parts.map(part => typeof part === 'string' ? part : part.uri).join('/').replace(/\/{2,}/gu, '/').replace(/\/$/u, '');
   class Directory {
     readonly uri: string;
@@ -17,7 +17,7 @@ vi.mock('expo-file-system', () => {
   }
   return { Directory, Paths: { cache: '/cache', document: '/document', join } };
 });
-vi.mock('expo-file-system/legacy', () => ({
+jest.mock('expo-file-system/legacy', () => ({
   getInfoAsync: async (uri: string) => {
     const entry = mocks.entries.get(uri);
     await mocks.beforeInfo(uri);
@@ -34,13 +34,13 @@ vi.mock('expo-file-system/legacy', () => ({
     if (!mocks.entries.has(uri)) mocks.entries.set(uri, { isDirectory: true, modificationTime: Math.floor(Date.now() / 1000) });
   },
 }));
-vi.mock('expo-asset', () => ({ Asset: {} }));
-vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
-vi.mock('@rranker/tool-maimai/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'v1' }));
-vi.mock('@rranker/tool-maimai/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'v1' }));
-vi.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'v1' }));
-vi.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache', () => ({ PHIGROS_UI_CACHE_VERSION: 'v1' }));
-vi.mock('@rranker/sdk/services/remote-image-cache', () => ({ pruneRemoteImageCache: vi.fn(async () => undefined) }));
+jest.mock('expo-asset', () => ({ Asset: {} }));
+jest.mock('@expo/vector-icons/Ionicons', () => ({ __esModule: true, default: { font: { ionicons: 1 } } }));
+jest.mock('@rranker/tool-maimai/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'v1' }));
+jest.mock('@rranker/tool-maimai/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'v1' }));
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'v1' }));
+jest.mock('@rranker/tool-phigros/features/phigros-best-image/phigros-ui-cache', () => ({ PHIGROS_UI_CACHE_VERSION: 'v1' }));
+jest.mock('@rranker/sdk/services/remote-image-cache', () => ({ pruneRemoteImageCache: jest.fn(async () => undefined) }));
 
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { cleanupOrphanedTemporaryStorage } from '@rranker/sdk/features/storage-management/storage-cache-maintenance';

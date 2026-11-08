@@ -1,3 +1,4 @@
+import { setDisabledPlugins } from '@rranker/sdk';
 import { createClient as createDemoClient } from '@rranker/provider-majdata-net-test/client';
 import { createCatalogTestAccount } from '@rranker/provider-majdata-net-test/accounts';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
@@ -103,7 +104,7 @@ beforeEach(() => {
     acc: { dx: 99.1234, classic: 98.5678 }, comboState: 1, dxScore: 480 }];
   jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() } as unknown as ReturnType<typeof Animated.loop>);
 });
-afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+afterEach(() => { setDisabledPlugins([]); jest.useRealTimers(); jest.restoreAllMocks(); });
 
 it('example detail renders a full score from the current difficulty statistics', async () => {
   mockExample = true;
@@ -190,7 +191,7 @@ it.each([false, true])('uses the actual hero, metadata, buttons and one tag head
   expect(screen.getByText('发布时间')).toBeTruthy(); expect(screen.getByText('简介：真实简介')).toBeTruthy();
   expect(screen.queryByText('不应展示的上传者')).toBeNull(); expect(screen.queryByText(/Classic/)).toBeNull();
   await fireEvent.press(screen.getByLabelText('返回')); expect(mockBack).toHaveBeenCalledTimes(1);
-  await fireEvent.press(screen.getByLabelText(`收藏 ${mockSong.title}`)); expect(mockFavorite).toHaveBeenCalledWith(mockSong.id, true);
+  await fireEvent.press(screen.getByLabelText(`收藏 ${mockSong.title}`)); expect(mockFavorite).toHaveBeenCalledWith({ gameId: 'majdata-net', kind: 'song', id: mockSong.id, target: { songId: mockSong.id } }, true);
   const carousel = screen.getByTestId('majdata-chart-carousel');
   for (const [index, level] of [5, 4, 3, 2, 1, 0, 6].entries()) {
     await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: index * carousel.props.snapToInterval } } });
@@ -316,11 +317,24 @@ it('keeps six grid columns and full UUID/index for tolerance, practice, preview 
   for (const text of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK', 'MINE']) expect(current.getByText(text)).toBeTruthy();
   await fireEvent.press(current.getByLabelText('使用此谱面物量计算容错'));
   expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/plugins/[pluginId]/[pageId]', params: { pluginId: 'tool.simai', pageId: 'tolerance', gameId: 'majdata-net', songId: mockSong.id, hash: 'revision', levelIndex: '5' } });
-  await fireEvent.press(current.getByText('加入练习清单')); expect(mockPractice).toHaveBeenCalledWith(mockSong.id, 'SD', 5, true);
+  await fireEvent.press(current.getByText('加入练习清单')); expect(mockPractice).toHaveBeenCalledWith({ gameId: 'majdata-net', kind: 'chart', id: JSON.stringify([mockSong.id, 5]), target: { songId: mockSong.id, levelIndex: '5' } }, true);
   await fireEvent.press(current.getByText('查看谱面确认'));
   expect(mockPush).toHaveBeenLastCalledWith(expect.objectContaining({ pathname: '/plugins/[pluginId]/[pageId]', params: expect.objectContaining({ songId: mockSong.id, levelIndex: '5', hash: 'revision' }) }));
   await fireEvent.press(current.getByText('下载谱面文件'));
   expect(mockStart).toHaveBeenCalledWith(expect.any(Function), { optionalVideoUrl: `https://majdata.net/api3/api/maichart/${mockSong.id}/video` });
+  await screen.unmount();
+});
+
+it('keeps note counts visible and removes tolerance navigation when its tool is disabled', async () => {
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
+  const current = within(screen.getByTestId('majdata-chart-card-5'));
+  expect(current.getByLabelText('使用此谱面物量计算容错')).toBeTruthy();
+  await act(async () => { setDisabledPlugins(['tool.simai']); });
+  expect(current.getByText('TAP')).toBeTruthy();
+  expect(current.queryByLabelText('使用此谱面物量计算容错')).toBeNull();
+  expect(current.queryByText('点击物量表，前往达成率与容错计算')).toBeNull();
+  await fireEvent.press(current.getByText('TAP'));
+  expect(mockPush).not.toHaveBeenCalled();
   await screen.unmount();
 });
 

@@ -12,7 +12,7 @@ vi.mock('@rranker/sdk/features/storage-management/fs-storage', () => ({ measureD
 const inventory: StorageMeasurementInventory = {
   scores: [{ accountId: 'test:remote', bytes: 11 }, { accountId: 'test:local', bytes: 23 }, { accountId: 'another:remote', bytes: 31 }],
   resources: [
-    { key: 'phigros-save:test:remote', bytes: 13 },
+    { key: 'private-save:test:remote', bytes: 13 },
     { key: 'account-thumbnail:test:no-score-row', bytes: 17 },
     { key: 'account-thumbnail:test:local', bytes: 19 },
     { key: 'account-thumbnail:another:remote', bytes: 29 },
@@ -34,7 +34,7 @@ function repository() {
 describe('storage adapter execution', () => {
   const ownership = {
     ownsAccount: (id: string) => id.startsWith('test:') && id !== 'test:local',
-    resourceKeys: ['catalog'], resourcePrefixes: ['detail:'],
+    resourceKeys: ['catalog'], resourcePrefixes: ['detail:'], accountResourcePrefixes: ['private-save:'],
   };
   const adapter = createGameStorageAdapter({
     gameId: 'maimai', title: 'Test', color: '#000', note: '', queryKeys: [], fileResources: [], ownership,
@@ -45,13 +45,13 @@ describe('storage adapter execution', () => {
     const snapshots = repo as unknown as SqliteSnapshotRepository;
     expect(selectStorageInventory(inventory, ownership)).toEqual({
       accountIds: ['test:remote'],
-      resourceKeys: ['phigros-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one'],
+      resourceKeys: ['private-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one'],
       bytes: 53,
     });
     await expect(adapter.measure(inventory)).resolves.toBe(53);
     await adapter.clear(snapshots, inventory);
     expect(repo.clearAccountScores).toHaveBeenCalledWith(['test:remote']);
-    expect(repo.clearResources).toHaveBeenCalledWith(['phigros-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one']);
+    expect(repo.clearResources).toHaveBeenCalledWith(['private-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one']);
   });
 
   it('excludes catalog and other accounts from account-only storage', async () => {
@@ -60,7 +60,7 @@ describe('storage adapter execution', () => {
     const measured = await collectStorageMeasurementInventory(snapshots);
     const accountOnly = createGameStorageAdapter({
       gameId: 'maimai', title: 'Test', color: '#000', note: '', queryKeys: [], fileResources: [],
-      ownership: { ownsAccount: ownership.ownsAccount },
+      ownership: { ownsAccount: ownership.ownsAccount, accountResourcePrefixes: ownership.accountResourcePrefixes },
     });
     await expect(accountOnly.measure(measured)).resolves.toBe(41);
     await accountOnly.clear(snapshots, measured);

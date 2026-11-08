@@ -1,16 +1,17 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
+import { emptyGamePayload as mockEmptyGamePayload } from '@rranker/sdk/data';
 import * as appLifecycle from '@rranker/sdk/state/app-lifecycle';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createMuseDashBoundAccount } from '@rranker/game-musedash/accounts';
 
 const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
-const mockSwitchBoundAccount = jest.fn();
+const mockSwitchBoundAccount = jest.fn(async (..._args: unknown[]) => true);
 const mockScheduleIdleTask = jest.spyOn(appLifecycle, 'scheduleIdleTask');
 let pendingSwitches: (() => void)[] = [];
 let mockAccountSelect: ((account: typeof mockFirstAccount) => void) | null = null;
-let mockNullPayload = false;
+let mockEmptyPayload = false;
 const mockFirstAccount = createMuseDashBoundAccount({
   userId: '6ea4f986ffd211e8aa980242ac110011', displayName: 'SiMOOOOOON', rl: 3.45,
 });
@@ -42,6 +43,7 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@rranker/sdk/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
 }));
+jest.mock('@rranker/sdk/hooks/use-visible-bound-accounts', () => ({ useVisibleBoundAccounts: () => [mockFirstAccount, mockSecondAccount] }));
 jest.mock('@rranker/sdk/components/AccountSwitchSheet', () => ({
   AccountSwitchSheet: ({
     visible, accounts, onSelectAccount,
@@ -65,7 +67,7 @@ jest.mock('@rranker/tool-chunithm/components/ChunithmSyncGuideSheet', () => ({ C
 jest.mock('@rranker/game-maimai/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
 jest.mock('@rranker/game-phigros/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
 jest.mock('@rranker/game-maimai/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
-jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
+jest.mock('@rranker/game-musedash/hooks/use-muse-dash', () => ({ refreshMuseDashResources: jest.fn(async () => undefined), useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
 jest.mock('@rranker/game-chunithm/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
 jest.mock('@rranker/sdk/components/RatingCard', () => ({
   RatingCard: ({ label, display, meta, sideBadge }: {
@@ -84,8 +86,9 @@ jest.mock('@rranker/sdk/components/QueryStateView', () => ({
   },
 }));
 jest.mock('@rranker/sdk/hooks/use-game-data', () => ({ useGameData: () => ({
-  data: mockNullPayload ? { ...mockBundle, payload: null } : mockBundle,
+  data: mockEmptyPayload ? { ...mockBundle, payload: mockEmptyGamePayload('musedash', '未绑定玩家') } : mockBundle,
   isLoading: false, isError: false, error: null, refetch: mockRefetch,
+  activeGameId: 'musedash', activeAccountId: mockFirstAccount.id,
   profile: { ratingLabel: 'Rating', ratingDigits: 0 },
 }) }));
 jest.mock('@rranker/sdk/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
@@ -98,10 +101,10 @@ jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({ useChuni
 }) }));
 jest.mock('@rranker/sdk/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
-  useSession: (selector: (state: unknown) => unknown) => selector({
+  useSession: (() => { const hook = (selector: (state: unknown) => unknown) => selector({
     boundAccounts: [mockFirstAccount, mockSecondAccount], activeGameId: 'musedash', activeAccountId: mockFirstAccount.id,
     session: null, sessionsByAccountId: {}, updateBoundAccountScore: jest.fn(),
-  }),
+  }); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })(),
 }));
 jest.mock('@rranker/sdk/state/toolbox-pins', () => ({ useToolboxPins: (selector: (state: unknown) => unknown) => selector({
   pinsByGame: { maimai: [], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] },
@@ -135,7 +138,7 @@ describe('Muse Dash public overview', () => {
       pendingSwitches.push(() => { if (!cancelled) task(); });
       return () => { cancelled = true; };
     });
-    mockNullPayload = false;
+    mockEmptyPayload = false;
     mockRefetch.mockResolvedValue({ data: mockBundle });
   });
 
@@ -185,8 +188,8 @@ describe('Muse Dash public overview', () => {
     expect(mockSwitchBoundAccount.mock.calls).toEqual([[mockFirstAccount.id, { navigateToOverview: false }]]);
   });
 
-  it('rejects a stale null payload before the public shell reads player fields', async () => {
-    mockNullPayload = true;
+  it('shows the binding prompt for an empty account payload', async () => {
+    mockEmptyPayload = true;
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('请在游戏管理中绑定喵斯快跑玩家')).toBeTruthy();
     expect(screen.queryByTestId('overview-scroll')).toBeNull();

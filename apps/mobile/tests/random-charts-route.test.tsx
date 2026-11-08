@@ -9,6 +9,7 @@ let mockActiveGameId: GameId = 'maimai';
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   useIsFocused: () => true,
+  useNavigation: () => ({ addListener: () => () => undefined, isFocused: () => true }),
   useLocalSearchParams: () => ({ pluginId: 'tool.' + mockActiveGameId, pageId: 'random-charts', gameId: mockActiveGameId }),
 }));
 

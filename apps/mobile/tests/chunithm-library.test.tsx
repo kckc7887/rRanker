@@ -49,9 +49,9 @@ jest.mock('expo-image', () => {
   };
 });
 jest.mock('@rranker/sdk/state/session-store', () => ({
-  useSession: (selector: (state: { activeGameId: 'chunithm' }) => unknown) => (
+  useSession: (() => { const hook = (selector: (state: { activeGameId: 'chunithm' }) => unknown) => (
     selector({ activeGameId: 'chunithm' })
-  ),
+  ); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })(),
 }));
 jest.mock('@rranker/game-chunithm/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({

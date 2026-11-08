@@ -1,3 +1,5 @@
+import { waitFor } from '@testing-library/react-native';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { applyLxnsTokenRotation } from '@rranker/provider-lxns/rotation';
 import { commitCredential } from '@rranker/sdk/services/session-credential-service';
 import type { Credential } from '@rranker/sdk/credentials';
@@ -10,7 +12,7 @@ import type { HttpCookieSession } from '@rranker/provider-majdata-net/credential
 import { useAccountStore } from '@rranker/sdk/state/account-store';
 import { createMajdataBoundAccount } from '@rranker/game-majdata-net/accounts';
 import { useDebugStore } from '@rranker/sdk/state/debug-store';
-import { setDisabledPlugins } from '@rranker/sdk/registry';
+import { getGameDefinition, setDisabledPlugins } from '@rranker/sdk/registry';
 import { CHUNITHM_TEST_ACCOUNT_ID, CHUNITHM_TEMP_ACCOUNT_ID, createChunithmBoundAccount, createMaxedChunithmTestAccount, createChunithmTempAccount } from '@rranker/game-chunithm/accounts';
 import { PHIGROS_TEST_ACCOUNT_ID, createMaxedPhigrosTestAccount } from '@rranker/game-phigros/accounts';
 import { createMaimaiBoundAccount, createLocalMaimaiAccount, createMaxedMaimaiTestAccount, LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID } from '@rranker/game-maimai/accounts';
@@ -26,6 +28,8 @@ import {
   clearOsuRotationCache,
 } from '@rranker/provider-osu/providers/osu-oauth';
 import { restoreSession, retryPendingRotationWrites, UNBOUND_ACCOUNT_ID, useSession } from '@rranker/sdk/state/session-store';
+const originalFetch = globalThis.fetch;
+
 
 function bindAccount(account: BoundAccount, session: Credential, credentialId = `credential:${account.id}`) {
   useAccountStore.getState().bindAccounts({ accounts: [account], session, credentialId, activeAccountId: account.id });
@@ -33,32 +37,30 @@ function bindAccount(account: BoundAccount, session: Credential, credentialId = 
 
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 
-const updateCredentialSession = vi.hoisted(() => (
-  vi.fn<SecureSessionStore['updateCredentialSession']>(async () => 'applied')
-));
+const mockUpdateCredentialSession = jest.fn<SecureSessionStore['updateCredentialSession']>(async () => 'applied');
 
-vi.mock('@rranker/sdk/storage/secure-session-store', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@rranker/sdk/storage/secure-session-store')>();
+jest.mock('@rranker/sdk/storage/secure-session-store', () => {
+  const actual = jest.requireActual<typeof import('@rranker/sdk/storage/secure-session-store')>('@rranker/sdk/storage/secure-session-store');
   return {
     ...actual,
     SecureSessionStore: class {
-      updateCredentialSession = updateCredentialSession;
+      updateCredentialSession = (...args: Parameters<SecureSessionStore['updateCredentialSession']>) => mockUpdateCredentialSession(...args);
     },
   };
 });
 
-vi.mock('expo-secure-store', () => ({
-  getItemAsync: vi.fn(async () => null),
-  setItemAsync: vi.fn(async () => undefined),
-  deleteItemAsync: vi.fn(async () => undefined),
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(async () => null),
+  setItemAsync: jest.fn(async () => undefined),
+  deleteItemAsync: jest.fn(async () => undefined),
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
 }));
 
-vi.mock('expo-sqlite', () => ({
-  openDatabaseAsync: vi.fn(async () => ({
-    execAsync: vi.fn(async () => undefined),
-    getFirstAsync: vi.fn(async () => null),
-    runAsync: vi.fn(async () => undefined),
+jest.mock('expo-sqlite', () => ({
+  openDatabaseAsync: jest.fn(async () => ({
+    execAsync: jest.fn(async () => undefined),
+    getFirstAsync: jest.fn(async () => null),
+    runAsync: jest.fn(async () => undefined),
   })),
 }));
 
@@ -69,7 +71,7 @@ const tokenSessionB: Credential = { mode: 'import-token', value: 'token-b', pers
 beforeEach(() => {
   setDisabledPlugins([]);
   useDebugStore.setState({ hydrated: true, testAccountsEnabled: true });
-  updateCredentialSession.mockReset().mockResolvedValue('applied');
+  mockUpdateCredentialSession.mockReset().mockResolvedValue('applied');
   useAccountStore.getState().finishRestore(null);
 });
 
@@ -78,9 +80,8 @@ afterEach(async () => {
   useAccountStore.getState().clearSession();
   useAccountStore.getState().finishRestore(null);
   await retryPendingRotationWrites();
-  if (vi.isFakeTimers()) vi.clearAllTimers();
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
+  jest.useRealTimers();
+  globalThis.fetch = originalFetch;
 });
 
 describe('Rizline account sessions', () => {
@@ -88,7 +89,7 @@ describe('Rizline account sessions', () => {
   const account = createRizlineBoundAccount({ userId: '123', username: 'Rizline 玩家', totalRks: 135.4321 });
   const metadata = { gameId: 'rizline', providerId: 'rizline-official', playerId: '123', displayName: account.displayName,
     rating: 135.4321, credentialId: 'rizline-credential' } as const;
-  beforeEach(() => { useAccountStore.getState().finishRestore(null); updateCredentialSession.mockClear(); });
+  beforeEach(() => { useAccountStore.getState().finishRestore(null); mockUpdateCredentialSession.mockClear(); });
   it('activates and restores the same stable account id and RKS', () => {
     bindAccount(account, session, metadata.credentialId);
     expect(useSession.getState()).toMatchObject({ activeGameId: 'rizline', activeProviderId: 'rizline-official', activeAccountId: account.id, session });
@@ -104,12 +105,12 @@ describe('Rizline account sessions', () => {
     const next = { ...session, token: 'rotated' };
     await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next, expected: session });
     expect(useSession.getState().session).toBe(next);
-    expect(updateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
-    updateCredentialSession.mockClear();
+    expect(mockUpdateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
+    mockUpdateCredentialSession.mockClear();
     const latest = { ...session, token: 'new-login' };
     bindAccount(account, latest, metadata.credentialId);
     await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next: { ...session, token: 'late' }, expected: next });
-    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(mockUpdateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().session).toBe(latest);
   });
   it('rotates when the in-memory session is an equivalent token copy', async () => {
@@ -118,12 +119,12 @@ describe('Rizline account sessions', () => {
     useAccountStore.getState().updateCredential(metadata.credentialId, copy);
     const next = { ...session, token: 'rotated' };
     await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next, expected: session });
-    expect(updateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
+    expect(mockUpdateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
     expect(useSession.getState().session).toBe(next);
   });
   it('does not project a session when persistent eligibility rejects the update', async () => {
     bindAccount(account, session, metadata.credentialId);
-    updateCredentialSession.mockResolvedValueOnce('stale');
+    mockUpdateCredentialSession.mockResolvedValueOnce('stale');
     await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next: { ...session, token: 'rotated' }, expected: session });
     expect(useSession.getState().session).toBe(session);
   });
@@ -194,17 +195,17 @@ describe('useSession store', () => {
     await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next, expected: session });
     unsubscribe();
     expect(notifications).toEqual([next]);
-    expect(updateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
-    updateCredentialSession.mockResolvedValueOnce('stale');
+    expect(mockUpdateCredentialSession).toHaveBeenCalledWith(metadata.credentialId, next, { expected: session, assertCurrent: expect.any(Function) });
+    mockUpdateCredentialSession.mockResolvedValueOnce('stale');
     await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next: session, expected: next });
     expect(useSession.getState().session).toBe(next);
-    updateCredentialSession.mockRejectedValueOnce(new Error('offline'));
+    mockUpdateCredentialSession.mockRejectedValueOnce(new Error('offline'));
     await commitCredential({ credentialId: metadata.credentialId, providerId: metadata.providerId, next: session, expected: next });
     expect(useSession.getState().session).toBe(session);
     await expect(retryPendingRotationWrites()).resolves.toBe(1);
   });
 
-  it('enters unbound empty state when all accounts are removed', () => {
+  it('enters unbound empty state without exposing disabled examples when all accounts are removed', async () => {
     useAccountStore.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
     useAccountStore.getState().removeBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
     useAccountStore.getState().removeBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
@@ -212,6 +213,9 @@ describe('useSession store', () => {
     expect(state.boundAccounts).toEqual([]);
     expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
     expect(state.activeProviderId).toBeNull();
+    await useDebugStore.getState().setTestAccountsEnabled(false);
+    expect(getGameDefinition(useSession.getState().activeGameId)?.fixture).not.toBe(true);
+    expect(useSession.getState().activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
   });
 
   it.each(['game.phigros', 'provider.phigros-test'])('restores the selected account after enabling %s again', pluginId => {
@@ -264,7 +268,7 @@ describe('useSession store', () => {
   it('persists the first provider-triggered LXNS refresh and uses the rotated token for the request', async () => {
     const expired = { ...lxnsSession, accessToken: 'first-expired', refreshToken: 'first-refresh', expiresAt: 0 };
     const authorizations: (string | null)[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    (globalThis.fetch = (jest.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith('/token')) {
         return new Response(JSON.stringify({ access_token: 'first-next', refresh_token: 'first-next-refresh', expires_in: 3600 }), {
           status: 200, headers: { 'Content-Type': 'application/json' },
@@ -274,12 +278,12 @@ describe('useSession store', () => {
       return new Response(JSON.stringify({ success: true, code: 200, data: { name: '已刷新玩家', rating: 12000, friend_code: 1 } }), {
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
-    }));
+    })) as typeof fetch);
     bindAccount(createMaimaiBoundAccount({ displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' }), expired);
     await expect((useSession.getState().sourceClient as MaimaiDataSource).scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '已刷新玩家' });
     const next = useSession.getState().session;
     expect(next).toMatchObject({ accessToken: 'first-next', refreshToken: 'first-next-refresh' });
-    expect(updateCredentialSession).toHaveBeenCalledWith('credential:maimai:lxns:1', next, {
+    expect(mockUpdateCredentialSession).toHaveBeenCalledWith('credential:maimai:lxns:1', next, {
       expected: expired, assertCurrent: expect.any(Function),
     });
     expect(authorizations).toEqual(['Bearer first-next']);
@@ -558,10 +562,10 @@ describe('useSession store', () => {
 
     const state = useSession.getState();
     let authorization: string | null = null;
-    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+    (globalThis.fetch = (async (_url: string, init: RequestInit) => {
       authorization = new Headers(init.headers).get('Authorization');
       return Response.json({ success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } });
-    });
+    }) as typeof fetch);
     await expect((state.sourceClient as MaimaiDataSource).scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '舞萌玩家', rating: 15000 });
     expect(authorization).toBe('Bearer access-b');
     expect(state.sessionsByAccountId).toMatchObject({
@@ -578,7 +582,7 @@ describe('useSession store', () => {
       accessToken: 'access-b',
       refreshToken: 'refresh-b',
     };
-    updateCredentialSession.mockRejectedValueOnce(new Error('write failed'));
+    mockUpdateCredentialSession.mockRejectedValueOnce(new Error('write failed'));
 
     await expect(applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated }))
       .resolves.toBe('pending-persist');
@@ -587,13 +591,13 @@ describe('useSession store', () => {
     expect(state.session).toEqual(rotated);
     expect(state.sessionsByAccountId[accountId]).toEqual(rotated);
     let authorization: string | null = null;
-    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+    (globalThis.fetch = (async (_url: string, init: RequestInit) => {
       authorization = new Headers(init.headers).get('Authorization');
       return Response.json({ success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } });
-    });
+    }) as typeof fetch);
     await expect((state.sourceClient as MaimaiDataSource).scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '舞萌玩家', rating: 15000 });
     expect(authorization).toBe('Bearer access-b');
-    updateCredentialSession.mockResolvedValue('applied');
+    mockUpdateCredentialSession.mockResolvedValue('applied');
     await expect(retryPendingRotationWrites()).resolves.toBe(1);
     await expect(retryPendingRotationWrites()).resolves.toBe(0);
   });
@@ -602,14 +606,14 @@ describe('useSession store', () => {
     bindAccount(createMaimaiBoundAccount({ displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' }), lxnsSession);
     const accountId = useSession.getState().activeAccountId;
     const rotated = { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' };
-    updateCredentialSession.mockRejectedValue(new Error('disk offline'));
+    mockUpdateCredentialSession.mockRejectedValue(new Error('disk offline'));
     await expect(applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated }))
       .resolves.toBe('pending-persist');
 
     useAccountStore.getState().removeBoundAccount(accountId);
-    updateCredentialSession.mockClear();
+    mockUpdateCredentialSession.mockClear();
     await expect(retryPendingRotationWrites()).resolves.toBe(0);
-    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(mockUpdateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().sessionsByAccountId[accountId]).toBeUndefined();
   });
 
@@ -617,43 +621,43 @@ describe('useSession store', () => {
     bindAccount(createMaimaiBoundAccount({ displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' }), lxnsSession);
     const accountId = useSession.getState().activeAccountId;
     const rotated = { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' };
-    updateCredentialSession.mockRejectedValueOnce(new Error('disk offline'));
+    mockUpdateCredentialSession.mockRejectedValueOnce(new Error('disk offline'));
     await applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated });
-    updateCredentialSession.mockClear();
+    mockUpdateCredentialSession.mockClear();
 
     let release: (value: 'applied') => void = () => undefined;
-    updateCredentialSession.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    mockUpdateCredentialSession.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
     const first = retryPendingRotationWrites();
     const second = retryPendingRotationWrites();
     try {
-      await vi.waitFor(() => expect(updateCredentialSession).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockUpdateCredentialSession).toHaveBeenCalledTimes(1));
       release('applied');
       await expect(Promise.all([first, second])).resolves.toEqual([1, 1]);
     } finally {
       release('applied');
       await Promise.allSettled([first, second]);
-      updateCredentialSession.mockReset();
-      updateCredentialSession.mockResolvedValue('applied');
+      mockUpdateCredentialSession.mockReset();
+      mockUpdateCredentialSession.mockResolvedValue('applied');
     }
     await expect(retryPendingRotationWrites()).resolves.toBe(0);
   });
   it('retains an exhausted automatic retry and resumes it when manually triggered', async () => {
-    vi.useFakeTimers();
+    jest.useFakeTimers();
     try {
       bindAccount(createMaimaiBoundAccount({ displayName: 'Player', rating: 12000, playerId: '1', providerId: 'lxns' }), lxnsSession);
       const accountId = useSession.getState().activeAccountId;
       const next = { ...lxnsSession, accessToken: 'next', refreshToken: 'next' };
-      updateCredentialSession.mockRejectedValue(new Error('offline'));
+      mockUpdateCredentialSession.mockRejectedValue(new Error('offline'));
       await applyLxnsTokenRotation(accountId, { previous: lxnsSession, next });
-      await vi.advanceTimersByTimeAsync(5_000 + 30_000 + 120_000);
-      await vi.advanceTimersByTimeAsync(600_000);
+      await jest.advanceTimersByTimeAsync(5_000 + 30_000 + 120_000);
+      await jest.advanceTimersByTimeAsync(600_000);
       let persisted: Credential | null = null;
-      updateCredentialSession.mockImplementation(async (_credentialId, session) => { persisted = session; return 'applied'; });
+      mockUpdateCredentialSession.mockImplementation(async (_credentialId, session) => { persisted = session; return 'applied'; });
       await expect(retryPendingRotationWrites()).resolves.toBe(1);
       expect(persisted).toBe(next);
       await expect(retryPendingRotationWrites()).resolves.toBe(0);
     } finally {
-      vi.useRealTimers();
+      jest.useRealTimers();
     }
   });
 
@@ -667,15 +671,15 @@ describe('useSession store', () => {
       activeAccountId: standard.id, session: expected });
     const client = resolveAccountClient(mania.id) as OsuDataSource;
     useAccountStore.getState().removeBoundAccount(mania.id);
-    vi.stubGlobal('fetch', async (url: string) => Response.json(String(url).endsWith('/oauth/token')
+    (globalThis.fetch = (async (url: string) => Response.json(String(url).endsWith('/oauth/token')
       ? { access_token: 'access-b', refresh_token: 'refresh-b', expires_in: 600, token_type: 'Bearer' }
       : String(url).includes('/scores/best') ? []
-        : { id: 7, username: 'standard', avatar_url: '', statistics: { pp: 1 } }));
+        : { id: 7, username: 'standard', avatar_url: '', statistics: { pp: 1 } })) as typeof fetch);
     await client.readFresh(new AbortController().signal);
     const state = useSession.getState();
     expect(state.sessionsByAccountId[standard.id]).toMatchObject({ accessToken: 'access-b', refreshToken: 'refresh-b' });
     expect(state.sessionsByAccountId[mania.id]).toBeUndefined();
-    expect(updateCredentialSession).toHaveBeenCalledWith('osu-shared', state.sessionsByAccountId[standard.id], {
+    expect(mockUpdateCredentialSession).toHaveBeenCalledWith('osu-shared', state.sessionsByAccountId[standard.id], {
       expected, assertCurrent: expect.any(Function),
     });
   });
@@ -706,14 +710,14 @@ describe('useSession store', () => {
     expect(state.sourceClient).not.toBe(oldManiaProvider);
     useAccountStore.getState().selectBoundAccount(standard.id);
     expect(useSession.getState().sourceClient).not.toBe(oldStandardProvider);
-    updateCredentialSession.mockClear();
+    mockUpdateCredentialSession.mockClear();
     await expect(commitCredential({ credentialId: 'osu-shared', providerId: 'osu', next: rotated, expected: authorized })).resolves.toBe('applied');
-    expect(updateCredentialSession).toHaveBeenCalledWith('osu-shared', rotated, { expected: authorized, assertCurrent: expect.any(Function) });
+    expect(mockUpdateCredentialSession).toHaveBeenCalledWith('osu-shared', rotated, { expected: authorized, assertCurrent: expect.any(Function) });
     expect(useSession.getState().sessionsByAccountId[standard.id]).toBe(rotated);
     expect(useSession.getState().sessionsByAccountId[mania.id]).toBe(rotated);
-    updateCredentialSession.mockClear();
+    mockUpdateCredentialSession.mockClear();
     await expect(commitCredential({ credentialId: 'osu-shared', providerId: 'osu', next: { ...previous, refreshToken: 'late-refresh' }, expected: previous })).resolves.toBe('stale');
-    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(mockUpdateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().session).toBe(rotated);
   });
 
@@ -734,12 +738,12 @@ describe('useSession store', () => {
       activeAccountId: account.id,
       session: reAuthorized,
     });
-    updateCredentialSession.mockClear();
+    mockUpdateCredentialSession.mockClear();
 
     await expect(commitCredential({ credentialId: 'osu-credential', providerId: 'osu', next: { ...stale, refreshToken: 'refresh-b' }, expected: stale }))
       .resolves.toBe('stale');
     expect(useSession.getState().sessionsByAccountId[account.id]).toEqual(reAuthorized);
-    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(mockUpdateCredentialSession).not.toHaveBeenCalled();
   });
 
   it('rejects a late LXNS rotation after the account was re-authorized', async () => {
@@ -772,7 +776,7 @@ describe('useSession store', () => {
 
     const state = useSession.getState();
     expect(state.sessionsByAccountId['maimai:lxns:1']).toEqual(reAuthorized);
-    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(mockUpdateCredentialSession).not.toHaveBeenCalled();
   });
 
   it('keeps the shared credential rotating after the initiating account was removed', async () => {
@@ -786,15 +790,15 @@ describe('useSession store', () => {
     });
     const client = resolveAccountClient('maimai:lxns:1') as MaimaiDataSource;
     useAccountStore.getState().removeBoundAccount('maimai:lxns:1');
-    vi.stubGlobal('fetch', async (url: string) => Response.json(String(url).endsWith('/token')
+    (globalThis.fetch = (async (url: string) => Response.json(String(url).endsWith('/token')
       ? { access_token: 'access-b', refresh_token: 'refresh-b', expires_in: 600 }
-      : { success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } }));
+      : { success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } })) as typeof fetch);
     await client.scoreProvider.getPlayer();
     const state = useSession.getState();
     expect(state.sessionsByAccountId['chunithm:lxns:2']).toMatchObject({ accessToken: 'access-b', refreshToken: 'refresh-b' });
     expect(state.sessionsByAccountId['maimai:lxns:1']).toBeUndefined();
     expect(state.boundAccounts.map(account => account.id)).toEqual(['chunithm:lxns:2']);
-    expect(updateCredentialSession).toHaveBeenCalledWith('lxns:shared', state.sessionsByAccountId['chunithm:lxns:2'], {
+    expect(mockUpdateCredentialSession).toHaveBeenCalledWith('lxns:shared', state.sessionsByAccountId['chunithm:lxns:2'], {
       expected: shared, assertCurrent: expect.any(Function),
     });
   });
@@ -810,13 +814,13 @@ describe('useSession store', () => {
       }],
     });
     useAccountStore.getState().removeBoundAccount('maimai:lxns:1');
-    updateCredentialSession.mockClear();
+    mockUpdateCredentialSession.mockClear();
 
     await expect(applyLxnsTokenRotation('maimai:lxns:1', {
       previous: lxnsSession,
       next: { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' },
     })).resolves.toBe('removed');
-    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(mockUpdateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().sessionsByAccountId).toEqual({});
   });
 
@@ -960,7 +964,7 @@ describe('useSession store', () => {
     useAccountStore.getState().bindAccounts({ accounts: [account], credentialId: 'osu-credential', activeAccountId: account.id, session });
     useAccountStore.getState().clearSession();
     await expect(commitCredential({ credentialId: 'osu-credential', providerId: 'osu', next: rotated, expected: session })).resolves.toBe('removed');
-    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(mockUpdateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().session).toBeNull();
   });
 });

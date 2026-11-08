@@ -5,7 +5,7 @@ import {
   resolveChunithmRatingTier,
   resolveChunithmRatingTierBorder,
 } from '@rranker/game-chunithm/domain/chunithm-rating-theme';
-import { resolveDxRatingTheme } from '@rranker/game-maimai/domain/dx-rating-theme';
+import { resolveRatingTheme } from '@rranker/game-maimai/domain/dx-rating-theme';
 
 describe('中二节奏 Rating 霓虹电路主题', () => {
   it.each([
@@ -61,7 +61,7 @@ describe('中二节奏 Rating 霓虹电路主题', () => {
     ['rainbow', 15_000],
   ] as const)('%s 领域复用舞萌 %i 档背景且不显示星级', (possession, dxRating) => {
     const theme = resolveChunithmPossessionTheme(possession);
-    const dxTheme = resolveDxRatingTheme(dxRating);
+    const dxTheme = resolveRatingTheme(dxRating);
     expect(theme).toMatchObject({
       id: `chunithm-possession-${possession}`,
       fillColors: dxTheme.fillColors,
@@ -73,7 +73,7 @@ describe('中二节奏 Rating 霓虹电路主题', () => {
   });
 
   it('空值和未知领域回退舞萌白档背景', () => {
-    const white = resolveDxRatingTheme(0);
+    const white = resolveRatingTheme(0);
     expect(resolveChunithmPossessionTheme('unknown')).toMatchObject({
       id: 'chunithm-possession-none',
       fillColors: white.fillColors,
