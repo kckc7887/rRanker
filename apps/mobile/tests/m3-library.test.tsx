@@ -8,6 +8,7 @@ import SongDetailScreen from '../app/detail';
 import UserLibraryScreen from '../app/library';
 import { OverviewScreen } from '../app/(tabs)/(overview)';
 import type { BoundAccount } from '@rranker/sdk/account';
+import { provider as divingFish } from '@rranker/provider-diving-fish';
 
 import { createUserDataBackup, type UserDataBackup, type RestoreMode, type UserLibraryItem } from '@rranker/sdk/domain/user-library';
 import { useCatalogFilter } from '@rranker/game-maimai/state/catalog-filter';
@@ -208,7 +209,6 @@ jest.mock('@rranker/sdk/state/query-client', () => ({
     getQueryData: jest.fn(),
   },
 }));
-jest.mock('@rranker/provider-diving-fish/sync', () => ({ sync: (context: MockSourceSyncContext) => mockSyncDivingFish(context) }));
 jest.mock('@rranker/game-maimai/services/maimai-catalog-query', () => ({ refreshMaimaiCatalog: jest.fn(async () => undefined) }));
 jest.mock('@rranker/sdk/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: {
@@ -234,10 +234,11 @@ jest.mock('@rranker/sdk/state/session-store', () => ({
 }));
 
 describe('M3A personal library screens', () => {
-  afterEach(async () => { await cleanup(); jest.useRealTimers(); });
+  afterEach(async () => { await cleanup(); jest.restoreAllMocks(); jest.useRealTimers(); });
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    jest.spyOn(divingFish, 'sync').mockImplementation(context => mockSyncDivingFish(context));
     mockPickBackup.mockReset().mockResolvedValue(null);
     mockRestoreBackup.mockReset().mockResolvedValue([]);
     useCatalogFilter.getState().reset();

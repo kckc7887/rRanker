@@ -8,7 +8,7 @@ import { createMaxedPhigrosTestAccount } from '@rranker/game-phigros/accounts';
 
 beforeEach(async () => {
   vi.resetModules();
-  await import('./plugins');
+  await import('./plugin-setup');
 });
 afterEach(() => vi.restoreAllMocks());
 

@@ -1,3 +1,4 @@
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import {
   ChunithmCatalogProvider,
   mapChunithmAliases,
@@ -93,7 +94,7 @@ describe('ChunithmCatalogProvider', () => {
   afterEach(() => (globalThis.fetch = originalFetch));
 
   it('fetches the public song list without auth or maimai query parameters', async () => {
-    const fetchMock = jest.fn().mockResolvedValue(new Response(
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(new Response(
       JSON.stringify(responsePayload),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     ));

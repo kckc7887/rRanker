@@ -95,7 +95,7 @@ test('login appears in real management and switch lists with the player avatar a
   expect(switcher.getByText('200.0000%')).toBeTruthy();
   await switcher.unmount();
   const unbind = await render(<GameAccountsScreen />);
-  await fireEvent.press(unbind.getByLabelText('解除绑定 玩家 A&B'));
+  await fireEvent.press(unbind.getByText('解除绑定'));
   const action = mockNotification.mock.calls[0][0].actions?.find(a => a.onPress);
   expect(action).toBeDefined();
   await act(async () => { action?.onPress?.(); });

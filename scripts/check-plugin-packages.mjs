@@ -52,6 +52,12 @@ try {
     await mkdir(directory);
     await json(path.join(directory, 'package.json'), {
       name: `@consumer/${name}`, version: '1.0.0', type: 'module', exports: './index.ts',
+      peerDependencies: {
+        '@rranker/sdk': '0.1.0',
+        ...(name === 'game' ? {} : { '@consumer/game': '1.0.0' }),
+        ...(name === 'provider' ? {} : { react: mobile.dependencies.react, 'react-native': mobile.dependencies['react-native'] }),
+      },
+      ...(name === 'tool' ? { dependencies: { 'expo-router': mobile.dependencies['expo-router'] } } : {}),
     });
     dependencies[`@consumer/${name}`] = `file:./${name}`;
   }
@@ -82,11 +88,23 @@ export const adapter = {
 } satisfies GameAdapter;
 `);
   await writeFile(path.join(consumer, 'provider/index.ts'), `
-import type { DataSourcePlugin } from '@rranker/sdk';
+import type { BoundAccount, DataSourcePlugin } from '@rranker/sdk';
+import { catalogDemoAccountStore } from '@rranker/sdk/storage/catalog-demo-account-store';
 import { gameIds, type Client } from '@consumer/game';
+const accounts = catalogDemoAccountStore(gameIds[0]);
+const account = (displayName: string): BoundAccount => ({ id: 'consumer-game:test', gameId: gameIds[0],
+  providerId: 'consumer-source', providerTitle: 'External source', displayName, scoreLabel: 'Score', scoreDisplay: '42' });
 export const provider = {
   kind: 'provider', id: 'consumer.provider', title: 'External source', providerId: 'consumer-source',
   gameIds, detail: 'Public source', icon: { uri: 'https://example.com/source.png' }, bindingKind: 'local',
+  restoreAccounts: async () => { const stored = await accounts.load(); return stored ? [account(stored.displayName)] : []; },
+  createAccount: async (_gameId, _boundAccounts, assertCurrent) => {
+    const stored = await accounts.load();
+    const value = account(stored?.displayName ?? 'External player');
+    await accounts.save(value, assertCurrent);
+    return value;
+  },
+  removeAccount: async (_account, { submit }) => { await submit('Account', () => accounts.remove()); },
   createClient: (): Client => ({ load: async signal => { signal.throwIfAborted(); return { kind: 'consumer-game', score: 42,
     source: { kind: 'consumer-source', label: 'Public source', updatedAt: new Date().toISOString(), isStale: false } }; } }),
 } satisfies DataSourcePlugin;

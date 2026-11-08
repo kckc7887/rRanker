@@ -395,7 +395,7 @@ describe('总览上传和同步操作', () => {
     };
     const screen = await render(<OverviewScreen />);
 
-    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪查分器'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
@@ -415,7 +415,7 @@ describe('总览上传和同步操作', () => {
     mockSettledBundle = staleBundle;
     const screen = await render(<OverviewScreen />);
 
-    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪查分器'));
     await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
       title: '尚未读取到新数据',
       message: '本次仅读取到缓存，请关闭代理并检查网络后重试。',

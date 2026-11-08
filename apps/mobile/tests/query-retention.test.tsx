@@ -7,10 +7,14 @@ import type { CatalogSnapshot } from '@rranker/game-maimai/domain/models';
 import type { MajdataRanking, MajdataSong } from '@rranker/game-majdata-net/domain/majdata';
 import type { DetailedCatalogProvider } from '@rranker/game-maimai/data-source';
 import { useMaimaiDxTag } from '@rranker/game-maimai/hooks/use-maimai-dxtag';
-import { useMajdataRanking, useMajdataSongs } from '@rranker/game-majdata-net/hooks/use-majdata';
+import { useMajdataRanking, useMajdataSongs, useMajdataSong, useMajdataLibrarySongs } from '@rranker/game-majdata-net/hooks/use-majdata';
 import type { loadCachedMaimaiDxTag } from '@rranker/game-maimai/services/maimai-dxtag-cache';
 import { ensureMaimaiCatalog, MAIMAI_CATALOG_QUERY_KEY, refreshMaimaiCatalog } from '@rranker/game-maimai/services/maimai-catalog-query';
 import { queryClient } from '@rranker/sdk/state/query-client';
+import { applyDisabledPlugins } from '@rranker/sdk/services/plugin-lifecycle';
+import { setDisabledPlugins } from '@rranker/sdk/registry';
+import { MajdataSongSchema } from '@rranker/game-majdata-net/domain/majdata';
+import { loadMajdataSong, loadMajdataSongSnapshot } from '@rranker/provider-majdata-net/services/majdata-service';
 
 let mockActive = true;
 let mockGameId = 'maimai';
@@ -56,6 +60,7 @@ function wrapper({ children }: PropsWithChildren) {
 }
 
 beforeEach(() => {
+  setDisabledPlugins([]);
   queryClient.clear();
   jest.clearAllMocks();
   mockActive = true;
@@ -69,6 +74,7 @@ beforeEach(() => {
 afterEach(async () => {
   await cleanup();
   queryClient.clear();
+  setDisabledPlugins([]);
   jest.useRealTimers();
 });
 
@@ -164,6 +170,48 @@ it('取消账号对公共曲库的等待仍保留其他消费者的查询', asyn
   await rejected;
   expect(requestSignal!.aborted).toBe(false);
   finish(fixtureCatalog);
-  expect((await remaining).songs).toMatchObject(fixtureCatalog.songs);
-  expect(queryClient.getQueryData<CatalogSnapshot>(MAIMAI_CATALOG_QUERY_KEY)?.songs).toMatchObject(fixtureCatalog.songs);
+  expect((await remaining).songs).toMatchObject(fixtureCatalog.songs.map(song => ({ ...song })));
+  expect(queryClient.getQueryData<CatalogSnapshot>(MAIMAI_CATALOG_QUERY_KEY)?.songs).toMatchObject(fixtureCatalog.songs.map(song => ({ ...song })));
+});
+
+
+it('来源停用后迟到的 Majdata 磁盘资料不重建歌曲查询', async () => {
+  const song = MajdataSongSchema.parse({ id: 'late-song', title: '歌曲', hash: 'hash', timestamp: '2026-09-01', levels: [] });
+  const reading = Promise.withResolvers<void>();
+  const snapshot = Promise.withResolvers<Awaited<ReturnType<typeof loadMajdataSongSnapshot>>>();
+  let fallback: (() => void) | undefined;
+  jest.mocked(loadMajdataSong).mockImplementation(async (_id, _signal, _onFresh, onFallback) => {
+    fallback = () => onFallback?.(song);
+    return song;
+  });
+  jest.mocked(loadMajdataSongSnapshot).mockImplementation(() => { reading.resolve(); return snapshot.promise; });
+  const hook = await renderHook(() => useMajdataSong(song.id), { wrapper });
+  await waitFor(() => expect(hook.result.current.data).toEqual(song));
+  fallback!();
+  await reading.promise;
+  await act(async () => { await applyDisabledPlugins(['provider.majdata-net']); });
+  await hook.unmount();
+  await act(async () => {
+    snapshot.resolve({ song, source: fixtureCatalog.source, metadata: { provider: 'majdata-net', label: 'Majdata Net', fetchedAt: '2026-09-01T00:00:00Z', revision: song.hash } });
+    await snapshot.promise;
+  });
+  expect(queryClient.getQueryData(['majdata-net', 'song', song.id])).toBeUndefined();
+});
+
+it('Majdata 个人曲库在来源启用后读取，并在停用时取消该来源请求', async () => {
+  setDisabledPlugins(['provider.majdata-net']);
+  const received = Promise.withResolvers<AbortSignal>();
+  jest.mocked(loadMajdataSong).mockImplementation((_id, signal) => new Promise((_resolve, reject) => {
+    received.resolve(signal!);
+    signal!.addEventListener('abort', () => reject(signal!.reason), { once: true });
+  }));
+  const ids = ['pending-song'];
+  const hook = await renderHook(() => useMajdataLibrarySongs(ids), { wrapper });
+  expect(loadMajdataSong).not.toHaveBeenCalled();
+  await act(async () => { await applyDisabledPlugins([]); });
+  const signal = await received.promise;
+  await act(async () => { await applyDisabledPlugins(['provider.majdata-net']); });
+  expect(signal.aborted).toBe(true);
+  expect(queryClient.getQueryData(['majdata-net', 'song', ids[0]])).toBeUndefined();
+  await hook.unmount();
 });

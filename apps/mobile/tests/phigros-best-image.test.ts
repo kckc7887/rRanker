@@ -104,6 +104,50 @@ describe('Phigros 成绩图', () => {
     expect(renderedText(buildPhigrosBestImageAppHtml({ ...input, page: { ...input.page, sections: [] } }))).toContain('暂无可用于图片的成绩');
   });
 
+  it.each([1080, 1440, 2160] as const)('游戏风格在图片解码完成后通过原生桥报告 %s 宽度进度与就绪', async width => {
+    let finishImages!: () => void;
+    const imagesReady = new Promise<void>(resolve => { finishImages = resolve; });
+    const messages: { type: string; width?: number; value?: number; height?: number }[] = [];
+    vi.useFakeTimers();
+    let dom: JSDOM | undefined;
+    try {
+      dom = new JSDOM(buildPhigrosBestImageHtml({
+        type: 'best30', width, playerName: '玩家', rks: '17.3200', dataAmount: '1 MiB',
+        challenge: '0', challengeModeRank: 0, syncedAt: '2026/11/08',
+        page: { id: 'best30', pageIndex: 0, pageCount: 1, sections: [{ id: 'best', title: 'Best30', records: [record('song')] }] },
+        progress: { cleared: [0, 0, 1, 0], fullCombo: [0, 0, 0, 0], phi: [0, 0, 0, 0] },
+        titles: {}, illustrations: { song: 'cover.png' },
+        templateAssets: { css: '', dataIconUrl: 'data.png', fallbackBackgroundUrl: 'background.png', fallbackAvatarUrl: '',
+          challengeIconUrls: ['challenge.png'], ratingIconUrls: { F: 'grade.png' }, allowingReadAccessToUrl: 'file:///session/' },
+      }), {
+        url: 'file:///session/preview.html', runScripts: 'dangerously', pretendToBeVisual: true,
+        beforeParse(window) {
+          Object.assign(window, { ReactNativeWebView: { postMessage: (value: string) => messages.push(JSON.parse(value)) } });
+          Object.defineProperty(window.document, 'fonts', { value: { ready: Promise.resolve() } });
+          Object.defineProperty(window.HTMLImageElement.prototype, 'complete', { get: () => true });
+          Object.defineProperty(window.HTMLImageElement.prototype, 'naturalWidth', { get: () => 1 });
+          Object.defineProperty(window.HTMLImageElement.prototype, 'decode', { value: () => imagesReady });
+          const getStyle = window.getComputedStyle.bind(window);
+          window.getComputedStyle = node => getStyle(node);
+        },
+      });
+      await vi.runAllTimersAsync();
+      const progress = messages.filter(message => message.type === 'best-image-progress').at(-1);
+      expect(progress?.width).toBe(width);
+      expect(progress?.value).toBeGreaterThan(0);
+      expect(progress?.value).toBeLessThan(1);
+      expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
+      finishImages();
+      await vi.runAllTimersAsync();
+      expect(messages.filter(message => message.type === 'best-image-progress').at(-1)).toMatchObject({ width, value: 1 });
+      expect(messages.filter(message => message.type === 'best-image-ready').at(-1)).toMatchObject({ width, height: expect.any(Number) });
+      expect(messages.some(message => message.type === 'best-image-error')).toBe(false);
+    } finally {
+      dom?.window.close();
+      vi.useRealTimers();
+    }
+  });
+
   it('默认游戏风格并接受应用风格选择，缺少样式字段重置当前偏好', () => {
     expect(parsePhigrosBestImageStylePreferences(null).ratingStyle).toBe('game');
     expect(parsePhigrosBestImageStylePreferences({ version: 2, ratingStyle: 'app', avatar: { mode: 'off' }, background: { mode: 'off' }, overflowCount: 6 })).toMatchObject({ ratingStyle: 'app', overflowCount: 6 });

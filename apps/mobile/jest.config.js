@@ -1,5 +1,11 @@
+const expoPreset = require('jest-expo/jest-preset');
+const [transformer, options] = expoPreset.transform['\\.[jt]sx?$'];
+
 module.exports = {
   preset: 'jest-expo',
+  transform: {
+    '\\.[jt]sx?$': [transformer, { ...options, plugins: ['@babel/plugin-transform-dynamic-import'] }],
+  },
   setupFilesAfterEnv: ['react-native-gesture-handler/jestSetup.js', '<rootDir>/tests/native-layout-shim.js', '<rootDir>/tests/plugin-setup.ts'],
   testMatch: ['<rootDir>/tests/**/*.test.tsx', '<rootDir>/tests/**/*.native.test.ts'],
   moduleNameMapper: {

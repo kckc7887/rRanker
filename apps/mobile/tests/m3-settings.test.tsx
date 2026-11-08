@@ -150,7 +150,10 @@ jest.mock('@rranker/provider-tuf/services/tuf-cache', () => ({
     clearPlayer: (playerId: number) => mockClearTufCache(playerId),
   })),
 }));
-jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountSummary: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/services/account-hydration', () => ({
+  hydrateAccountSummary: jest.fn(async () => undefined),
+  hydrateAccountDisplayData: jest.fn(async () => undefined),
+}));
 jest.mock('@rranker/sdk/services/account-thumbnail', () => ({
   persistBoundAccountThumbnail: jest.fn(async () => undefined),
 }));

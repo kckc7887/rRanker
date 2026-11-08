@@ -1,3 +1,4 @@
+import { describe, expect, it, jest } from '@jest/globals';
 import { waitFor } from '@testing-library/react-native';
 import { createHash } from 'node:crypto';
 import { QueryClient } from '@tanstack/react-query';
@@ -42,7 +43,7 @@ const mocks = ({
   clearPhigrosUiCache: jest.fn(),
   clearGameRemoteImageCache: jest.fn(async (): Promise<void> => undefined),
   listRemoteImageCacheUsage: jest.fn(async () => []),
-  clearDirectoryContentsStrict: jest.fn(),
+  clearDirectoryContentsStrict: jest.fn<typeof import('@rranker/sdk/features/storage-management/fs-storage').clearDirectoryContentsStrict>(),
   clearDiskCache: jest.fn(async () => true),
   clearMemoryCache: jest.fn(async () => true),
 });
@@ -223,7 +224,7 @@ describe('phira storage segment', () => {
     mocks.clearGameRemoteImageCache.mockClear();
     const client = {
       invalidateQueries: jest.fn(async () => undefined),
-      removeQueries: jest.fn(),
+      removeQueries: jest.fn((_filter: { predicate: (query: { queryKey: unknown[] }) => boolean }) => undefined),
       cancelQueries: jest.fn(async () => undefined),
     };
     await expect(clearStorageByCategories(['phira'], client as never)).resolves.toEqual({

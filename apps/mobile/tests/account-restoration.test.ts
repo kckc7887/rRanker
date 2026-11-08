@@ -80,9 +80,11 @@ describe('startup account restoration', () => {
     await restoreAppAccounts();
     vi.mocked(TufAccountStore.prototype.load).mockRejectedValue(new Error('locked'));
     await restoreAppAccounts();
-    let release!: (accounts: Awaited<ReturnType<typeof TufAccountStore.prototype.load>>) => void;
-    vi.mocked(TufAccountStore.prototype.load).mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const reading = Promise.withResolvers<void>();
+    const result = Promise.withResolvers<Awaited<ReturnType<typeof TufAccountStore.prototype.load>>>();
+    vi.mocked(TufAccountStore.prototype.load).mockImplementation(() => { reading.resolve(); return result.promise; });
     const retrying = retryFailedAccountSources();
+    await reading.promise;
     const original = useSession.getState().boundAccounts.find((account) => account.providerId === 'tuf' && account.displayName === 'original')!;
     const changed = { ...original, displayName: 'changed while reading' };
     const added = { ...original, id: 'adofai:tuf:3', displayName: 'new binding' };
@@ -90,7 +92,7 @@ describe('startup account restoration', () => {
     useSession.getState().removeBoundAccount(removed.id);
     useSession.getState().upsertBoundAccount(changed);
     useSession.getState().upsertBoundAccount(added);
-    release([{ playerId: 1, displayName: 'old removed' }, { playerId: 2, displayName: 'old original' }, { playerId: 3, displayName: 'old new' }]);
+    result.resolve([{ playerId: 1, displayName: 'old removed' }, { playerId: 2, displayName: 'old original' }, { playerId: 3, displayName: 'old new' }]);
     await retrying;
     expect(useSession.getState().boundAccounts).toEqual([changed, added]);
   });

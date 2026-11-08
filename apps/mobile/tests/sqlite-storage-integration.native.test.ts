@@ -66,7 +66,8 @@ async function reloadStorage() {
   ({ hydrateAccountSummaries } = await import('@rranker/sdk/services/account-hydration'));
 }
 
-const mockBridge = { open: jest.fn<(...args: unknown[]) => Promise<unknown>>() };
+type DatabaseBridge = { getFirstAsync: (sql: string, ...parameters: (string | number)[]) => Promise<unknown> } & Record<string, unknown>;
+const mockBridge = { open: jest.fn<(...args: unknown[]) => Promise<DatabaseBridge>>() };
 jest.mock('expo-sqlite', () => ({ openDatabaseAsync: (...args: unknown[]) => mockBridge.open(...args) }));
 
 const queriedBest = (chartId: number, score = 900_000): PhiraQueriedBest => ({
@@ -188,7 +189,7 @@ describe('SQLite storage and current backups', () => {
     }
   });
 
-  it.each(['consumer', 'foreground', 'cache-clear'] as const)('stops cached Majdata tasks before the next HTTP claim after %s cancellation', async (reason) => {
+  it.each(['consumer', 'foreground', 'cache-clear', 'source'] as const)('stops cached Majdata tasks before the next HTTP claim after %s cancellation', async (reason) => {
     const songs = await seedMajdataSongs();
     const requests = pendingMajdataRequests();
     const controller = new AbortController();
@@ -201,6 +202,7 @@ describe('SQLite storage and current backups', () => {
       await waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(5));
       if (reason === 'consumer') controller.abort();
       else if (reason === 'foreground') { abortForegroundWork(); beginForegroundWork(); }
+      else if (reason === 'source') await (await import('@rranker/sdk/services/plugin-lifecycle')).applyDisabledPlugins(['provider.majdata-net']);
       else { invalidateResourceWrites('majdata-net'); await repository.clearResources(songs.map(song => majdataSongKey(song.id))); }
       await waitFor(() => expect(requests.active()).toBe(0));
       await new Promise(resolve => setTimeout(resolve, 0));
@@ -424,11 +426,11 @@ describe('SQLite storage and current backups', () => {
     expect(await service.createBackup('phigros')).toMatchObject({ items: other.items, tagPresets: other.tagPresets });
   });
 
-  it.each([
+  it.each<[string, 'SD' | 'DX' | 'UTAGE' | undefined, number]>([
     ['maimai', 'SD', 4], ['maimai', 'DX', 4], ['maimai', 'UTAGE', 0],
     ['phigros', undefined, 3], ['chunithm', undefined, 5], ['rizline', undefined, 4],
     ['musedash', undefined, 4], ['majdata-net', undefined, 6], ['example', undefined, 0],
-  ] as const)('imports valid %s %s difficulties and rejects unavailable slots without changing data', async (gameId, chartType, lastLevel) => {
+  ])('imports valid %s %s difficulties and rejects unavailable slots without changing data', async (gameId, chartType, lastLevel) => {
     const service = new UserLibraryService();
     const timestamp = '2026-07-13T00:00:00.000Z';
     const backupAt = (levelIndex: number, presets: string[]) => createUserDataBackup(gameId, [{

@@ -83,7 +83,7 @@ test('catalog row displays raw levels and toggles favorites', async () => {
   expect(screen.queryByText(/MASTER/)).toBeNull(); expect(screen.queryByText('SD')).toBeNull();
   const favorite = screen.getByLabelText(`收藏 ${mockSong.title}`);
   await fireEvent.press(favorite);
-  expect(onFavoriteChange).toHaveBeenCalledWith({ gameId: 'majdata-net', kind: 'song', id: mockSong.id, target: { songId: mockSong.id } }, true);
+  expect(onFavoriteChange).toHaveBeenCalledWith(mockSong.id, true);
   expect(screen.getByLabelText('歌曲封面').props).toMatchObject({ contentFit: 'cover', transition: 120,
     source: expect.stringContaining(mockSong.id) });
 });

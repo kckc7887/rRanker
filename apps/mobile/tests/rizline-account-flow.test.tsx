@@ -71,7 +71,7 @@ jest.mock('@rranker/sdk/state/query-client', () => ({ queryClient: {
 jest.mock('@rranker/sdk/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn(async () => undefined) }) }));
 jest.mock('@rranker/sdk/components/AppNotification', () => ({
   ...jest.requireActual<typeof import('@rranker/sdk/components/AppNotification')>('@rranker/sdk/components/AppNotification'), useNotification: () => ({ showActionNotification: mockNotification, showNotification: mockShowNotification }) }));
-jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
+jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined), hydrateAccountSummary: jest.fn(async () => undefined) }));
 jest.mock('@rranker/sdk/services/account-thumbnail', () => ({ persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
 jest.mock('@rranker/provider-tuf/components/TufPlayerPickerSheet', () => ({ TufPlayerPickerSheet: () => null }));
 jest.mock('@rranker/provider-phira-community/components/PhiraPlayerPickerSheet', () => ({ PhiraPlayerPickerSheet: () => null }));

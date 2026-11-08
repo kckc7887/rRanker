@@ -1,3 +1,4 @@
+import { afterAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { waitFor } from '@testing-library/react-native';
 import type { SourceClientContext } from '@rranker/sdk/credentials';
 import { useAccountStore } from '@rranker/sdk/state/account-store';
@@ -11,7 +12,11 @@ import { loadMajdataDemoScoresPage } from '@rranker/provider-majdata-net-test/cl
 import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 import { MajdataSongSchema } from '@rranker/game-majdata-net/domain/majdata';
 import type { HttpCookieSession } from '@rranker/provider-majdata-net/http-cookies';
-const mockProvider = ({ getSong: jest.fn(), getChart: jest.fn(), getSongs: jest.fn(), getPlayer: jest.fn(), getRecords: jest.fn(), getRecent: jest.fn() });
+type Source = import('@rranker/provider-majdata-net/providers/majdata-provider').MajdataProvider;
+const mockProvider = {
+  getSong: jest.fn<Source['getSong']>(), getChart: jest.fn<Source['getChart']>(), getSongs: jest.fn<Source['getSongs']>(),
+  getPlayer: jest.fn<Source['getPlayer']>(), getRecords: jest.fn<Source['getRecords']>(), getRecent: jest.fn<Source['getRecent']>(),
+};
 const mockDatabase = new DatabaseSync(':memory:');
 const repository = new SqliteSnapshotRepository();
 let mockResourceReadError: Error | undefined;

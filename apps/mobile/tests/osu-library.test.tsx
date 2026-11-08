@@ -1,12 +1,18 @@
+import { jest } from '@jest/globals';
+import { createClient } from '@rranker/provider-osu-test/client';
+import { createCatalogTestAccount } from '@rranker/provider-osu-test/accounts';
+import type { OsuDataSource as MockOsuDataSource } from '@rranker/game-osu/data-source';
 import { imageDownloads } from './remote-image-native-mock';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { OsuBeatmapsetDetail } from '@rranker/game-osu/domain/osu';
 import UserLibraryScreen from '../app/library/index';
 
 const mockPush = jest.fn();
 const mockGetBeatmapset = jest.fn<(id: string) => Promise<OsuBeatmapsetDetail>>();
+const mockAccount = createCatalogTestAccount('osu-standard');
+const mockSourceClient = createClient({ account: mockAccount, credential: null,
+  assertCurrent: () => undefined, commitCredential: async () => 'applied' });
 let mockFocused = true;
 const mockTransitions = new Map<string, (event: { data: { closing: boolean } }) => void>();
 const mockNavigation = {
@@ -65,8 +71,10 @@ jest.mock('expo-image', () => {
 jest.mock('@rranker/sdk/state/session-store', () => ({
   useSession: (() => { const hook = (selector: (state: {
     activeGameId: 'osu-standard'; activeProviderId: 'osu-test'; activeAccountId: string; session: null;
+    sourceClient: MockOsuDataSource | undefined;
   }) => unknown) => (
-    selector({ activeGameId: 'osu-standard', activeProviderId: 'osu-test', activeAccountId: 'osu-standard:osu-test:demo', session: null })
+    selector({ activeGameId: 'osu-standard', activeProviderId: 'osu-test', activeAccountId: mockAccount.id,
+      session: null, sourceClient: mockSourceClient })
   ); return Object.assign(hook, { getState: () => hook(state => state), subscribe: () => () => undefined }); })(),
 }));
 jest.mock('@rranker/provider-osu/providers/osu-public-catalog-provider', () => ({ OsuPublicCatalogProvider: class {

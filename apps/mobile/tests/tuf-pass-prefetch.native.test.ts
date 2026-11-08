@@ -1,11 +1,12 @@
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { InfiniteData } from '@tanstack/react-query';
 import type { TufPassPage } from '@rranker/game-adofai/domain/tuf';
 import { prefetchTufPassPage } from '@rranker/game-adofai/hooks/use-tuf';
 import { queryClient } from '@rranker/sdk/state/query-client';
 import { invalidateResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
 
-const mockGetPasses = jest.fn();
-jest.mock('@rranker/provider-tuf/providers/tuf-provider', () => ({ tufProvider: { getPasses: (...args: unknown[]) => mockGetPasses(...args) } }));
+const mockGetPasses = jest.fn<typeof import('@rranker/provider-tuf/providers/tuf-provider').tufProvider.getPasses>();
+jest.mock('@rranker/provider-tuf/providers/tuf-provider', () => ({ tufProvider: { getPasses: (...args: Parameters<typeof mockGetPasses>) => mockGetPasses(...args) } }));
 jest.mock('@rranker/sdk/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
 jest.mock('@rranker/sdk/state/app-lifecycle', () => ({
   useAppLifecycle: () => ({ foregroundReady: true, foregroundGeneration: 1 }),

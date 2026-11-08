@@ -10,6 +10,8 @@ import { useRefreshAllPhiraBests, usePhiraBests, usePhiraChart, usePhiraChartBes
 import { CachedContentActivityScope } from '@rranker/sdk/components/CachedTabScreen';
 import { Text } from 'react-native';
 import { queryClient } from '@rranker/sdk/state/query-client';
+import { applyDisabledPlugins } from '@rranker/sdk/services/plugin-lifecycle';
+import { setDisabledPlugins } from '@rranker/sdk/registry';
 import { abortForegroundWork, beginForegroundWork } from '@rranker/sdk/state/app-lifecycle-core';
 
 jest.mock('@rranker/sdk/storage/sqlite-snapshot-repository', () => {
@@ -320,6 +322,32 @@ describe('Phira 成绩刷新操作结果（真实 Hook 到记录页链路）', (
     await act(async () => { outcome = await hook.result.current.refreshAll(); });
 
     expect(outcome).toEqual({ status: 'success', requestedCount: 1, updatedCount: 1, failedChartIds: [] });
+  });
+
+  it('停用 Phira 来源立即中止成绩刷新中的 HTTP 请求', async () => {
+    const originalFetch = globalThis.fetch;
+    const received = Promise.withResolvers<AbortSignal>();
+    globalThis.fetch = (async (_input, init) => new Promise<Response>((_resolve, reject) => {
+      const signal = init!.signal!;
+      received.resolve(signal);
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    })) as typeof fetch;
+    const hook = await renderHook(() => useRefreshAllPhiraBests(PLAYER_ID));
+    try {
+      const pending = hook.result.current.refreshAll();
+      const signal = await received.promise;
+      await act(async () => {
+        await applyDisabledPlugins(['provider.phira-community']);
+        await expect(pending).resolves.toMatchObject({ status: 'cancelled' });
+      });
+      expect(signal.aborted).toBe(true);
+      expect(memory().values.has(phiraBestCacheKey(PLAYER_ID))).toBe(false);
+      expect(queryClient.getQueryData(['phira', 'bests', PLAYER_ID])).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+      setDisabledPlugins([]);
+      await hook.unmount();
+    }
   });
 
   it('取消时是 cancelled，与失败区分', async () => {

@@ -52,7 +52,7 @@
 
 `hooks/use-overview-sync.ts` 依次取消当前账号查询、调用数据源 `sync`、调用适配器 `refreshResources`、刷新当前游戏数据。全过程使用前台信号并订阅账号、游戏与来源代次；切换账号、退出页面、清缓存或停用所属插件时中止在途同步，迟到结果不能发布。部分刷新失败保留可用数据，并通过公共通知说明未完成的数据部分。`useGameResourceSync` 按当前适配器和公共资源来源进入刷新，离开游戏或作用域失效时取消请求；无关插件启停不重启刷新。
 
-Query 归属通过 `meta.pluginId`、`meta.sourcePluginId`、`meta.gameId`、`meta.accountId` 表达，停用与清理沿这些实际作用域取消；来源停用不扩大为整个游戏的查询清理。公共曲库查询不附账号身份，账号成绩和私人明细包含真实账号，osu! 各模式使用各自游戏 ID。实际来源由当前解析结果提供，查询键继续表达资源或实体身份。
+Query 归属通过 `meta.pluginId`、`meta.sourcePluginId`、`meta.gameId`、`meta.accountId` 表达，停用与清理沿这些实际作用域取消；来源停用不扩大为整个游戏的查询清理。公共曲库查询不附账号身份，账号成绩和私人明细包含真实账号，osu! 各模式使用各自游戏 ID。实际来源由当前解析结果提供，查询键继续表达资源或实体身份。 Majdata 个人曲库查询随公共来源更新归属；后台歌曲快照发布与磁盘写入复核该来源代次。Phira 批量成绩刷新沿现有请求控制器订阅游戏、来源与账号失效，并在完成后退订。 舞萌账号取数的曲库等待传递消费者信号，详细曲库请求同样订阅实际资源来源；取消一个等待者不会取消其他账号共用的曲库查询。
 
 `state/query-client.ts` 创建唯一 QueryClient，默认最多重试一次，并遵守 `ProviderError.retryable`。`providers/http-json.ts` 处理请求、取消、错误转换与 `totalAttempts`；上游认证、请求参数和响应校验由数据源实现。网络与磁盘边界保留校验，可信的内部转换直接使用已校验类型。
 
@@ -66,7 +66,7 @@ Query 归属通过 `meta.pluginId`、`meta.sourcePluginId`、`meta.gameId`、`me
 
 `state/account-store.ts` 保存账号、凭据及选择状态。`state/session-store.ts` 的 `useSession` 是它的派生视图，结合插件和示例账号偏好计算活动账号、游戏、会话与 `sourceClient`。账号集合保持完整，活动选择和 `useVisibleBoundAccounts` 只使用当前可用账号。
 
-`state/session-provider-resolver.ts` 根据账号、凭据引用、显示名和插件修订缓存客户端，调用所属 `DataSourcePlugin.createClient`。数据源收到 `SourceClientContext` 的账号、凭据、提交资格和 `commitCredential`；页面不创建认证 Provider，不保存第二份客户端状态。
+`state/session-provider-resolver.ts` 根据账号、凭据引用、显示名、所属游戏和来源代次，以及当前公共资源来源身份与代次缓存客户端，调用所属 `DataSourcePlugin.createClient`。无关插件启停继续复用当前客户端。数据源收到 `SourceClientContext` 的账号、凭据、提交资格和 `commitCredential`；页面不创建认证 Provider，不保存第二份客户端状态。
 
 `services/account-restoration.ts` 与 `storage/secure-session-store.ts` 恢复当前安全索引和被引用的凭据，数据源通过 `parseCredential` 解释内容、通过 `restoreAccounts` 恢复自己管理的账号。成功读取后发现不支持的结构，只重建对应索引或条目；I/O 失败保留数据并显示重试入口。恢复不扫描孤立分片。
 

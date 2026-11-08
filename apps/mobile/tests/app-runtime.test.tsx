@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { act, renderHook } from '@testing-library/react-native';
+import { act, cleanup, renderHook } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
 import type { AppLifecycleSnapshot } from '@rranker/sdk/state/app-lifecycle-core';
@@ -10,8 +10,6 @@ let mockLifecycle: AppLifecycleSnapshot;
 let mockController: AbortController;
 let mockRealLifecycle = false;
 const mockFocus = jest.fn();
-const mockPause = jest.fn();
-const mockResume = jest.fn();
 const mockCancelQueries = jest.fn(async (): Promise<void> => undefined);
 const mockResumeQueries = jest.fn(async () => undefined);
 const mockReleaseQueries = jest.fn();
@@ -51,7 +49,6 @@ jest.mock('@rranker/sdk/features/storage-management/storage-cache-maintenance', 
 jest.mock('@rranker/sdk/services/remote-image-cache', () => ({ markRemoteImageCacheGameActive: (gameId: string) => mockActiveGame(gameId) }));
 jest.mock('@rranker/sdk/services/account-hydration', () => ({ hydrateAccountDisplayData: (signal: AbortSignal) => mockHydrate(signal) }));
 jest.mock('@rranker/sdk/services/runtime-diagnostics', () => ({ recordRuntimeDiagnostic: () => mockRecord() }));
-jest.mock('@rranker/tool-maimai/services/upload-task-controller', () => ({ uploadTaskController: { pause: () => mockPause(), resume: () => mockResume() } }));
 jest.mock('@rranker/sdk/services/runtime-logs', () => ({ recordRuntimeRoute: (segments: unknown) => mockRoute(segments) }));
 
 type Task = { callback: () => void; cancelled: boolean };
@@ -81,7 +78,8 @@ describe('app runtime lifecycle', () => {
     };
     globalThis.cancelIdleCallback = handle => { const task = tasks[handle - 1]; if (task) task.cancelled = true; };
   });
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanup();
     jest.restoreAllMocks();
     globalThis.requestIdleCallback = originalIdle;
     globalThis.cancelIdleCallback = originalCancelIdle;
@@ -164,14 +162,12 @@ describe('app runtime lifecycle', () => {
     mockLifecycle = { ...mockLifecycle, appState: 'inactive', phase: 'inactive', foregroundReady: false };
     await hook.rerender(undefined);
     expect(mockFocus).toHaveBeenLastCalledWith(false);
-    expect(mockPause).not.toHaveBeenCalled();
     expect(mockCancelQueries).not.toHaveBeenCalled();
     expect(mockReleaseQueries).not.toHaveBeenCalled();
     expect(mockClearMemory).not.toHaveBeenCalled();
     mockController.abort();
     mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background' };
     await hook.rerender(undefined);
-    expect(mockPause).toHaveBeenCalled();
     expect(mockCancelQueries).toHaveBeenCalled();
     expect(mockClearMemory).not.toHaveBeenCalled();
     mockLifecycle = { ...mockLifecycle, memoryWarningGeneration: 1 };

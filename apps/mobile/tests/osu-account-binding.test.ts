@@ -109,14 +109,23 @@ describe('osu! 模式绑定', () => {
       mocks.getSession.mockReturnValue(next);
       return userResponse();
     });
-    const assertCurrent = vi.fn();
+    let current = true;
+    const stale = new Error('binding replaced');
+    const assertCurrent = () => { if (!current) throw stale; };
     const controller = new AbortController();
     const result = await bindOsuModes({ modeGameIds: ['osu-standard', 'osu-mania'], session,
       existingAccounts: [], credentialIdsByAccountId: {}, signal: controller.signal, assertCurrent });
     expect(result.session).toBe(next);
     const [storedAccounts, options] = mocks.upsertAccounts.mock.calls[0];
     expect(storedAccounts.every((account: { session: unknown }) => account.session === next)).toBe(true);
-    expect(options).toEqual({ activeAccountId: result.activeAccountId, signal: controller.signal, assertCurrent });
+    expect(options.activeAccountId).toBe(result.activeAccountId);
+    expect(options.assertCurrent).not.toThrow();
+    current = false;
+    expect(options.assertCurrent).toThrow(stale);
+    current = true;
+    const aborted = new Error('binding cancelled');
+    controller.abort(aborted);
+    expect(options.assertCurrent).toThrow(aborted);
   });
 
   it('空选择报鉴权错误', async () => {

@@ -138,7 +138,7 @@ describe('ProviderLoginSheet Phigros polling', () => {
     await startLogin(screen);
     await fireEvent.press(screen.getByText('取消授权'));
     await fireEvent.press(screen.getByText('开始绑定'));
-    await waitFor(() => expect(success).toHaveBeenCalledTimes(1));
+    await waitFor(() => { expect(screen.getByText('开始绑定')).toBeTruthy(); expect(success).toHaveBeenCalledTimes(1); });
     await act(async () => { release(mockSession); });
     expect(mockSave).toHaveBeenCalledTimes(1); expect(useAccountStore.getState().boundAccounts).toEqual([expect.objectContaining({ id: 'phigros:phi-taptap:player-1', displayName: '玩家', credentialId: 'credential' })]);
     expect(success).toHaveBeenCalledTimes(1); await screen.unmount();
@@ -220,7 +220,7 @@ describe('ProviderLoginSheet Phigros polling', () => {
     await waitFor(() => expect(screen.getByText('网络波动，自动重试中…')).toBeTruthy());
 
     await act(async () => { jest.advanceTimersByTime(5_000); });
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    await waitFor(() => { expect(screen.getByText('开始绑定')).toBeTruthy(); expect(onSuccess).toHaveBeenCalledTimes(1); });
     expect(pollLoginMock).toHaveBeenCalledTimes(2);
 
     await screen.unmount();

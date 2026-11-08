@@ -28,7 +28,8 @@ import { applyRizlineCatalog, RIZLINE_CATALOG_QUERY_KEY } from '@rranker/game-ri
 import { fixtureCatalog, fixturePlayer, fixtureSource } from './fixtures/sanitized';
 import { rizlineCatalog, rizlineChart } from './fixtures/rizline';
 import { buildScoreSnapshot } from '@rranker/game-maimai/services/score-service';
-import { getDataSource } from '@rranker/sdk/registry';
+import { getDataSource, setDisabledPlugins } from '@rranker/sdk/registry';
+import { applyDisabledPlugins } from '@rranker/sdk/services/plugin-lifecycle';
 import { LxnsCatalogProvider } from '@rranker/provider-lxns/providers/lxns-catalog-provider';
 import { ScoreRepository } from '@rranker/game-maimai/storage/score-repository';
 
@@ -128,6 +129,31 @@ it('舞萌示例从曲库生成成绩并保留已有的持久化内容', async (
     records: [], player: { source: { label: '示例查分器（全谱面满成绩）' } },
   });
 });
+it('停用公共曲库来源中止舞萌示例正在读取的详细曲库 HTTP', async () => {
+  const originalFetch = globalThis.fetch;
+  const received = Promise.withResolvers<AbortSignal>();
+  globalThis.fetch = (async (_input, init) => new Promise<Response>((_resolve, reject) => {
+    const signal = init!.signal!;
+    received.resolve(signal);
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  })) as typeof fetch;
+  const account = createMaxedMaimaiTestAccount();
+  const input = context({ gameId: 'maimai', providerId: 'maimai-test', accountId: account.id, client: createClient() });
+  input.activeAccount = account;
+  try {
+    const pending = loadGameDataBundle(input);
+    const rejected = expect(pending).rejects.toThrow();
+    const signal = await received.promise;
+    await applyDisabledPlugins(['provider.lxns']);
+    expect(signal.aborted).toBe(true);
+    await rejected;
+    expect(input.queryClient.getQueryData(input.queryKey)).toBeUndefined();
+  } finally {
+    globalThis.fetch = originalFetch;
+    setDisabledPlugins([]);
+  }
+});
+
 function createClient() { const client = new QueryClient(); clients.add(client); return client; }
 const initialAccounts = useAccountStore.getState();
 const initialDebug = useDebugStore.getState();

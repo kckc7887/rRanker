@@ -65,7 +65,7 @@ rRanker 使用根 npm workspace 和根 `package-lock.json`。`plugins` 是固定
 
 `useGameData` 和 `game-data-query.ts` 共用 QueryClient。每次查询按请求捕获的账号 ID 解析当前客户端，取消旧工作后重新取得具备当前提交资格的实例。适配器返回载荷及可选后台刷新结果，平台负责缓存首屏、后台发布、失败和取消。缓存回退保留真实来源、抓取时间和过时状态。
 
-查询元数据携带 `pluginId`、`sourcePluginId`、`gameId`、`accountId` 中适用的作用域。清理和停用先使写入代次失效，再取消查询并删除对应缓存，迟到请求不能回填已清理内容。
+查询元数据携带 `pluginId`、`sourcePluginId`、`gameId`、`accountId` 中适用的作用域。清理和停用先使写入代次失效，再取消查询并删除对应缓存，迟到请求不能回填已清理内容。 缓存首屏返回后的 Majdata 后台歌曲请求继续订阅公共来源失效，停止请求并保留已有快照；Phira 批量成绩刷新同样在来源停用时中止实际 HTTP。
 
 账号头像、评分和展示资料共用 `account-hydration.ts`。`hydrateAccountDisplayData` 先恢复缩略图，再通过数据源的 `hydrateAccount` 补全资料；同一账号的在途请求共享结果，游戏、来源或账号代次失效时中止底层请求，摘要提交共用 `commitAccountMetadata`。`account-thumbnail.ts` 负责缩略图的读取、恢复和合并保存，内存摘要、缩略图与凭据索引中的展示资料使用同一账号提交资格。数据源优先使用已有查询和快照；Phigros 在读取磁盘前后都复核当前查询，LXNS、公开玩家和本地来源保留各自的真实读取方式。游戏专属摘要保存在 `displayData`，由适配器解释。
 
@@ -125,12 +125,12 @@ npm run check:packages
 
 `check:packages` 将 SDK、适配器、数据源、工具、格式库和原生包实际打包，安装到独立消费工程，再编译只使用公开接口的外部游戏、数据源和工具。其解析环境不使用应用的路径别名。
 
-Vitest 执行纯业务与异步模块测试；Jest 执行页面和 `*.native.test.ts` 的原生客户端、存储集成测试。两者通过 `tests/plugin-setup.ts` 装配轻量插件清单，原生外部依赖由各业务用例模拟。
+Vitest 执行纯业务与异步模块测试；Jest 执行页面和 `*.native.test.ts` 的原生客户端、存储集成测试，并在 Expo 预设上转换动态导入。两者通过 `tests/plugin-setup.ts` 装配轻量插件清单，原生外部依赖由各业务用例模拟。
 
 CI 的 push 与 PR 入口均检出固定子模块提交，使用根锁文件安装。质量检查覆盖 lint、类型、业务和 UI、生成物一致性、外部包消费及 CI 脚本。生成物不一致时，云端额外生成播放器资源并上传供维护；该次一致性检查仍失败，提交资源后重新检查。
 
 Android 使用相同 Expo 配置构建四 ABI Release APK，并执行包、签名及设备入口验证。iOS 在 TestFlight 队列中构建、签名、校验并上传。应用版本由现有 Expo 配置决定。
 
-`app.config.js` 装配公共配置与插件原生配置。原生能力通过应用显式依赖和 Expo autolinking 接入。Android 最低版本为 7，compile/target SDK 为 36；iOS 最低版本为 16.4，构建要求 Xcode 26.4 或更新版本。
+`app.config.js` 装配公共配置与插件原生配置。原生能力通过应用显式依赖和 Expo autolinking 接入，原生包发布内容明确限定为源码、编译配置与供应商库。Android 最低版本为 7，compile/target SDK 为 36；iOS 最低版本为 16.4，构建要求 Xcode 26.4 或更新版本。
 
 对外 APK 文件名为 `rRanker-arm64.apk`、`rRanker-armeabi.apk`、`rRanker-x86.apk`、`rRanker-x86_64.apk`。正式 Release 发布流程沿 `resource-release.yml` 将校验后的附件同步到资源仓库。

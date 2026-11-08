@@ -1,6 +1,6 @@
-import { captureResourceWrites } from '@rranker/sdk/services/snapshot-cache-utils';
+import { captureResourceWrites, resourceWriteGeneration } from '@rranker/sdk/services/snapshot-cache-utils';
 import type { Credential } from '@rranker/sdk/credentials';
-import { getDataSource, getPluginRevision } from '@rranker/sdk/registry';
+import { getDataSource, getGameResourceSource } from '@rranker/sdk/registry';
 import { accountIsAvailable, accountSession, useAccountStore } from '@rranker/sdk/state/account-store';
 import { accountWriteKey, captureBoundAccountWrites } from '@rranker/sdk/services/account-write-scope';
 import { commitCredential } from '@rranker/sdk/services/session-credential-service';
@@ -15,7 +15,9 @@ export function resolveAccountClient(accountId: string): unknown {
   const source = getDataSource(account.providerId);
   if (!source?.createClient) return undefined;
   const credential = accountSession(state, accountId);
-  const key = `${accountWriteKey(accountId)}:${getPluginRevision()}`;
+  const resources = getGameResourceSource(account.gameId);
+  const key = `${accountWriteKey(accountId)}:${resourceWriteGeneration(source.id)}`
+    + `:${resources?.id ?? ''}:${resources ? resourceWriteGeneration(resources.id) : ''}`;
   const cached = clients.get(accountId);
   if (cached?.key === key && cached.displayName === account.displayName && cached.credential === credential) return cached.client;
   const assertCurrent = captureBoundAccountWrites(accountId);
