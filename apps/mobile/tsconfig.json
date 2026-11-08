@@ -7,19 +7,15 @@
         "./src/*"
       ]
     },
-    "types": ["node", "vitest/globals"]
+    "types": [
+      "node",
+      "vitest/globals"
+    ]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
-  ],
-  "exclude": [
-    "src/features/simai-chart-preview/engine/**",
-    "src/features/simai-chart-preview/webview-player/**",
-    "src/features/phigros-chart-preview/webview-player/**",
-    "src/features/osu-chart-preview/webview-player/**",
-    "src/features/rizline-chart-preview/webview-player/**"
   ]
 }

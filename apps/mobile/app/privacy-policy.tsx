@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { ScrollView, StyleSheet, Text } from 'react-native';
-import { useAppTheme } from '@/theme/app-theme';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
 
 const PRIVACY_POLICY = [
   { kind: 'title', text: '隐私政策' },

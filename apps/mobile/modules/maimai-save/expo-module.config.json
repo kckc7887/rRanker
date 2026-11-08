@@ -1,5 +1,0 @@
-{
-  "platforms": ["android", "apple"],
-  "apple": { "modules": ["MaimaiSaveModule"] },
-  "android": { "modules": ["expo.modules.maimaisave.MaimaiSaveModule"] }
-}

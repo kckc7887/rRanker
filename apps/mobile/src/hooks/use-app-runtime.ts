@@ -1,19 +1,18 @@
-import { uploadTaskController } from '@/services/upload-task-controller';
 import { useEffect, useRef } from 'react';
 import { focusManager } from '@tanstack/react-query';
 import { Image as ExpoImage } from 'expo-image';
 import { useSegments } from 'expo-router';
-import { useGameResourceSync } from './use-game-resource-sync';
-import { queryClient, releaseInactiveQueries, resumeInterruptedActiveQueries } from '@/state/query-client';
-import { retryPendingRotationWrites, useSession } from '@/state/session-store';
-import { getForegroundAbortSignal, scheduleIdleTask, useAppLifecycle } from '@/state/app-lifecycle';
-import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
-import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
-import { hydrateAccountDisplayData } from '@/services/account-thumbnail';
-import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
-import { recordRuntimeRoute } from '@/services/runtime-logs';
-import { setThemePersistenceForeground } from '@/state/theme-store';
-import { retryFailedAccountSources } from '@/services/account-restoration';
+import { useGameResourceSync } from '@rranker/sdk/hooks/use-game-resource-sync';
+import { queryClient, releaseInactiveQueries, resumeInterruptedActiveQueries } from '@rranker/sdk/state/query-client';
+import { retryPendingRotationWrites, useSession } from '@rranker/sdk/state/session-store';
+import { getForegroundAbortSignal, scheduleIdleTask, useAppLifecycle } from '@rranker/sdk/state/app-lifecycle';
+import { runStorageCacheMaintenance } from '@rranker/sdk/features/storage-management/storage-cache-maintenance';
+import { markRemoteImageCacheGameActive } from '@rranker/sdk/services/remote-image-cache';
+import { hydrateAccountDisplayData } from '@rranker/sdk/services/account-hydration';
+import { recordRuntimeDiagnostic } from '@rranker/sdk/services/runtime-diagnostics';
+import { recordRuntimeRoute } from '@rranker/sdk/services/runtime-logs';
+import { setThemePersistenceForeground } from '@rranker/sdk/state/theme-store';
+import { retryFailedAccountSources } from '@rranker/sdk/services/account-restoration';
 
 export function useAppRuntime(ready: boolean) {
   const routeTemplate = useSegments().join('/');
@@ -68,10 +67,9 @@ export function useAppRuntime(ready: boolean) {
         if (cancelled) return;
         return resumeInterruptedActiveQueries(queryClient);
       }).catch(() => undefined);
-      uploadTaskController.resume();
       /** 前台恢复时补交轮换凭据，不重新联网刷新。 */
       void retryPendingRotationWrites();
-    } else if (lifecycle.phase === 'background') uploadTaskController.pause();
+    }
     if (lifecycle.phase === 'background') {
       queryCancellationRef.current = queryClient.cancelQueries();
     }

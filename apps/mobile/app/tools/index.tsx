@@ -1,32 +1,34 @@
 import { Stack, router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { usePluginRevision } from '@rranker/sdk';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNotification } from '@/components/AppNotification';
-import { Card } from '@/components/Card';
-import { EmptyDataView } from '@/components/EmptyDataView';
-import { getGameToolbox } from '@/domain/game-toolbox';
-import { useSession } from '@/state/session-store';
-import { useToolboxPins } from '@/state/toolbox-pins';
-import { useAppTheme } from '@/theme/app-theme';
+import { useNotification } from '@rranker/sdk/components/AppNotification';
+import { Card } from '@rranker/sdk/components/Card';
+import { EmptyDataView } from '@rranker/sdk/components/EmptyDataView';
+import { getGameToolbox } from '@rranker/sdk/domain/game-toolbox';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { useToolboxPins } from '@rranker/sdk/state/toolbox-pins';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
 
 export default function ToolsScreen() {
+  usePluginRevision();
   const { showNotification } = useNotification();
   const theme = useAppTheme();
   const activeGameId = useSession((s) => s.activeGameId);
   const toolbox = getGameToolbox(activeGameId);
-  const pinnedToolIds = useToolboxPins((s) => s.pinnedToolIdsByGame[activeGameId]);
+  const pinnedToolIds = useToolboxPins((s) => s.pinsByGame)[activeGameId] ?? [];
   const hydratePins = useToolboxPins((s) => s.hydrate);
-  const togglePinnedTool = useToolboxPins((s) => s.togglePinnedTool);
+  const toggle = useToolboxPins((s) => s.toggle);
   const [pendingToolId, setPendingToolId] = useState<string | null>(null);
 
   useEffect(() => {
-    void hydratePins();
-  }, [hydratePins]);
+    void hydratePins().catch(() => showNotification({ title: '读取失败', message: '无法读取工具置顶状态，请稍后重试。', variant: 'error' }));
+  }, [hydratePins, showNotification]);
 
   const togglePin = async (toolId: string) => {
     setPendingToolId(toolId);
     try {
-      await togglePinnedTool(activeGameId, toolId);
+      await toggle(activeGameId, toolId);
     } catch {
       showNotification({
         title: '保存失败',

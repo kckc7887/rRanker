@@ -1,6 +1,0 @@
-{
-  "source": "MajdataPlay/Assets/Scripts/Scenes/Game/ObjectCounter.cs",
-  "method": "UpdateNoteScoreCount",
-  "local": "MajdataScoreReference.cs",
-  "modifications": "Public visibility and type-only stand-ins; judgment implementation unchanged."
-}

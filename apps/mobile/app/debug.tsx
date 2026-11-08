@@ -1,11 +1,11 @@
-import { SettingsRow } from '@/components/SettingsRow';
+import { SettingsRow } from '@rranker/sdk/components/SettingsRow';
 import { useEffect } from 'react';
 import { Stack, router, type Href } from 'expo-router';
 import { ScrollView, StyleSheet, Switch } from 'react-native';
-import { useNotification } from '@/components/AppNotification';
-import { DetailGestureRoot } from '@/components/game-content/DetailPressable';
-import { useDebugStore } from '@/state/debug-store';
-import { useAppTheme } from '@/theme/app-theme';
+import { useNotification } from '@rranker/sdk/components/AppNotification';
+import { DetailGestureRoot } from '@rranker/sdk/components/game-content/DetailPressable';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
 
 export default function DebugScreen() {
   const theme = useAppTheme();

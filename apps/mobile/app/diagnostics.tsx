@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Stack } from 'expo-router';
 import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { useNotification } from '@/components/AppNotification';
-import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
-import { RUNTIME_LOG_CAPACITIES, type RuntimeLogStatus } from '@/domain/runtime-log';
-import { exportRuntimeDiagnostics } from '@/services/runtime-diagnostics';
-import { initializeRuntimeLogs, runtimeLogs, shareRuntimeLog } from '@/services/runtime-logs';
-import { useAppTheme } from '@/theme/app-theme';
+import { useNotification } from '@rranker/sdk/components/AppNotification';
+import { DetailGestureRoot, DetailPressable } from '@rranker/sdk/components/game-content/DetailPressable';
+import { RUNTIME_LOG_CAPACITIES, type RuntimeLogStatus } from '@rranker/sdk/domain/runtime-log';
+import { exportRuntimeDiagnostics } from '@rranker/sdk/services/runtime-diagnostics';
+import { initializeRuntimeLogs, runtimeLogs, shareRuntimeLog } from '@rranker/sdk/services/runtime-logs';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
 
 const statusText: Record<RuntimeLogStatus, string> = {
   recording: '正在记录', stopped: '已结束', interrupted: '已中断', failed: '保存失败',

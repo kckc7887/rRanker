@@ -1,6 +1,6 @@
 module.exports = {
   preset: 'jest-expo',
-  setupFilesAfterEnv: ['react-native-gesture-handler/jestSetup.js', '<rootDir>/tests/native-layout-shim.js'],
+  setupFilesAfterEnv: ['react-native-gesture-handler/jestSetup.js', '<rootDir>/tests/native-layout-shim.js', '<rootDir>/tests/plugins.ts'],
   testMatch: ['<rootDir>/tests/**/*.test.tsx'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
@@ -11,6 +11,6 @@ module.exports = {
     '^react-native-qrcode-svg$': '<rootDir>/tests/react-native-qrcode-svg-stub.js',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|@noble/ciphers/.*|react-navigation|@react-navigation/.*|native-base|standard-navigation|react-native-svg|react-native-qrcode-svg)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|@rranker/.*|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|@noble/ciphers/.*|react-navigation|@react-navigation/.*|native-base|standard-navigation|react-native-svg|react-native-qrcode-svg)',
   ],
 };

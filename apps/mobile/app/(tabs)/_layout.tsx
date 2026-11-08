@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { Platform } from 'react-native';
-import { useAppTheme } from '@/theme/app-theme';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
 
 export default function TabLayout() {
   const theme = useAppTheme();

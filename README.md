@@ -15,11 +15,12 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 
 - **数据查询**：查看玩家总览、最佳成绩、完整成绩、曲库和歌曲详情，并按游戏支持的条件搜索、筛选和排序。
 - **账号管理**：按游戏支持的数据来源绑定多个账号，在不同游戏、账号和 osu! 模式之间快速切换。
-- **个人曲库**：收藏歌曲、标记练习谱面，并为歌曲和谱面添加本地标签。
+- **个人曲库**：收藏歌曲、标记练习谱面，为歌曲和谱面添加本地标签；从曲库右上角菜单导入、导出当前游戏的条目和标签预设。
 - **成绩图片**：为舞萌 DX、中二节奏、Phigros 和 Rizline 生成并导出预设或自定义成绩图片。
 - **谱面功能**：查看舞萌 DX、Majdata Net、Phigros、Phira、osu! 和 Rizline 的谱面确认；下载舞萌 DX、Majdata Net、Phigros、Phira 和 osu! 的谱面文件。
 - **游戏工具**：提供随机歌曲、支持地图选址及跨城机厅与地点搜索的音游地图，以及 Rating 计算、推分计算、实力分析、牌子与收藏品进度、版本对照、模组百科等游戏专属工具。
 - **个性化与存储**：切换深浅色模式和主题色，调整成绩卡片曲绘效果，并查看或清理应用内存储。
+- **插件管理**：分别启用或停用游戏适配器、数据源和工具，保留账号、个人数据、偏好与置顶记录。
 
 ## 支持游戏
 
@@ -44,6 +45,20 @@ git submodule update --init --recursive
 npm ci --no-audit --no-fund
 npm start
 ```
+
+## 插件开发
+
+rRanker 本体提供平台和 `@rranker/sdk`，官方适配器、数据源、工具和谱面格式库在独立的 [rRanker-plugins](https://github.com/kckc7887/rRanker-plugins) 仓库维护，通过固定提交的子模块随应用打包。
+
+| 扩展 | 实现内容 |
+| --- | --- |
+| `GameAdapter` | 游戏模型、评分规则、数据装配、页面、详情与个人曲库目标，以及公开能力 |
+| `DataSourcePlugin` | 目标适配器的数据合同、认证、客户端、账号与同步 |
+| `ToolPlugin` | 目标适配器及能力依赖、工具页面、总览卡片、详情操作、下载与专属偏好 |
+
+开发者可以独立提供一个游戏适配器，也可以只为已有适配器提供数据源或专属工具。插件依赖 SDK，数据源和工具通过目标适配器的公开导出调用游戏能力。应用只需增加包依赖并在 `apps/mobile/src/plugins.ts` 装配。
+
+`plugins/games/example`、`plugins/providers/example-test` 和 `plugins/tools/example` 提供完整接入示例。公共接口与生命周期见 [公共逻辑](docs/shared-logic.md)，目录、数据流和构建链路见 [技术架构](docs/technical-architecture.md)。根命令 `npm run check:packages` 将实际包安装到独立工程，编译外部适配器、数据源与工具。
 
 ## 🛠️ 技术栈
 

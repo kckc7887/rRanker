@@ -3,16 +3,16 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, ThemeProvider, Stack, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSyncAccountMetadata } from '@/hooks/use-sync-account-metadata';
+import { useSyncAccountMetadata } from '@rranker/sdk/hooks/use-sync-account-metadata';
 import { useAppStartup } from '@/hooks/use-app-startup';
 import { useAppRuntime } from '@/hooks/use-app-runtime';
-import { queryClient } from '@/state/query-client';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
-import { NotificationProvider } from '@/components/AppNotification';
-import { songDetailScreenOptions } from '@/components/game-content/SongDetailScreenOptions';
-import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
-import { RemoteImageActivityScope } from '@/components/RemoteImage';
-import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { queryClient } from '@rranker/sdk/state/query-client';
+import { AppLifecycleProvider } from '@rranker/sdk/state/app-lifecycle';
+import { NotificationProvider } from '@rranker/sdk/components/AppNotification';
+import { songDetailScreenOptions } from '@rranker/sdk/components/game-content/SongDetailScreenOptions';
+import { AppThemeProvider, useAppTheme } from '@rranker/sdk/theme/app-theme';
+import { RemoteImageActivityScope } from '@rranker/sdk/components/RemoteImage';
+import { recordRuntimeError } from '@rranker/sdk/services/runtime-diagnostics-recorder';
 
 export const unstable_settings = { anchor: '(tabs)' };
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
@@ -73,17 +73,13 @@ const ThemedNavigation = memo(function ThemedNavigation() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'rRanker' }} />
         <Stack.Screen name="library/index" options={{ title: '我的曲库' }} />
         <Stack.Screen name="game-management" options={{ title: '游戏管理' }} />
+        <Stack.Screen name="plugin-management" options={{ title: '插件管理' }} />
         <Stack.Screen name="storage-management" options={{ title: '存储管理' }} />
         <Stack.Screen name="debug" options={{ title: '调试' }} />
         <Stack.Screen name="diagnostics" options={{ title: '诊断' }} />
-        <Stack.Screen name="best-image" options={{ title: '成绩图片' }} />
-        <Stack.Screen name="songs/[songId]" options={songDetailScreenOptions()} />
-        <Stack.Screen name="songs/chart-preview" options={{ title: '谱面确认' }} />
-        <Stack.Screen name="songs/phigros-chart-preview" options={{ title: '谱面确认' }} />
-        <Stack.Screen name="songs/osu-chart-preview" options={{ title: '谱面确认' }} />
-        <Stack.Screen name="songs/rizline-chart-preview" options={{ title: '谱面确认' }} />
-        <Stack.Screen name="oauth/lxns" options={{ title: '落雪授权' }} />
-        <Stack.Screen name="oauth/osu" options={{ title: 'osu! 授权' }} />
+        <Stack.Screen name="detail" options={songDetailScreenOptions()} />
+        <Stack.Screen name="plugins/[pluginId]/[pageId]" />
+        <Stack.Screen name="oauth/[providerId]" options={{ title: '账号授权' }} />
       </Stack>
       <StatusBar style={theme.statusBar} />
     </NotificationProvider>

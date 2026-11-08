@@ -8,23 +8,23 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StorageDonutChart } from '@/components/StorageDonutChart';
-import { StackScreenActivityScope, useCachedTabActive } from '@/components/CachedTabScreen';
-import { useNotification } from '@/components/AppNotification';
-import { clearStorageByCategories } from '@/features/storage-management/clear-storage-cache';
-import { formatStorageBytes } from '@/features/storage-management/fs-storage';
+import { StorageDonutChart } from '@rranker/sdk/components/StorageDonutChart';
+import { StackScreenActivityScope, useCachedTabActive } from '@rranker/sdk/components/CachedTabScreen';
+import { useNotification } from '@rranker/sdk/components/AppNotification';
+import { clearStorageByCategories } from '@rranker/sdk/features/storage-management/clear-storage-cache';
+import { formatStorageBytes } from '@rranker/sdk/features/storage-management/fs-storage';
 import {
   collectStorageUsage,
   listClearableCategoryIds,
   type StorageUsageGroup,
   type StorageUsageReport,
-} from '@/features/storage-management/storage-usage';
+} from '@rranker/sdk/features/storage-management/storage-usage';
 import {
   storageClearPreferencesStore,
   type StorageClearCategoryId,
-} from '@/storage/storage-clear-prefs-store';
-import { providerErrorToUserMessage } from '@/providers/errors';
-import { useAppTheme } from '@/theme/app-theme';
+} from '@rranker/sdk/storage/storage-clear-prefs-store';
+import { providerErrorToUserMessage } from '@rranker/sdk/providers/errors';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
 
 type ExpandedGroups = Record<StorageUsageGroup['id'], boolean>;
 

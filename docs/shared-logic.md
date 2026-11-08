@@ -74,7 +74,7 @@ Query 归属通过 `meta.pluginId`、`meta.sourcePluginId`、`meta.gameId`、`me
 
 `services/session-credential-service.ts` 提交轮换时检查预期凭据、当前归属与写入资格。共用凭据的账号读取同一份新值；解绑、重新绑定或较新轮换使旧请求失效。持久化失败保留待写结果，前台恢复时重试。`LargeSecureValueStore` 按当前清单和分片保存长值，正常写入以 SecureStore 的结果为准。
 
-`services/account-write-scope.ts` 为账号请求捕获写入资格，`cancelBoundAccountQueries` 先失效账号写入，再取消和删除查询。`services/account-hydration.ts` 通过数据源的 `hydrateAccount` 补全资料，账号缩略图统一保存头像、评分显示及 `displayData`；需要持久化的显示名由账号元数据入口提交。共享资料请求在游戏、来源或账号代次失效时取消，资料仅在仍属于当前账号时提交，缩略图保存跳过没有实际变化的字段。
+`services/account-write-scope.ts` 为账号请求捕获游戏、来源和账号写入代次，并检查账号仍绑定且来源可用；`captureAccountWrites` 为上传的读取账号与目标账号复用同一资格。`cancelBoundAccountQueries` 先失效账号写入，再取消和删除查询。`services/account-hydration.ts` 通过数据源的 `hydrateAccount` 补全资料，账号缩略图统一保存头像、评分显示及 `displayData`；需要持久化的显示名由账号元数据入口提交。共享资料请求在游戏、来源或账号代次失效时取消，资料仅在仍属于当前账号时提交，缩略图保存跳过没有实际变化的字段。
 
 绑定通过 `useAccountBindingRequest(visible, providerId, gameId?, cancelOnBackground?)` 处理取消和结果发布，来源贡献 `loginPanel` 或 `bindingSheet`。请求捕获游戏与来源写入代次，同步订阅失效并取消；队列中的账号保存和状态发布使用同一提交资格。OAuth 回调页按数据源提供的 `oauthCallback` 分发，授权协议与登录失效判断留在来源包。成功绑定后的账号选择使用 `switchBoundAccount`，错误进入当前可见通知层。
 
@@ -120,7 +120,7 @@ Query 归属通过 `meta.pluginId`、`meta.sourcePluginId`、`meta.gameId`、`me
 
 预览和导出等待字体、图片加载与解码、当前 HTML 和真实布局就绪。导出使用独立 WebView 与捕获布局，期间暂停预览；进度和取消复用通知。离开或更换账号先失效会话，等待截图和临时文件清理再回收；后台取消当前导出，恢复后可重新发起。清缓存跳过活跃会话，启动维护回收残留会话目录。
 
-`features/chart-preview-shared` 提供原生页面壳、资源准备、消息桥、播放时钟和 Stage 公共运行时。`plugins/shared/chart-simai`、`chart-json`、`chart-osu` 分别提供格式解析和播放器；格式自己的时序、绘制层次和媒体规则留在对应包。`tool-simai`、`tool-chart-json`、`tool-osu` 拥有预览页面和原生输入准备。
+`features/chart-preview-shared` 提供原生页面壳、资源准备、消息桥、播放时钟和 Stage 公共运行时。`plugins/shared/chart-simai`、`chart-json`、`chart-osu` 分别提供格式解析和播放器；格式自己的时序、绘制层次和媒体规则留在对应包。`tool-simai`、`tool-chart-json`、`tool-osu` 拥有预览页面和原生输入准备。 Majdata 与 Phira 元数据经游戏资源合同读取，准备请求捕获实际 `sourcePluginId`；来源停用同步取消准备并释放播放器，迟到结果仅执行清理。已携带完整 Phira 谱面数据的请求直接使用载荷。
 
 游戏通过 `gamePageHref(gameId, 'chart-preview', params)` 导航，通过 `getChartDownload(gameId)` 取得当前可用下载贡献，避免直接引用工具实现。`features/chart-download-shared` 统一进度、取消和文件保存，工具负责组装格式包。多个下载通知独立取消，保存任务串行等待系统目录选择结束；提交前复核前台与取消状态，失败只清理本次创建的目标和临时目录。
 
@@ -128,7 +128,7 @@ Query 归属通过 `meta.pluginId`、`meta.sourcePluginId`、`meta.gameId`、`me
 
 Phigros 成绩图的模板资源与构建入口位于 `plugins/tools/phigros/src/assets` 和 `plugins/tools/phigros/scripts`，构建脚本更新同包内的 UI 资源清单。应用壳的图片目录只保存原生图标、启动图与网站图标，游戏和来源图标由所属插件声明。
 
-舞萌上传由 `plugins/tools/maimai` 的上传控制器管理唯一任务，任务拥有取消、前台等待和曲库等待；关闭弹层保留任务，显式取消终止。全部目标确认写入且完成页面刷新后才关闭当前上传弹层，失败或取消保留可重试状态。舞萌和中二同步引导由各自工具贡献，总体同步仍复用公共总览入口。
+舞萌上传由 `plugins/tools/maimai` 的上传控制器管理唯一任务，任务拥有取消、前台等待和曲库等待；关闭弹层保留任务，显式取消或所选账号的数据源停用时终止。启动读取和写入前确认账号仍绑定，提交时复核捕获资格，来源重新启用不恢复旧任务。全部目标确认写入且完成页面刷新后才关闭当前上传弹层，失败或取消保留可重试状态。舞萌和中二同步引导由各自工具贡献，总体同步仍复用公共总览入口。
 
 随机选曲工具共用 `RandomChartsPage` 与 `pickRandomItems`，曲池和筛选由所属工具及游戏模型决定。缺少成绩时可普通抽取并显示缺失值，启用成绩条件则等待对应数据。实力分析工具共用结论、推荐和成绩列表组件，算法与数据解释留在所属包，分析结果不持久化。
 

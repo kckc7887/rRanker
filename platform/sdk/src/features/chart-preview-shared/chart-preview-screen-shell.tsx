@@ -42,6 +42,7 @@ export type ChartPreviewShellRequest<TPayload> =
   | {
       kind: 'ready';
       payload: TPayload;
+      sourcePluginId?: string;
       timeoutMs?: number;
       readyTimeoutMs?: number;
       prepare: (
@@ -332,6 +333,11 @@ export function ChartPreviewScreenShell<TPayload>({
     resetLoadProgress();
     if (prepareGeneration === null || request.kind !== 'ready' || !isPluginAvailable(pluginId, gameId)) return;
 
+    if (request.sourcePluginId && !isPluginAvailable(request.sourcePluginId, gameId)) {
+      setStageError('谱面来源暂不可用');
+      return;
+    }
+
     const controller = new AbortController();
     let prepareTimeout: ReturnType<typeof setTimeout> | undefined;
     let readyTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -380,7 +386,13 @@ export function ChartPreviewScreenShell<TPayload>({
     };
     sessionRef.current = session;
     const unsubscribePlugins = subscribePlugins(() => {
-      if (!isPluginAvailable(pluginId, gameId)) session.release();
+      if (!isPluginAvailable(pluginId, gameId)
+        || (request.sourcePluginId && !isPluginAvailable(request.sourcePluginId, gameId))) {
+        session.release();
+        setPreparedView(null);
+        setReady(false);
+        setStageError('谱面来源或工具暂不可用');
+      }
     });
     const fail = (error: unknown, fallback: string, timeoutMessage?: string) => {
       session.release();

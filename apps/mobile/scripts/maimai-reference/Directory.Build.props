@@ -1,6 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)../../build/maimai-reference/obj/</BaseIntermediateOutputPath>
-    <NoWarn>$(NoWarn);CS8632</NoWarn>
-  </PropertyGroup>
-</Project>

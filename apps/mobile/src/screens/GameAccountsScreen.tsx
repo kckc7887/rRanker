@@ -1,36 +1,33 @@
-import { useVisibleBoundAccounts } from '@/hooks/use-visible-bound-accounts';
+import { getDataSource } from '@rranker/sdk/registry';
+import { accountIsAvailable } from '@rranker/sdk/state/account-store';
+import { useVisibleBoundAccounts } from '@rranker/sdk/hooks/use-visible-bound-accounts';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GamePickerSheet } from '@/components/GamePickerSheet';
-import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
-import { TufPlayerPickerSheet } from '@/components/TufPlayerPickerSheet';
-import { PhiraPlayerPickerSheet } from '@/components/PhiraPlayerPickerSheet';
-import { MuseDashPlayerPickerSheet } from '@/components/MuseDashPlayerPickerSheet';
-import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
-import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
-import { OsuModeSelectSheet } from '@/components/osu/OsuModeSelectSheet';
-import type { BoundAccount } from '@/domain/bound-account';
-import { canBindProvider, isCredentialProvider, isTestProvider, type GameId, type ProviderOption } from '@/domain/game-bind-options';
-import { isOsuGameId } from '@/domain/game-mode-family';
-import { useSession } from '@/state/session-store';
-import { useDebugStore } from '@/state/debug-store';
-import { useNotification } from '@/components/AppNotification';
-import { restoreAppAccounts, getAccountSourceStatuses, subscribeAccountSourceStatuses, retryFailedAccountSources } from '@/services/account-restoration';
-import { SecureSessionStore } from '@/storage/secure-session-store';
-import { useAppTheme } from '@/theme/app-theme';
-import { useAccountBindingFlow } from '@/hooks/use-account-binding-flow';
-import { useManagedAccountOperations } from '@/hooks/use-managed-account-operations';
-import { providerErrorToUserMessage } from '@/providers/errors';
-import { useAppLifecycle } from '@/state/app-lifecycle';
-import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { GamePickerSheet } from '@rranker/sdk/components/GamePickerSheet';
+import { ProviderLoginSheet } from '@rranker/sdk/components/ProviderLoginSheet';
+import { RenameAccountSheet } from '@rranker/sdk/components/RenameAccountSheet';
+import { BoundAccountGroupedList } from '@rranker/sdk/components/BoundAccountGroupedList';
+import type { BoundAccount } from '@rranker/sdk/account';
+import { canBindProvider, type GameId, type ProviderOption } from '@rranker/sdk/domain/game-bind-options';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
+import { useNotification } from '@rranker/sdk/components/AppNotification';
+import { restoreAppAccounts, getAccountSourceStatuses, subscribeAccountSourceStatuses, retryFailedAccountSources } from '@rranker/sdk/services/account-restoration';
+import { SecureSessionStore } from '@rranker/sdk/storage/secure-session-store';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
+import { useAccountBindingFlow } from '@rranker/sdk/hooks/use-account-binding-flow';
+import { useManagedAccountOperations } from '@rranker/sdk/hooks/use-managed-account-operations';
+import { providerErrorToUserMessage } from '@rranker/sdk/providers/errors';
+import { useAppLifecycle } from '@rranker/sdk/state/app-lifecycle';
+import { recordRuntimeError } from '@rranker/sdk/services/runtime-diagnostics-recorder';
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
   const { showNotification, showActionNotification } = useNotification();
-  const boundAccounts = useVisibleBoundAccounts();
+  const boundAccounts = useVisibleBoundAccounts(true);
   const activeAccountId = useSession(s => s.activeAccountId);
   const restoreError = useSession(s => s.restoreError);
   const sourceStatuses = useSyncExternalStore(subscribeAccountSourceStatuses, getAccountSourceStatuses);
@@ -39,11 +36,9 @@ export function GameAccountsScreen() {
   const testAccountsEnabled = useDebugStore(s => s.hydrated && s.testAccountsEnabled);
   const flow = useAccountBindingFlow();
   const { expandedPickerGameId, toggleExpandedPickerGameId, pickerVisible, loginVisible,
-    loginProvider, loginGame, tufPickerVisible, museDashPickerVisible, phiraPickerVisible,
+    loginProvider, loginGame,
     renameAccount, setRenameAccount, openPicker } = flow;
-  const { busy, message, onSelectAccount, addLocalAccount, addDemoAccount, bindTufPlayer,
-    addOsuDemoModes, bindPhiraPlayer, bindMuseDashPlayer, promptRemoveAccount, saveLocalAccountName } = useManagedAccountOperations(flow);
-  const [osuDemoVisible, setOsuDemoVisible] = useState(false);
+  const { busy, message, onSelectAccount, addAccount, promptRemoveAccount, renameAccount: saveAccountName } = useManagedAccountOperations(flow);
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
   const [recovering, setRecovering] = useState(false);
   const recoveryLock = useRef(false);
@@ -105,15 +100,13 @@ export function GameAccountsScreen() {
 
   const openLogin = (gameId: GameId, provider: ProviderOption) => {
     if (!provider.available) {
-      showNotification({ title: provider.title, message: '绑定尚未实现，待后续开放。', variant: 'info' });
+      showNotification({ title: provider.title, message: '请在插件管理中启用数据源和对应游戏。', variant: 'info' });
       return;
     }
     const debug = useDebugStore.getState();
     if (!canBindProvider(provider, debug.hydrated && debug.testAccountsEnabled)) return;
-    if (provider.id === 'local') { void addLocalAccount(); return; }
-    if (provider.id === 'osu-test') { flow.afterClose(() => setOsuDemoVisible(true)); return; }
-    if (addDemoAccount(provider.id, gameId)) return;
-    if (provider.bindingKind === 'public-player') { flow.openPublicPlayer(provider.id); return; }
+    const source = getDataSource(provider.id);
+    if (source?.createAccount && !source.bindingSheet) { void addAccount(provider.id, gameId); return; }
     flow.openLogin(gameId, provider.id);
   };
 
@@ -125,66 +118,17 @@ export function GameAccountsScreen() {
   });
 
   const renderAccountActions = (account: BoundAccount) => {
-    const isActive = account.id === activeAccountId;
-    const isLocal = account.providerId === 'local';
-    const isGeneratedTest = isTestProvider(account.providerId);
-    const isChunithmTemp = account.providerId === 'chunithm-temp';
-    const isRemote = isCredentialProvider(account.providerId);
-    const isTuf = account.providerId === 'tuf';
-    const isMuseDash = account.providerId === 'musedash-moe';
-    const isPhira = account.providerId === 'phira-community';
-    return (
-      <>
-        {!isActive ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`切换到 ${account.displayName}`}
-            disabled={busy} onPress={() => onSelectAccount(account)}>
-            <Text style={[styles.switch, { color: theme.accent }]}>切换到此账号</Text>
-          </Pressable>
-        ) : null}
-        {isLocal ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`修改名称 ${account.displayName}`}
-            disabled={busy} onPress={() => setRenameAccount(account)}>
-            <Text style={[styles.rename, { color: theme.accent }]}>修改名称</Text>
-          </Pressable>
-        ) : null}
-        {isLocal ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`删除本地玩家 ${account.displayName}`}
-            disabled={busy} onPress={() => promptRemoveAccount(account)}>
-            <Text style={styles.unbind}>删除本地玩家</Text>
-          </Pressable>
-        ) : isGeneratedTest ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`删除示例账号 ${account.displayName}`}
-            disabled={busy} onPress={() => promptRemoveAccount(account)}>
-            <Text style={styles.unbind}>删除示例账号</Text>
-          </Pressable>
-        ) : isChunithmTemp ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`删除临时账号 ${account.displayName}`}
-            disabled={busy} onPress={() => promptRemoveAccount(account)}>
-            <Text style={styles.unbind}>删除临时账号</Text>
-          </Pressable>
-        ) : isTuf ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
-            disabled={busy} onPress={() => promptRemoveAccount(account)}>
-            <Text style={styles.unbind}>解除绑定</Text>
-          </Pressable>
-        ) : isMuseDash ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
-            disabled={busy} onPress={() => promptRemoveAccount(account)}>
-            <Text style={styles.unbind}>解除绑定</Text>
-          </Pressable>
-        ) : isPhira ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
-            disabled={busy} onPress={() => promptRemoveAccount(account)}>
-            <Text style={styles.unbind}>解除绑定</Text>
-          </Pressable>
-        ) : isRemote ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
-            disabled={busy} onPress={() => promptRemoveAccount(account)}>
-            <Text style={styles.unbind}>解除绑定</Text>
-          </Pressable>
-        ) : null}
-      </>
-    );
+    const source = account.providerId ? getDataSource(account.providerId) : undefined;
+    const label = source?.bindingKind === 'fixture' ? '删除示例账号' : source?.bindingKind === 'local' ? '删除账号' : '解除绑定';
+    return <>
+      {account.id !== activeAccountId && accountIsAvailable(account) ? <Pressable disabled={busy} onPress={() => onSelectAccount(account)}>
+        <Text style={[styles.switch, { color: theme.accent }]}>切换到此账号</Text>
+      </Pressable> : null}
+      {source?.renameAccount ? <Pressable disabled={busy} onPress={() => setRenameAccount(account)}>
+        <Text style={[styles.rename, { color: theme.accent }]}>修改名称</Text>
+      </Pressable> : null}
+      <Pressable disabled={busy} onPress={() => promptRemoveAccount(account)}><Text style={styles.unbind}>{label}</Text></Pressable>
+    </>;
   };
 
   return (
@@ -221,13 +165,6 @@ export function GameAccountsScreen() {
           emptyText="暂无已绑定账号。点击右下角添加，展开游戏后选择查分器绑定。" />
       </ScrollView>
 
-      <OsuModeSelectSheet visible={osuDemoVisible}
-        alreadyBound={boundAccounts.filter(account => account.providerId === 'osu-test').map(account => account.gameId).filter(isOsuGameId)}
-        busy={busy} submitLabel="添加选中模式" onClose={() => setOsuDemoVisible(false)}
-        onSubmit={modes => void addOsuDemoModes(modes).then(() => {
-          if (modes.every(gameId => useSession.getState().boundAccounts.some(account => account.providerId === 'osu-test' && account.gameId === gameId))) setOsuDemoVisible(false);
-        })} />
-
       <Pressable accessibilityRole="button" accessibilityLabel="添加游戏账号" disabled={busy} onPress={openPicker}
         style={({ pressed }) => [styles.fab, { bottom: Math.max(safeAreaInsets.bottom, 12) + 16, backgroundColor: theme.accent }, pressed && styles.fabPressed]}>
         <SymbolView name="plus" tintColor={theme.onAccent} size={28} weight="semibold"
@@ -237,20 +174,18 @@ export function GameAccountsScreen() {
       <GamePickerSheet mode="bind" testAccountsEnabled={testAccountsEnabled} visible={pickerVisible} expandedGameId={expandedPickerGameId}
         onClose={flow.close} onToggleGame={toggleExpandedPickerGameId} onSelectProvider={openLogin}
         onSelectUnavailableGame={(title, detail) => showNotification({
-          title, message: `${detail}，待后续开放。`, variant: 'info',
+          title, message: detail, variant: 'info',
         })} />
 
       <ProviderLoginSheet visible={loginVisible} provider={loginProvider}
-        gameId={loginGame?.id ?? 'maimai'} gameTitle={loginGame?.title ?? ''}
+        gameId={loginGame?.id ?? ''} gameTitle={loginGame?.title ?? ''}
         onClose={flow.closeLogin} onSuccess={flow.close} />
-      {tufPickerVisible ? <TufPlayerPickerSheet visible onClose={flow.close} onSelect={bindTufPlayer} /> : null}
-      {museDashPickerVisible ? <MuseDashPlayerPickerSheet visible onClose={flow.close} onSelect={bindMuseDashPlayer} /> : null}
-      {phiraPickerVisible ? <PhiraPlayerPickerSheet visible onClose={flow.close} onSelect={bindPhiraPlayer} /> : null}
 
-      <RenameLocalAccountSheet visible={renameAccount !== null} initialName={renameAccount?.displayName ?? ''}
+      <RenameAccountSheet visible={renameAccount !== null} initialName={renameAccount?.displayName ?? ''}
+        maxLength={renameAccount?.providerId ? getDataSource(renameAccount.providerId)?.accountNameMaxLength : undefined}
         onClose={() => setRenameAccount(null)} onSave={(displayName) => {
           if (!renameAccount) return Promise.resolve();
-          return saveLocalAccountName(renameAccount, displayName);
+          return saveAccountName(renameAccount, displayName);
         }} />
     </View>
   );

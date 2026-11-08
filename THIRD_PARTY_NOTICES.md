@@ -5,10 +5,10 @@
 ## phi-plugin B30 resource templates
 
 The Phigros score-image renderer in
-`apps/mobile/src/features/phigros-best-image/build-phigros-best-image-html.ts`
-uses the `resources/html/b19` DOM/CSS contract from **phi-plugin**. The required
-CSS and image files from `b19`, `common` and `otherimg` are copied
-without content changes into `apps/mobile/assets/phigros-b30-reference`.
+`plugins/tools/phigros/src/features/phigros-best-image/build-phigros-best-image-html.ts`
+uses the `resources/html/b19` DOM/CSS contract from **phi-plugin**. The required CSS and image files from `b19`, `common` and `otherimg` are fetched through the Phigros UI resource package.
+The packaged source assets are in `plugins/tools/phigros/src/assets/phigros-b30-reference`,
+with the resource archive generator at `plugins/tools/phigros/scripts/build-phigros-ui.mjs`.
 
 phi-plugin 仓库采用双层许可证：仓库根 `LICENSE` 为 GPL-3.0，而 `resources/`
 目录内附独立的 `resources/LICENSE`（Apache License, Version 2.0）。本项目的
@@ -19,10 +19,10 @@ Those resource templates are licensed under the Apache License, Version 2.0.
 The Best30 visual shown by the upstream README is credited there to Steve
 ([@S-t-e-v-e-e](https://github.com/S-t-e-v-e-e)).
 The rRanker integration replaces only the upstream template engine and data
-model, resolves the PNG files through Expo Asset, and adds the existing
-preview/export protocol. Player avatars are no longer bundled: they are loaded
+model, loads the downloaded resource files, and uses the shared
+preview/export protocol. Player avatars are loaded
 at runtime from the rRanker Phigros object storage mirror of the official APK
-resources (see `apps/mobile/src/domain/account-avatar.ts`), keyed by the
+resources (see `plugins/games/phigros/src/domain/account-avatar.ts`), keyed by the
 `metadata/tmp.tsv` mapping. The original twelve font files are distributed as
 individually compressed archives from
 `https://rranker-phigros-data.cn-nb1.rains3.com/fonts/`, downloaded on demand,
@@ -32,8 +32,7 @@ artwork, footer structure and visual branding are used directly.
 
 Copyright remains with the original phi-plugin resource contributors. A copy
 of the applicable license is included at
-`LICENSES/phi-plugin-resources-APACHE-2.0.txt`（与
-`apps/mobile/assets/phigros-b30-reference/LICENSE` 内容一致）。
+`LICENSES/phi-plugin-resources-APACHE-2.0.txt`.
 
 No phi-plugin application source file is copied into the runtime. Save parsing,
 Avg requests and template data binding are TypeScript adaptations integrated
@@ -42,7 +41,7 @@ with rRanker's existing providers.
 ## maimai chart engine (maimai-prober-frontend)
 
 The retained timing and audio scheduling utilities in
-`apps/mobile/src/features/simai-chart-preview/engine/` originate from the
+`plugins/shared/chart-simai/src/features/simai-chart-preview/engine/` originate from the
 `packages/maimai-chart-engine` package of **maimai-prober-frontend**
 ([Lxns-Network/maimai-prober-frontend](https://github.com/Lxns-Network/maimai-prober-frontend)),
 including `core/timing/TimingTimeline.ts` and the Web Audio scheduler in
@@ -66,16 +65,16 @@ NoteDatas、Updaters、Shader、SkinManager、TimeProvider 和 SlideUtils，由 
 以及正解音事件生成。修改包括确定性时刻重建、Canvas 坐标转换、S3 资源映射及桥接接入。
 特效使用原始 PNG、Prefab 层级、动画曲线和粒子参数；烟花的
 `MaimaiColorEffect.shader` 语义移植为 Canvas 颜色贴图及径向遮罩。
-这些上游特效素材与源文件副本位于 `scripts/maimai-reference/Effects/`，版权归
+这些上游特效素材与源文件副本位于 `plugins/shared/chart-simai/scripts/maimai-reference/Effects/`，版权归
 MajdataViewX contributors，按项目 GPL-3.0 保留；不是项目所有者自行绘制的 S3 皮肤。
 运行时八张特效 PNG 编码在 `engine/renderers/effectSprites.generated.ts`，随播放器加载。
 修改包括按谱面时间重建色相、512 像素烟花着色缓存和 128 段径向渐变采样；
 Canvas 与 Unity 的采样/混合仍需实际画面对照。
 
-七个原始 C# 几何文件原样保存在 `apps/mobile/scripts/maimai-reference/ViewX/`，
+七个原始 C# 几何文件原样保存在 `plugins/shared/chart-simai/scripts/maimai-reference/ViewX/`，
 仅用于独立对照与生成路径数据，未作为 Unity 运行时打包。原始文件版权归
 MajdataViewX contributors；原始位置见该目录上层 `sources.json`。
-生成工具、对照程序和使用方法一并提供，见 `scripts/maimai-reference/README.md`。
+生成工具、对照程序和使用方法一并提供，见 `plugins/shared/chart-simai/scripts/maimai-reference/README.md`。
 
 MajdataViewX is licensed under the GNU General Public License v3.0. Per
 GPL-3.0 §5 the adapted files keep source and modification notices. The GPL
@@ -94,13 +93,13 @@ Copyright bbben, Lezi, Moying, GPL-3.0-or-later. ViewX's NuGet package
 Modifications by rRanker on 2026-09-05: canonical note model, source diagnostics,
 millisecond timing, LXNS difficulty/Buddy slots and browser integration.
 The independent C# reference compiles the original source downloaded by
-`scripts/maimai-reference/bootstrap.mjs`. License text is provided in
+`plugins/shared/chart-simai/scripts/maimai-reference/bootstrap.mjs`. License text is provided in
 `LICENSES/MajSimai-GPL-3.0.txt`; the GPL portions retain their terms in the AGPL
 combination. No MajdataPlay source is copied into the runtime.
 
 ## Maimai preview skin artwork and corresponding source
 
-The touch-region overlay `apps/mobile/assets/maimai-chart-preview/sensor.webp`
+The touch-region overlay `plugins/shared/chart-simai/src/assets/maimai-chart-preview/sensor.webp`
 is the original bundled asset from maimai-prober-frontend, distinct from the
 owner-authored S3 skins below. It is loaded through the shared preview staging
 plan; the renderer calibrates its artwork center and scale without modifying
@@ -123,7 +122,7 @@ available under the applicable terms, including [AGPL §13](https://www.gnu.org/
 ## Phigros / Phira chart-preview player core (phira)
 
 Phigros/Phira 谱面确认 WebView 播放器
-（`apps/mobile/src/features/phigros-chart-preview/webview-player/`）的谱面
+（`plugins/shared/chart-json/src/features/phigros-chart-preview/webview-player/`）的谱面
 解析、渲染与打击音语义移植自 **phira**
 （[TeamFlos/phira](https://github.com/TeamFlos/phira)）的 `prpr` 核心：
 `pgr-core.ts`（PGR 解析）、`renderer.ts`（PGR Canvas 渲染）、
@@ -162,7 +161,7 @@ notices in their headers (with the Exhibit A text available here and at
 ## osu! chart-preview engine (replayviewer-js)
 
 The osu! chart-preview player in
-`apps/mobile/src/features/osu-chart-preview/webview-player/` includes the parser,
+`plugins/shared/chart-osu/src/features/osu-chart-preview/webview-player/` includes the parser,
 four rulesets, autoplay, playback and Canvas rendering code from **replayviewer-js**,
 version 0.1.1, revision
 [`a8e5d93210188a6bfb3a0181419df0cf1e9675e7`](https://github.com/daladal/replayviewer-js/tree/a8e5d93210188a6bfb3a0181419df0cf1e9675e7).
@@ -213,7 +212,7 @@ affiliated with or endorsed by ppy.
 ## nonebot-plugin-maimaidx / maimaiDX best-image layout
 
 The "game 样式" B50 export in
-`apps/mobile/src/features/best-image/build-best-image-html.ts` 的贴图布局
+`plugins/tools/maimai/src/features/maimai-best-image/build-maimai-best-image-html.ts` 的贴图布局
 （难度配色、评价/FC/FS 角标、玩家信息卡与底部署名结构）对齐
 **nonebot-plugin-maimaidx**
 ([Yuri-YuzuChaN/nonebot-plugin-maimaidx](https://github.com/Yuri-YuzuChaN/nonebot-plugin-maimaidx))
@@ -232,7 +231,7 @@ rRanker 自身实现。
 ## maimai-score-hub (network service)
 
 rRanker 的舞萌DX 数据同步通过
-`apps/mobile/src/services/score-hub-client.ts` 调用
+`plugins/tools/maimai/src/services/score-hub-client.ts` 调用
 [maimai-score-hub](https://github.com/bakapiano/maimai-score-hub) 公开的
 Friend VS / DXNet 同步 API。该仓库未附带许可证文件，rRanker 仅按其
 公开网络协议进行 API 交互，未复制或改编其任何源码；如对服务条款有疑问，
@@ -253,7 +252,7 @@ Majdata Net 接入按其公开协议实现，使用
 玩家头像来自 Majdata Net 的公开 `account/Icon?username=` 接口。
 应用没有复制该站点的页面代码或在线收藏功能。
 
-`apps/mobile/scripts/maimai-reference/MajdataScoreReference.cs` 包含 MajdataPlay
+`plugins/shared/chart-simai/scripts/maimai-reference/MajdataScoreReference.cs` 包含 MajdataPlay
 `ObjectCounter.cs` 的 `UpdateNoteScoreCount` 原始方法，Copyright MajdataPlay contributors，
 GPL-3.0。方法仅提升为 public，增加空类型以执行原始类型分派；来源见同目录
 `majdata-source.json`，许可证副本见 `LICENSES/MajdataPlay-GPL-3.0.txt`。
@@ -262,7 +261,7 @@ Simai 解析、渲染和原有皮肤适配现由舞萌与 Majdata Net 共用，�
 
 ## Rizline cloud-save protocol and key unpacking (RizlineGameSaveData)
 
-`apps/mobile/src/providers/rizline-provider.ts` adapts the login/save protocol and
+`plugins/providers/rizline-official/src/providers/rizline-provider.ts` adapts the login/save protocol and
 packed-key reconstruction described and implemented by **CHCAT1320/RizlineGameSaveData**,
 revision [`ba89227baa2927655ea884a849d6a27ea1cdfb2d`](https://github.com/CHCAT1320/RizlineGameSaveData/tree/ba89227baa2927655ea884a849d6a27ea1cdfb2d).
 Sources are `getUser.py`, `gameDataAes2Json.py`, `README.md` and `API.md`.
@@ -294,7 +293,7 @@ is used for player login and score retrieval.
 
 ## Rizline AH compatibility calculation (rizline_b40_tool)
 
-`apps/mobile/src/domain/rizline.ts` adapts the AH compatibility and best-group
+`plugins/games/rizline/src/domain/rizline.ts` adapts the AH compatibility and best-group
 calculation from **REDDRAGON-HL/rizline_b40_tool**,
 [`rizb40_tool.js` at `93b2881d5cea7d53ac11706c028245ed144d8a16`](https://github.com/REDDRAGON-HL/rizline_b40_tool/blob/93b2881d5cea7d53ac11706c028245ed144d8a16/rizb40_tool.js).
 The applicable license is Apache License, Version 2.0; its full, unchanged text is
@@ -322,7 +321,7 @@ provide an official score-upload operation.
 
 ## Phigros block-area field reference (PhiVideo)
 
-`apps/mobile/src/features/phigros-chart-preview/webview-player/pgr-blocks.ts`
+`plugins/shared/chart-json/src/features/phigros-chart-preview/webview-player/pgr-blocks.ts`
 references the region and keyframe field definitions in **phigrostl/PhiVideo**,
 [`Application/BlockArea.h` at `361e000f5eefc803bdd4ec3c86c402197ea7d30c`](https://github.com/phigrostl/PhiVideo/blob/361e000f5eefc803bdd4ec3c86c402197ea7d30c/src/PhiVideo/Application/BlockArea.h).
 The upstream is MIT licensed, **Copyright (c) 2026 たおりん**. Its complete,
@@ -352,7 +351,7 @@ Its references do not transfer third-party code licenses to game metadata or ima
 
 ## DXTag five-axis analysis
 
-`apps/mobile/src/features/simai-difficulty` contains the scoring dependencies,
+`plugins/shared/chart-simai/src/features/simai-difficulty` contains the scoring dependencies,
 Simai parser, geometry, timing and fixed scale from
 [kckc7887/DXTag](https://github.com/kckc7887/DXTag/tree/cbea1ff20d69c3eaa163c7d967b708bd076e5d96),
 commit `cbea1ff20d69c3eaa163c7d967b708bd076e5d96`. The scoring entry accepts

@@ -4,7 +4,6 @@
     "slug": "rranker",
     "version": "0.4.0",
     "orientation": "default",
-    "icon": "./assets/images/icon.png",
     "scheme": "rranker",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -113,7 +112,9 @@
         {
           "locationWhenInUsePermission": "允许 rRanker 使用定位以显示附近机厅。"
         }
-      ]
+      ],
+      "@rranker/provider-osu/app.plugin.cjs",
+      "@rranker/tool-arcade-finder/app.plugin.cjs"
     ],
     "experiments": {
       "typedRoutes": true,

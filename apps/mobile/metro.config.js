@@ -17,7 +17,7 @@ const ZOD_ROOT = path.dirname(require.resolve('zod/package.json'));
 const ZOD_LOCALE_INDEXES = new Set(['index.js', 'index.cjs'].map(
   (name) => path.join(ZOD_ROOT, 'v4', 'locales', name),
 ));
-const ZOD_LOCALE_SUBSET = path.join(__dirname, 'src', 'utils', 'zod-locales.ts');
+const ZOD_LOCALE_SUBSET = require.resolve('@rranker/sdk/utils/zod-locales');
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (

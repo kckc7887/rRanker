@@ -1,22 +1,28 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  root,
   resolve: {
     alias: {
-      '@': resolve(process.cwd(), 'src'),
-      'expo/fetch': resolve(process.cwd(), 'tests/expo-fetch-shim.ts'),
-      'expo/fetch.js': resolve(process.cwd(), 'tests/expo-fetch-shim.ts'),
-      'expo-secure-store': resolve(process.cwd(), 'tests/expo-secure-store-shim.ts'),
-      'expo-sqlite/kv-store': resolve(process.cwd(), 'tests/expo-sqlite-kv-store-shim.ts'),
-      'expo-sqlite': resolve(process.cwd(), 'tests/expo-sqlite-shim.ts'),
-      'expo-crypto': resolve(process.cwd(), 'tests/expo-crypto-shim.ts'),
-      'expo-constants': resolve(process.cwd(), 'tests/expo-constants-shim.ts'),
+      '@': resolve(root, 'src'),
+      'expo/fetch': resolve(root, 'tests/expo-fetch-shim.ts'),
+      'expo/fetch.js': resolve(root, 'tests/expo-fetch-shim.ts'),
+      'expo-secure-store': resolve(root, 'tests/expo-secure-store-shim.ts'),
+      'expo-sqlite/kv-store': resolve(root, 'tests/expo-sqlite-kv-store-shim.ts'),
+      'expo-sqlite': resolve(root, 'tests/expo-sqlite-shim.ts'),
+      'expo-crypto': resolve(root, 'tests/expo-crypto-shim.ts'),
+      'expo-constants': resolve(root, 'tests/expo-constants-shim.ts'),
     },
   },
   test: {
     environment: 'node',
     globals: true,
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/plugins.ts'],
+    server: { deps: { inline: [/@rranker\//] } },
   },
 });

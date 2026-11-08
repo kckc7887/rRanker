@@ -2,17 +2,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import subsetFont from 'subset-font';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(scriptDir, '..');
+const require = createRequire(import.meta.url);
+const iconsRoot = path.dirname(require.resolve('@expo/vector-icons/package.json'));
 const glyphmapPath = path.join(
-  root,
-  'node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Ionicons.json',
+  iconsRoot,
+  'build/vendor/react-native-vector-icons/glyphmaps/Ionicons.json',
 );
 const vendorFontPath = path.join(
-  root,
-  'node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
+  iconsRoot,
+  'build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
 );
 const targetFontPath = path.join(root, 'assets/fonts/Ionicons.ttf');
 
@@ -20,6 +23,7 @@ const glyphmap = JSON.parse(fs.readFileSync(glyphmapPath, 'utf8'));
 const used = new Set();
 function scan(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === '.git') continue;
     const file = path.join(directory, entry.name);
     if (entry.isDirectory()) scan(file);
     else if (/\.[jt]sx?$/.test(entry.name)) {
@@ -30,7 +34,7 @@ function scan(directory) {
     }
   }
 }
-for (const directory of ['app', 'src']) scan(path.join(root, directory));
+for (const directory of ['app', 'src', '../../platform/sdk/src', '../../plugins']) scan(path.join(root, directory));
 const names = [...used].sort();
 const text = names.map((name) => String.fromCodePoint(glyphmap[name])).join('');
 

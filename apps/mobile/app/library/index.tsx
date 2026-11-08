@@ -1,347 +1,82 @@
-import { NeutralChip } from '@/components/game-content/FilterShell';
-import { EXAMPLE_SONGS, type ExampleSong } from '@/domain/example';
-import { MAJDATA_NAMES, majdataAsset, type MajdataSong } from '@/domain/majdata';
-import { FilterAnchoredDropdown } from '@/components/FilterAnchoredDropdown';
-import { GameSongCover } from '@/components/game-content/GameSongCover';
-import { useMajdataLibrarySongs } from '@/hooks/use-majdata';
-import { useEffect, useMemo, useState } from 'react';
-import { RemoteImageFlatList } from '@/components/game-content/GameListPages';
-import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { maimaiJacketUrl } from '@/domain/maimai-assets';
-import { chunithmJacketUrl } from '@/components/chunithm/ChunithmSongRow';
-import {
-  CHUNITHM_DIFFICULTY_LABELS,
-  type ChunithmSong,
-} from '@/domain/chunithm';
-import type { Song } from '@/domain/models';
-import {
-  MUSE_DASH_DIFFICULTY_LABELS,
-  museDashCoverUrl,
-  museDashSongAuthor,
-  museDashSongTitle,
-} from '@/domain/muse-dash';
-import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
-import type { OsuBeatmapsetDetail } from '@/domain/osu';
-import type { TufLevel } from '@/domain/tuf';
-import { libraryDetailTarget, type UserLibraryItem } from '@/domain/user-library';
-import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
-import { RIZLINE_DIFFICULTIES, rizlineCoverUrl, rizlineDifficultyIndex, type RizlineSong } from '@/domain/rizline';
-import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
-import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
-import { useMuseDashAlbums } from '@/hooks/use-muse-dash';
-import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
-import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
-import { usePhiraChartsByIds } from '@/hooks/use-phira';
-import { useRizlineCatalog } from '@/hooks/use-rizline-catalog';
-import { useTufLibraryLevels } from '@/hooks/use-tuf';
-import { useUserLibrary } from '@/hooks/use-user-library';
-import { useSession } from '@/state/session-store';
-import { useAppTheme } from '@/theme/app-theme';
-import { StackScreenActivityScope } from '@/components/CachedTabScreen';
-
-type Mode = 'all' | 'favorite' | 'practice';
-type MuseDashLibrarySong = { id: string; title: string; artist?: string; cover?: string };
-type PhiraLibrarySong = { id: string; title: string; illustration: string | null };
-type LibrarySong = ExampleSong | MajdataSong | Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong | OsuBeatmapsetDetail | RizlineSong;
-
-function isExampleSong(song: LibrarySong): song is ExampleSong { return 'game' in song && song.game === 'example'; }
-
-function isRizlineLibrarySong(song: LibrarySong): song is RizlineSong { return 'packId' in song; }
-
-function isMajdataLibrarySong(song: LibrarySong): song is MajdataSong { return 'publicTags' in song && 'hash' in song; }
-
-function isChunithmSong(song: LibrarySong): song is ChunithmSong {
-  return 'difficulties' in song;
-}
-
-function isTufLevel(song: LibrarySong): song is TufLevel {
-  return 'levelCredits' in song;
-}
-
-function isMuseDashSong(song: LibrarySong): song is MuseDashLibrarySong {
-  return 'cover' in song && !('beatmapSetId' in song);
-}
-
-function isOsuLibrarySong(song: LibrarySong): song is OsuBeatmapsetDetail {
-  return 'beatmapSetId' in song;
-}
-
-function isPhiraLibrarySong(song: LibrarySong): song is PhiraLibrarySong {
-  return 'illustration' in song;
-}
+import { isGameAvailable, usePluginRevision } from '@rranker/sdk';
+import { useEffect, useRef, useState } from 'react';
+import { Stack } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { ActivityIndicator, Pressable } from 'react-native';
+import { useNotification } from '@rranker/sdk/components/AppNotification';
+import { StackScreenActivityScope } from '@rranker/sdk/components/CachedTabScreen';
+import { GamePageScreen } from '@/components/GamePageScreen';
+import { pickUserDataBackup, shareUserDataBackup } from '@/services/user-data-file-service';
+import { providerErrorToUserMessage } from '@rranker/sdk/providers/errors';
+import type { UserDataBackup, RestoreMode } from '@rranker/sdk/domain/user-library';
+import { useUserLibrary } from '@rranker/sdk/hooks/use-user-library';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
 
 export default function UserLibraryScreen() {
-  return <StackScreenActivityScope><UserLibraryContent /></StackScreenActivityScope>;
+  return <StackScreenActivityScope><LibraryActions /><GamePageScreen page="library" /></StackScreenActivityScope>;
 }
 
-function UserLibraryContent() {
-  const activeGameId = useSession((state) => state.activeGameId);
-  if (activeGameId === 'example') return <ExampleLibraryScreen />;
-  if (activeGameId === 'majdata-net') return <MajdataLibraryScreen />;
-  if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
-  if (activeGameId === 'musedash') return <MuseDashLibraryScreen />;
-  if (activeGameId === 'phira') return <PhiraLibraryScreen />;
-  if (activeGameId === 'rizline') return <RizlineLibraryScreen />;
-  if (isOsuGameId(activeGameId)) return <OsuLibraryScreen gameId={activeGameId} />;
-  return <SharedLibraryScreen />;
-}
-
-function LibraryList({
-  items,
-  songsById,
-  blurUrls,
-}: {
-  items: UserLibraryItem[];
-  songsById: ReadonlyMap<string, LibrarySong>;
-  blurUrls?: ReadonlyMap<string, string>;
-}) {
+function LibraryActions() {
+  usePluginRevision();
   const theme = useAppTheme();
-  const library = useUserLibrary();
-  const [mode, setMode] = useState<Mode>('all');
-  const [tag, setTag] = useState('');
-  const [tagsOpen, setTagsOpen] = useState(false);
-  const tags = useMemo(() => [...new Set(items.flatMap((item) => item.tags))].sort(), [items]);
-  const selectedTag = tags.includes(tag) ? tag : '';
-  useEffect(() => { if (tag && !tags.includes(tag)) setTag(''); }, [tag, tags]);
-  const filtered = useMemo(() => items.filter((item) => {
-    if (mode === 'favorite' && (item.kind !== 'song' || !item.favorite)) return false;
-    if (mode === 'practice' && (item.kind !== 'chart' || !item.practice)) return false;
-    return !selectedTag || item.tags.includes(selectedTag);
-  }), [items, mode, selectedTag]);
+  const library = useUserLibrary(false);
+  const gameId = useSession(state => state.activeGameId);
+  const enabled = isGameAvailable(gameId);
+  const { showNotification, showActionNotification } = useNotification();
+  const [busy, setBusy] = useState(false);
+  const running = useRef(false);
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const unsubscribe = useSession.subscribe(state => {
+      if (state.activeGameId !== gameId || !isGameAvailable(gameId)) request.current?.abort();
+    });
+    return () => { unsubscribe(); request.current?.abort(); };
+  }, [gameId]);
 
-  return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <View style={styles.filters}>
-      <View style={styles.chips}>
-        <NeutralChip label="全部" active={mode === 'all'} onPress={() => setMode('all')} />
-        <NeutralChip label="收藏" active={mode === 'favorite'} onPress={() => setMode('favorite')} />
-        <NeutralChip label="练习" active={mode === 'practice'} onPress={() => setMode('practice')} />
-      </View>
-      {tags.length ? <View style={styles.chips}>
-        <FilterAnchoredDropdown open={tagsOpen} onOpenChange={setTagsOpen}
-          valueLabel={selectedTag || '全部标签'} accessibilityLabel="筛选本地标签"
-          options={[{ value: '', label: '全部标签' }, ...tags.map(value => ({ value, label: value }))]}
-          selectedValue={selectedTag} onSelect={setTag} optionAccessibilityPrefix="选择本地标签" />
-      </View> : null}
-    </View>
-    {library.isLoading ? <ActivityIndicator style={styles.center} color={theme.accent} /> : library.isError ?
-      <View style={styles.center}><Text style={[styles.error, { color: theme.danger }]}>个人数据加载失败</Text><Pressable onPress={() => void library.refetch()}><Text style={[styles.link, { color: theme.accent }]}>重试</Text></Pressable></View> :
-      <RemoteImageFlatList data={filtered} keyExtractor={(item) => item.key} contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={[styles.empty, { color: theme.textMuted }]}>{library.data?.length ? '当前筛选没有项目' : '还没有收藏、练习谱面或本地标签'}</Text>}
-        renderItem={({ item }) => (
-          <LibraryRow
-            item={item}
-            song={songsById.get(item.songId)}
-            blurUrl={blurUrls?.get(item.songId) ?? null}
-          />
-        )} />}
-  </View>;
+  const run = async (operation: () => Promise<void>, signal: AbortSignal) => {
+    if (running.current || signal.aborted) return;
+    running.current = true;
+    setBusy(true);
+    try { await operation(); }
+    catch (error) {
+      if (!signal.aborted) showNotification({ title: '个人曲库操作失败',
+        message: providerErrorToUserMessage(error, '请重试。'), variant: 'error' });
+    } finally { running.current = false; setBusy(false); }
+  };
+  const restore = (backup: UserDataBackup, mode: RestoreMode, signal: AbortSignal) => run(async () => {
+    if (useSession.getState().activeGameId !== gameId) return;
+    await library.restoreBackup(gameId, backup, mode, signal);
+    if (!signal.aborted) showNotification({ title: '当前游戏个人曲库已导入', variant: 'success' });
+  }, signal);
+  const importBackup = (signal: AbortSignal) => run(async () => {
+    const backup = await pickUserDataBackup(gameId);
+    if (!backup || signal.aborted || useSession.getState().activeGameId !== gameId) return;
+    showActionNotification({ title: '导入当前游戏个人曲库',
+      message: `备份包含 ${backup.items.length} 条记录。合并保留当前游戏已有内容，替换覆盖当前游戏的收藏、练习、标签和标签预设。`,
+      actions: [
+        { label: '取消', tone: 'cancel' },
+        { label: '合并', onPress: () => restore(backup, 'merge', signal) },
+        { label: '替换', tone: 'destructive', onPress: () => restore(backup, 'replace', signal) },
+      ],
+    });
+  }, signal);
+  const openMenu = () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    showActionNotification({ title: '当前游戏个人曲库', actions: [
+      { label: '导入', onPress: () => importBackup(controller.signal) },
+      { label: '导出', onPress: () => run(async () => {
+        const backup = await library.createBackup(gameId);
+        if (!controller.signal.aborted) await shareUserDataBackup(backup);
+      }, controller.signal) },
+      { label: '取消', tone: 'cancel' },
+    ] });
+  };
+  if (!enabled) return null;
+  return <Stack.Screen options={{ headerRight: () => <Pressable testID="library-menu" disabled={busy}
+    onPress={openMenu} hitSlop={8} style={{ padding: 8 }}>
+    {busy ? <ActivityIndicator color={theme.accent} /> : <Ionicons name="ellipsis-horizontal" size={22} color={theme.text} />}
+  </Pressable> }} />;
 }
-
-const exampleSongsById = new Map(EXAMPLE_SONGS.map(song => [song.id, song]));
-function ExampleLibraryScreen() {
-  const library = useUserLibrary();
-  return <LibraryList items={library.data ?? []} songsById={exampleSongsById} />;
-}
-
-function SharedLibraryScreen() {
-  const activeGameId = useSession((state) => state.activeGameId);
-  const maimaiCatalog = useDetailedCatalog();
-  const chunithmCatalog = useChunithmCatalog();
-  const phigrosCatalog = usePhigrosCatalog();
-  const items = useUserLibrary().data ?? [];
-  const songsById = useMemo(() => {
-    const map = new Map<string, LibrarySong>();
-    if (activeGameId === 'chunithm') {
-      for (const song of chunithmCatalog.data?.songs ?? []) map.set(String(song.id), song);
-    } else if (activeGameId === 'phigros') {
-      for (const song of phigrosCatalog.data?.snapshot.songs ?? []) map.set(song.id, song);
-    } else {
-      for (const song of maimaiCatalog.data?.songs ?? []) map.set(song.id, song);
-    }
-    return map;
-  }, [
-    activeGameId,
-    chunithmCatalog.data?.songs,
-    maimaiCatalog.data?.songs,
-    phigrosCatalog.data?.snapshot.songs,
-  ]);
-  const phigrosBlurUrls = useMemo(() => {
-    const map = new Map<string, string>();
-    const data = phigrosCatalog.data;
-    if (!data) return map;
-    const provider = data.provider;
-    for (const song of data.snapshot.songs) {
-      const url = provider.getIllustrationBlurUrl(song.id);
-      if (url) map.set(song.id, url);
-    }
-    return map;
-  }, [phigrosCatalog.data]);
-  return <LibraryList items={items} songsById={songsById} blurUrls={phigrosBlurUrls} />;
-}
-
-function MajdataLibraryScreen() {
-  const library = useUserLibrary();
-  const ids = useMemo(() => [...new Set((library.data ?? []).map(item => item.songId))], [library.data]);
-  const songs = useMajdataLibrarySongs(ids);
-  const map = new Map<string, LibrarySong>();
-  for (const query of songs) if (query.data) map.set(query.data.id, query.data);
-  return <LibraryList items={library.data ?? []} songsById={map} />;
-}
-
-function AdofaiLibraryScreen() {
-  const library = useUserLibrary();
-  const levelIds = useMemo(() => [...new Set((library.data ?? []).map(item => Number(item.songId)))]
-    .filter(id => Number.isSafeInteger(id) && id > 0), [library.data]);
-  const levels = useTufLibraryLevels(levelIds);
-  const songsById = new Map<string, LibrarySong>();
-  for (const query of levels) {
-    if (query.data) songsById.set(String(query.data.level.id), query.data.level);
-  }
-  return <LibraryList items={library.data ?? []} songsById={songsById} />;
-}
-
-function MuseDashLibraryScreen() {
-  const items = useUserLibrary().data ?? [];
-  const museDashAlbums = useMuseDashAlbums();
-  const songsById = useMemo(() => {
-    const map = new Map<string, LibrarySong>();
-    for (const entry of Object.values(museDashAlbums.data ?? {})) {
-      for (const song of Object.values(entry.music)) {
-        map.set(song.uid, {
-          id: song.uid,
-          title: museDashSongTitle(song),
-          artist: museDashSongAuthor(song),
-          cover: song.cover,
-        });
-      }
-    }
-    return map;
-  }, [museDashAlbums.data]);
-  return <LibraryList items={items} songsById={songsById} />;
-}
-
-function PhiraLibraryScreen() {
-  const library = useUserLibrary();
-  const items = library.data ?? [];
-  const chartIds = useMemo(() => [...new Set((library.data ?? [])
-    .filter((item) => item.kind === 'song' && /^\d+$/.test(item.songId))
-    .map((item) => Number(item.songId)))], [library.data]);
-  const charts = usePhiraChartsByIds(chartIds);
-  const songsById = useMemo(() => {
-    const map = new Map<string, LibrarySong>();
-    for (const chart of charts.data ?? []) {
-      map.set(String(chart.id), { id: String(chart.id), title: chart.name, illustration: chart.illustration });
-    }
-    return map;
-  }, [charts.data]);
-  return <LibraryList items={items} songsById={songsById} />;
-}
-
-function OsuLibraryScreen({ gameId }: { gameId: OsuGameId }) {
-  const library = useUserLibrary();
-  const items = useMemo(() => library.data ?? [], [library.data]);
-  const beatmapsetIds = useMemo(
-    () => [...new Set(items.map((item) => item.songId))],
-    [items],
-  );
-  const beatmapsets = useOsuBeatmapsetsByIds(gameId, beatmapsetIds);
-  return <LibraryList items={items} songsById={beatmapsets.data} />;
-}
-
-function RizlineLibraryScreen() {
-  const library = useUserLibrary();
-  const catalog = useRizlineCatalog();
-  const songsById = useMemo(() => new Map<string, LibrarySong>(catalog.data?.snapshot.songs.map((song) => [song.id, song])), [catalog.data]);
-  return <LibraryList items={library.data ?? []} songsById={songsById} />;
-}
-
-function LibraryRow({
-  item,
-  song,
-  blurUrl,
-}: {
-  item: UserLibraryItem;
-  song?: LibrarySong;
-  blurUrl: string | null;
-}) {
-  const theme = useAppTheme();
-  const chunithmSong = song && isChunithmSong(song) ? song : undefined;
-  const osuSong = song && isOsuLibrarySong(song) ? song : undefined;
-  const standardSong = song && !isExampleSong(song) && !isMajdataLibrarySong(song) && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) && !isOsuLibrarySong(song) && !isRizlineLibrarySong(song) ? song : undefined;
-  const rizlineSong = song && isRizlineLibrarySong(song) ? song : undefined;
-  const rizlineChart = item.kind === 'chart' ? rizlineSong?.charts.find((value) => rizlineDifficultyIndex(value.difficulty) === item.levelIndex) : undefined;
-  const tufLevel = song && isTufLevel(song) ? song : undefined;
-  const museDashSong = song && isMuseDashSong(song) ? song : undefined;
-  const osuBeatmap = item.kind === 'chart'
-    ? osuSong?.beatmaps.find((value) => value.id === item.levelIndex)
-    : undefined;
-  const chart = item.kind === 'chart'
-    ? standardSong?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex)
-    : undefined;
-  const chunithmDifficulty = item.kind === 'chart'
-    ? chunithmSong?.difficulties.find((value) => value.difficulty === item.levelIndex)
-    : undefined;
-  const songTitle = tufLevel?.song
-    ?? (song && !isTufLevel(song) ? song.title : undefined)
-    ?? `歌曲 ID ${item.songId}`;
-  const chartLabel = item.kind === 'chart'
-    ? item.gameId === 'example' ? 'Insane 27.5'
-    : item.gameId === 'rizline' ? rizlineChart ? `${rizlineChart.difficulty} ${rizlineChart.level}` : RIZLINE_DIFFICULTIES[item.levelIndex] ?? '—'
-    : item.gameId === 'majdata-net' ? `${MAJDATA_NAMES[item.levelIndex]} ${song && isMajdataLibrarySong(song) ? song.levels[item.levelIndex] : ''}` : chunithmDifficulty
-      ? CHUNITHM_DIFFICULTY_LABELS[chunithmDifficulty.difficulty]
-      : chart
-      ? (['EZ', 'HD', 'IN', 'AT'].includes(chart.level)
-        ? chart.level
-        : `${item.type} ${chart.difficulty.toUpperCase()}`)
-      : museDashSong
-        ? MUSE_DASH_DIFFICULTY_LABELS[item.levelIndex]
-        : osuBeatmap
-          ? `${osuBeatmap.version} · ${osuBeatmap.difficultyRating.toFixed(2)}★`
-        : chunithmSong
-          ? `难度 ${item.levelIndex}`
-          : `${item.type} 难度 ${item.levelIndex}`
-    : '';
-  const target = libraryDetailTarget(item);
-  return <Pressable accessibilityRole="button" disabled={!target} onPress={() => {
-    if (target) router.push(detailTargetHref(encodeDetailTarget(target)));
-  }} style={[styles.row, { backgroundColor: theme.surface }]}>
-    <LibrarySongCover song={song} blurUrl={blurUrl} />
-    <View style={styles.main}>
-      <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>{songTitle}</Text>
-      <Text style={[styles.meta, { color: theme.textSecondary }]}>{item.kind === 'song' ? (item.favorite ? '已收藏歌曲' : '歌曲标签') :
-        `${item.practice ? '练习谱面' : '谱面标签'} · ${chartLabel}`}</Text>
-      {!song ? <Text style={styles.warning}>曲库暂不可用，个人数据已保留</Text> : null}
-      {item.tags.length ? <Text numberOfLines={2} style={[styles.tagsText, { color: theme.accent }]}>{item.tags.join(' · ')}</Text> : null}
-    </View>
-  </Pressable>;
-}
-
-function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: string | null }) {
-  const gameId = useSession((state) => state.activeGameId);
-  const source = libraryCoverSource(song, blurUrl);
-  return <GameSongCover source={source} gameId={gameId} accessibilityLabel="曲绘"
-    borderRadius={song && isMuseDashSong(song) ? 29 : 9} />;
-}
-
-function libraryCoverSource(song: LibrarySong | undefined, blurUrl: string | null): string | null {
-  if (!song || isTufLevel(song)) return null;
-  if (isExampleSong(song)) return song.coverUrl;
-  if (isMajdataLibrarySong(song)) return majdataAsset(song.id, 'image');
-  if (isRizlineLibrarySong(song)) return rizlineCoverUrl(song);
-  if (isMuseDashSong(song)) return museDashCoverUrl(song.cover);
-  if (isOsuLibrarySong(song)) return song.cover ?? null;
-  if (blurUrl) return blurUrl;
-  if (isChunithmSong(song)) return chunithmJacketUrl(song);
-  if (isPhiraLibrarySong(song)) return song.illustration ?? null;
-  return maimaiJacketUrl(song.id);
-}
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F8FA' }, filters: { padding: 12, gap: 8 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  list: { padding: 12, paddingTop: 2, gap: 9, flexGrow: 1 },
-  row: { backgroundColor: '#FFF', borderRadius: 12, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 11 }, main: { flex: 1, gap: 3 },
-  title: { color: '#111827', fontWeight: '700' }, meta: { color: '#4B5563', fontSize: 11 }, tagsText: { color: '#246BFD', fontSize: 11 },
-  warning: { color: '#B45309', fontSize: 11 }, empty: { color: '#6B7280', textAlign: 'center', marginTop: 48 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }, error: { color: '#B42318' }, link: { color: '#246BFD', fontWeight: '600' },
-});

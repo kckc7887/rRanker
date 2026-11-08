@@ -1,5 +1,0 @@
-{
-  "platforms": ["android", "apple"],
-  "apple": { "modules": ["ArcadeMapSupportModule"] },
-  "android": { "modules": ["expo.modules.arcademap.ArcadeMapSupportModule"] }
-}

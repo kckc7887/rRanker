@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Appearance } from 'react-native';
-import { useSession } from '@/state/session-store';
-import { useThemeStore } from '@/state/theme-store';
-import { useDebugStore } from '@/state/debug-store';
-import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
-import { restoreAppAccounts } from '@/services/account-restoration';
-import { initializeRuntimeDiagnostics } from '@/services/runtime-diagnostics';
-import { initializeRuntimeLogs } from '@/services/runtime-logs';
-import { startTimer } from '@/utils/startup-timing';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { useThemeStore } from '@rranker/sdk/state/theme-store';
+import { useDebugStore } from '@rranker/sdk/state/debug-store';
+import { ensureUiIconFontsLoaded } from '@rranker/sdk/features/storage-management/ui-icon-fonts';
+import { restoreAppAccounts } from '@rranker/sdk/services/account-restoration';
+import { initializeRuntimeDiagnostics } from '@rranker/sdk/services/runtime-diagnostics';
+import { initializeRuntimeLogs } from '@rranker/sdk/services/runtime-logs';
+import { startTimer } from '@rranker/sdk/utils/startup-timing';
 
 export function useAppStartup(): boolean {
   const restoreStatus = useSession((state) => state.restoreStatus);
@@ -39,7 +39,7 @@ export function useAppStartup(): boolean {
       void restoreAppAccounts()
         .then(() => {
           stop();
-        });
+        }).catch(() => { stop(); });
     }
   }, [restoreStatus]);
 

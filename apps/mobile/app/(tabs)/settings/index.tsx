@@ -1,21 +1,18 @@
-import { DetailGestureRoot } from '@/components/game-content/DetailPressable';
-import { SettingsRow } from '@/components/SettingsRow';
-import { useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { DetailGestureRoot } from '@rranker/sdk/components/game-content/DetailPressable';
+import { SettingsRow } from '@rranker/sdk/components/SettingsRow';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, type Href } from 'expo-router';
-import { useNotification } from '@/components/AppNotification';
-import { CachedTabScreen } from '@/components/CachedTabScreen';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { clearStorageByCategories } from '@/features/storage-management/clear-storage-cache';
-import { formatStorageBytes } from '@/features/storage-management/fs-storage';
-import { listClearableCategoryIds } from '@/features/storage-management/storage-usage';
-import { useAppTheme } from '@/theme/app-theme';
-import { storageClearPreferencesStore } from '@/storage/storage-clear-prefs-store';
-import { providerErrorToUserMessage } from '@/providers/errors';
-import { useUserLibrary } from '@/hooks/use-user-library';
-import { pickUserDataBackup, shareUserDataBackup } from '@/services/user-data-file-service';
-import type { RestoreMode, UserDataBackup } from '@/domain/user-library';
+import { useNotification } from '@rranker/sdk/components/AppNotification';
+import { CachedTabScreen } from '@rranker/sdk/components/CachedTabScreen';
+import { useNativeTabBottomInset } from '@rranker/sdk/hooks/use-native-tab-bottom-inset';
+import { clearStorageByCategories } from '@rranker/sdk/features/storage-management/clear-storage-cache';
+import { formatStorageBytes } from '@rranker/sdk/features/storage-management/fs-storage';
+import { listClearableCategoryIds } from '@rranker/sdk/features/storage-management/storage-usage';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
+import { storageClearPreferencesStore } from '@rranker/sdk/storage/storage-clear-prefs-store';
+import { providerErrorToUserMessage } from '@rranker/sdk/providers/errors';
 
 export default function SettingsTabScreen() {
   return <CachedTabScreen><SettingsScreen /></CachedTabScreen>;
@@ -24,41 +21,8 @@ export default function SettingsTabScreen() {
 export function SettingsScreen() {
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
-  const { showNotification, showActionNotification } = useNotification();
+  const { showNotification } = useNotification();
   const [quickClearing, setQuickClearing] = useState(false);
-  const library = useUserLibrary(false);
-  const [backupBusy, setBackupBusy] = useState(false);
-  const backupRunning = useRef(false);
-
-  const runBackup = async <T,>(run: () => Promise<T>): Promise<T | undefined> => {
-    if (backupRunning.current) return;
-    backupRunning.current = true;
-    setBackupBusy(true);
-    try { return await run(); }
-    catch (error) {
-      showNotification({ title: '个人曲库操作失败', message: providerErrorToUserMessage(error, '请重试。'), variant: 'error' });
-    } finally { backupRunning.current = false; setBackupBusy(false); }
-  };
-
-  const restore = (backup: UserDataBackup, mode: RestoreMode) => runBackup(async () => {
-    await library.restoreBackup(backup, mode);
-    showNotification({ title: '个人曲库已导入', variant: 'success' });
-  });
-
-  const importBackup = async () => {
-    const backup = await runBackup(pickUserDataBackup);
-    if (!backup) return;
-    showActionNotification({
-      title: '导入个人曲库',
-      message: `备份包含 ${backup.items.length} 条收藏、练习或标签记录。合并会保留现有内容，替换会用备份覆盖个人曲库。`,
-      actions: [
-        { label: '取消', tone: 'cancel' },
-        { label: '合并', onPress: () => restore(backup, 'merge') },
-        { label: '替换', tone: 'destructive', onPress: () => restore(backup, 'replace') },
-      ],
-    });
-  };
-
   const handleQuickClear = async () => {
     if (quickClearing) return;
     setQuickClearing(true);
@@ -114,6 +78,7 @@ export function SettingsScreen() {
       >
         <SettingsRow title="个性化" detail="外观、主题色与成绩卡片样式" onPress={() => router.push('/personalization' as Href)} />
         <SettingsRow title="游戏管理" detail="绑定的游戏账号与数据源" onPress={() => router.push('/game-management' as Href)} />
+        <SettingsRow title="插件管理" detail="游戏适配器、数据源与工具" onPress={() => router.push('/plugin-management' as Href)} />
         <SettingsRow title="存储管理" detail="查看占用并清理缓存" onPress={() => router.push('/storage-management' as Href)}>
           <Pressable
             accessibilityRole="button"
@@ -128,17 +93,6 @@ export function SettingsScreen() {
               : <Ionicons name="trash-outline" size={18} color={theme.accent} />}
           </Pressable>
         </SettingsRow>
-        <SettingsRow title="个人曲库" detail="备份收藏、练习清单和标签">
-          <Pressable disabled={backupBusy} onPress={() => void importBackup()} style={styles.backupAction}>
-            <Text style={{ color: theme.accent }}>导入</Text>
-          </Pressable>
-          <Pressable disabled={backupBusy} onPress={() => void runBackup(async () => {
-            await shareUserDataBackup(await library.createBackup());
-          })} style={styles.backupAction}>
-            <Text style={{ color: theme.accent }}>导出</Text>
-          </Pressable>
-          {backupBusy ? <ActivityIndicator color={theme.accent} /> : null}
-        </SettingsRow>
         <SettingsRow title="调试" detail="测试账号与问题排查" onPress={() => router.push('/debug' as Href)} />
         <SettingsRow title="关于" detail="隐私政策" onPress={() => router.push('/about' as Href)} />
       </ScrollView>
@@ -149,7 +103,6 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { padding: 16, gap: 12 },
-  backupAction: { paddingVertical: 8, paddingHorizontal: 4 },
   quickClear: {
     width: 36,
     height: 36,

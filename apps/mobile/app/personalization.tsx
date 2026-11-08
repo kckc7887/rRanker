@@ -2,19 +2,20 @@ import { useEffect, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { AccentColorPicker } from '@/components/AccentColorPicker';
-import { ValueSlider } from '@/components/ValueSlider';
-import { ScoreRecordCard, type ScoreRecordCardData } from '@/components/ScoreRecordCard';
-import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
+import { AccentColorPicker } from '@rranker/sdk/components/AccentColorPicker';
+import { ValueSlider } from '@rranker/sdk/components/ValueSlider';
+import { getGameAdapter, getGameDefinitions, isGameAvailable, usePluginRevision } from '@rranker/sdk/registry';
+import { useSession } from '@rranker/sdk/state/session-store';
+import { ScoreCardArtworkScope } from '@rranker/sdk/components/game-content/GameScoreCard';
 import {
   BADGE_LAYER_OVERLAY,
   BADGE_RAINBOW_BORDER_COLORS,
   BADGE_RAINBOW_FILL_COLORS,
   BEST_IMAGE_RAINBOW_TEXT,
-} from '@/features/best-image/best-image-badge-theme';
-import { useThemeStore } from '@/state/theme-store';
-import type { AppAppearance } from '@/storage/theme-preferences-store';
-import { APP_ACCENTS, useAppTheme } from '@/theme/app-theme';
+} from '@rranker/sdk/features/best-image/best-image-badge-theme';
+import { useThemeStore } from '@rranker/sdk/state/theme-store';
+import type { AppAppearance } from '@rranker/sdk/storage/theme-preferences-store';
+import { APP_ACCENTS, useAppTheme } from '@rranker/sdk/theme/app-theme';
 
 const APPEARANCES: { id: AppAppearance; label: string }[] = [
   { id: 'system', label: '跟随系统' },
@@ -22,23 +23,13 @@ const APPEARANCES: { id: AppAppearance; label: string }[] = [
   { id: 'dark', label: '深色' },
 ];
 
-const SCORE_CARD_ARTWORK_PREVIEW_RECORD = {
-  songId: '834',
-  title: 'PANDORA PARADOXXX',
-  type: 'SD',
-  difficulty: 'remaster',
-  difficultyConstant: 15,
-  levelIndex: 4,
-  achievements: 101,
-  dxScore: null,
-  rating: 37,
-  fc: 'ap',
-  fs: 'fsdp',
-  rate: 'sssp',
-} as const satisfies ScoreRecordCardData;
-
 export default function PersonalizationScreen() {
   const theme = useAppTheme();
+  usePluginRevision();
+  const activeGameId = useSession(state => state.activeGameId);
+  const currentPreview = isGameAvailable(activeGameId) ? getGameAdapter(activeGameId)?.scoreCardPreview : undefined;
+  const Preview = currentPreview ?? getGameDefinitions().filter(game => isGameAvailable(game.id))
+    .map(game => getGameAdapter(game.id)?.scoreCardPreview).find(Boolean);
   const appearance = useThemeStore((state) => state.appearance);
   const accent = useThemeStore((state) => state.accent);
   const customHex = useThemeStore((state) => state.customHex);
@@ -171,18 +162,15 @@ export default function PersonalizationScreen() {
                 step={1}
                 value={artworkBlurDraft}
               />
-              <View style={styles.previewGroup}>
+              {Preview ? <View style={styles.previewGroup}>
                 <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>曲绘预览</Text>
                 <ScoreCardArtworkScope
                   artworkBlur={artworkBlurDraft}
                   artworkTransparency={artworkTransparencyDraft}
                 >
-                  <ScoreRecordCard
-                    interactive={false}
-                    record={SCORE_CARD_ARTWORK_PREVIEW_RECORD}
-                  />
+                  <Preview />
                 </ScoreCardArtworkScope>
-              </View>
+              </View> : null}
             </View>
           ) : null}
         </View>

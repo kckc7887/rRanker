@@ -11,15 +11,14 @@ if (!Object.hasOwn(optimizationModes, optimizationMode)) {
 
 module.exports = ({ config }) => ({
   ...config,
+  icon: require.resolve('@rranker/sdk/assets/icon.png'),
   plugins: [
     ...config.plugins.map(plugin => plugin === './plugins/with-android-abi-splits.js'
       ? [plugin, optimizationModes[optimizationMode]] : plugin),
-    './plugins/with-arcade-map.js',
   ],
   /** extra 随客户端打包，不能作为服务端秘密。 */
   extra: {
     ...config.extra,
-    osuOAuthClientSecret: process.env.OSU_OAUTH_CLIENT_SECRET ?? '',
     buildCommit: process.env.BUILD_SOURCE_COMMIT ?? '',
     androidOptimizationMode: optimizationMode,
   },
