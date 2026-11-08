@@ -1,0 +1,431 @@
+import { useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  PanResponder,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type LayoutRectangle,
+} from 'react-native';
+import { DetailGestureRoot, DetailPressable } from '@rranker/sdk/components/game-content/DetailPressable';
+import { AppSheet } from '@rranker/sdk/components/AppSheet';
+import { MAX_TAGS_PER_ITEM, normalizeTagName, normalizeTags } from '@rranker/sdk/domain/user-library';
+import { useAppTheme } from '@rranker/sdk/theme/app-theme';
+
+type TagCommitResult = { ok: true } | { ok: false; error: string };
+
+export function TagEditor({
+  tags,
+  presets = [],
+  historyTags = [],
+  presetsEditable = true,
+  disabled,
+  testID,
+  onChange,
+  onPresetsChange,
+  draft,
+  onDraftChange,
+  onBusyChange,
+  readState,
+}: {
+  tags: string[];
+  presets?: string[];
+  historyTags?: string[] | (() => string[]);
+  presetsEditable?: boolean;
+  disabled?: boolean;
+  testID?: string;
+  onChange: (tags: string[]) => Promise<unknown>;
+  onPresetsChange?: (tags: string[]) => Promise<unknown>;
+  draft?: string;
+  onDraftChange?: (draft: string) => void;
+  onBusyChange?: (busy: boolean) => void;
+  readState?: { ready: boolean; error: boolean; retry: () => void };
+}) {
+  const theme = useAppTheme();
+  const [localInput, setLocalInput] = useState('');
+  const input = draft ?? localInput;
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const setInput = onDraftChange ?? setLocalInput;
+  const blocked = disabled || readState?.ready === false;
+  const [error, setError] = useState('');
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const pickerVisibleRef = useRef(false);
+  const pendingCommits = useRef(0);
+  const setPickerOpen = (visible: boolean) => {
+    pickerVisibleRef.current = visible;
+    setPickerVisible(visible);
+    onBusyChange?.(visible || pendingCommits.current > 0);
+  };
+  const visibleHistory = useMemo(() => pickerVisible
+    ? (typeof historyTags === 'function' ? historyTags() : historyTags)
+    : [], [pickerVisible, historyTags]);
+
+  const commit = async (values: string[]): Promise<TagCommitResult> => {
+    if (blocked) return { ok: false, error: '标签尚未读取完成，请重试。' };
+    pendingCommits.current += 1;
+    onBusyChange?.(true);
+    try { setError(''); await onChange(normalizeTags(values)); return { ok: true }; }
+    catch {
+      const message = '标签保存失败，请重试。';
+      setError(message);
+      return { ok: false, error: message };
+    }
+    finally {
+      pendingCommits.current -= 1;
+      onBusyChange?.(pickerVisibleRef.current || pendingCommits.current > 0);
+    }
+  };
+
+  const add = async () => {
+    if (blocked || pendingCommits.current > 0) return;
+    if (!input.trim()) { setError('请输入标签'); return; }
+    const submitted = input;
+    if ((await commit([...tags, submitted])).ok && inputRef.current === submitted) setInput('');
+  };
+
+  return <>
+    <DetailGestureRoot testID={testID} style={styles.wrap}>
+      <Text style={[styles.label, { color: theme.textSecondary }]}>本地标签</Text>
+      <View style={styles.tags}>
+        {tags.map((tag) => <DetailPressable key={tag} disabled={blocked} accessibilityRole="button"
+          accessibilityLabel={`删除标签 ${tag}`} onPress={() => void commit(tags.filter((item) => item !== tag))}
+          style={[styles.tag, { backgroundColor: theme.accentSoft }]}>
+          <Text style={[styles.tagText, { color: theme.accent }]}>{tag} ×</Text>
+        </DetailPressable>)}
+        {!tags.length && readState?.ready !== false ? <Text style={[styles.empty, { color: theme.textMuted }]}>暂无标签</Text> : null}
+      </View>
+      <View style={styles.inputRow}>
+        <TextInput accessibilityLabel="新标签" editable={!blocked} placeholder="输入标签" placeholderTextColor={theme.textMuted}
+          value={input} onChangeText={setInput} onSubmitEditing={() => void add()}
+          style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+        <DetailPressable accessibilityRole="button" accessibilityLabel="打开标签预设" disabled={blocked}
+          onPress={() => setPickerOpen(true)} style={[styles.presetButton, { borderColor: theme.accent }]}>
+          <Text style={[styles.presetText, { color: theme.accent }]}>预设</Text>
+        </DetailPressable>
+        <DetailPressable accessibilityRole="button" accessibilityLabel="添加标签" disabled={blocked}
+          onPress={() => void add()} style={[styles.add, { backgroundColor: theme.accent }]}>
+          <Text style={[styles.addText, { color: theme.onAccent }]}>添加</Text>
+        </DetailPressable>
+      </View>
+      {readState?.ready === false ? <View style={styles.inputRow}>
+        <Text style={[styles.empty, { color: readState.error ? theme.danger : theme.textMuted }]}>
+          {readState.error ? '标签读取失败，请重试。' : '正在读取标签…'}
+        </Text>
+        {readState.error ? <DetailPressable onPress={readState.retry}>
+          <Text style={{ color: theme.accent }}>重试</Text>
+        </DetailPressable> : null}
+      </View> : null}
+      {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
+    </DetailGestureRoot>
+    {pickerVisible ? <TagPresetSheet visible tags={tags} presets={presets} historyTags={visibleHistory}
+      presetsEditable={presetsEditable}
+      onClose={() => setPickerOpen(false)} onSave={async (values) => {
+        const result = await commit(values);
+        if (result.ok) setPickerOpen(false);
+        return result;
+      }} onPresetsChange={onPresetsChange ? async (values) => {
+        pendingCommits.current += 1;
+        onBusyChange?.(true);
+        try { await onPresetsChange(values); }
+        finally {
+          pendingCommits.current -= 1;
+          onBusyChange?.(pickerVisibleRef.current || pendingCommits.current > 0);
+        }
+      } : undefined} /> : null}
+  </>;
+}
+
+function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, onClose, onSave, onPresetsChange }: {
+  visible: boolean;
+  tags: string[];
+  presets: string[];
+  historyTags: string[];
+  presetsEditable: boolean;
+  onClose: () => void;
+  onSave: (values: string[]) => Promise<TagCommitResult>;
+  onPresetsChange?: (values: string[]) => Promise<unknown>;
+}) {
+  const theme = useAppTheme();
+  const [selected, setSelected] = useState<string[]>(tags);
+  const selectedRef = useRef(selected);
+  const [draftPresets, setDraftPresets] = useState<string[]>(presets);
+  const [presetInput, setPresetInput] = useState('');
+  const presetInputRef = useRef(presetInput);
+  presetInputRef.current = presetInput;
+  const [presetsSaving, setPresetsSaving] = useState(false);
+  const presetsSavingRef = useRef(false);
+  const [message, setMessage] = useState('');
+  const [saving, setSaving] = useState(false);
+  const presetZone = useRef<View>(null);
+  const presetBounds = useRef<LayoutRectangle & { pageY: number }>({ x: 0, y: 0, width: 0, height: 0, pageY: 0 });
+
+  const selectedKeys = useMemo(() => new Set(selected.map((value) => normalizeTagName(value).key)), [selected]);
+  const toggle = (tag: string) => {
+    if (saving) return;
+    try {
+      const current = selectedRef.current;
+      const key = normalizeTagName(tag).key;
+      const alreadySelected = current.some((item) => normalizeTagName(item).key === key);
+      if (!alreadySelected && current.length >= MAX_TAGS_PER_ITEM) {
+        setMessage(`最多可选择 ${MAX_TAGS_PER_ITEM} 个标签`);
+        return;
+      }
+      const next = alreadySelected ? current.filter((item) => normalizeTagName(item).key !== key)
+        : normalizeTags([...current, tag]);
+      selectedRef.current = next;
+      setSelected(next);
+      setMessage('');
+    } catch { setMessage('标签无效，请检查后重试。'); }
+  };
+  const persistPresets = async (values: string[]) => {
+    if (saving || presetsSavingRef.current) return false;
+    presetsSavingRef.current = true;
+    setPresetsSaving(true);
+    try {
+      const normalized = normalizeTags(values);
+      await onPresetsChange?.(normalized);
+      setDraftPresets(normalized);
+      setMessage('');
+      return true;
+    } catch { setMessage('预设保存失败，请重试。'); return false; }
+    finally { presetsSavingRef.current = false; setPresetsSaving(false); }
+  };
+  const addPreset = async (tag: string, fromInput = false) => {
+    if (!tag.trim()) { setMessage('请输入预设标签'); return; }
+    if (await persistPresets([...draftPresets, tag]) && fromInput && presetInputRef.current === tag) setPresetInput('');
+  };
+  const copyIfDropped = (tag: string, pageY: number) => {
+    const bounds = presetBounds.current;
+    if (pageY >= bounds.pageY && pageY <= bounds.pageY + bounds.height) void addPreset(tag);
+  };
+  const capturePresetBounds = () => presetZone.current?.measureInWindow((x, pageY, width, height) => {
+    presetBounds.current = { x, y: 0, width, height, pageY };
+  });
+  const saveSelection = async () => {
+    if (saving || presetsSavingRef.current) return;
+    setSaving(true);
+    const result = await onSave(selectedRef.current);
+    if (!result.ok) setMessage(result.error);
+    setSaving(false);
+  };
+
+  return <AppSheet visible={visible} onRequestClose={onClose} testID="tag-preset-sheet" title="标签预设"
+    onShow={() => {
+      selectedRef.current = tags; setSelected(tags); setDraftPresets(presets); setMessage(''); setSaving(false); setTimeout(capturePresetBounds, 0);
+    }}
+    rightAction={{ label: saving ? '保存中…' : '完成', accessibilityLabel: '完成标签选择', disabled: saving || presetsSaving, onPress: () => void saveSelection() }}>
+    <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled" pointerEvents={saving ? 'none' : 'auto'}
+      showsVerticalScrollIndicator={false}>
+      <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>预设标签</Text>
+      <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
+        {presetsEditable ? '点按选择；可删除或用箭头调整顺序' : '点按选择'}
+      </Text>
+      <View ref={presetZone} onLayout={() => setTimeout(capturePresetBounds, 0)}
+        testID="tag-preset-list" style={[styles.presetList, { backgroundColor: theme.surface }]}>
+        {draftPresets.map((tag, index) => <View key={normalizeTagName(tag).key}
+          style={[styles.presetRow, index > 0 && [styles.presetRowBorder, { borderTopColor: theme.border }]]}>
+          <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)}
+            layout="row" onPress={() => toggle(tag)} />
+          {presetsEditable ? <>
+            <DetailPressable accessibilityRole="button" accessibilityLabel={`上移预设 ${tag}`} disabled={presetsSaving || index === 0}
+              onPress={() => {
+              const next = [...draftPresets]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; void persistPresets(next);
+              }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                index === 0 && styles.disabled, pressed && index > 0 && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, { color: index === 0 ? theme.textMuted : theme.accent }]}>↑</Text>
+            </DetailPressable>
+            <DetailPressable accessibilityRole="button" accessibilityLabel={`下移预设 ${tag}`}
+              disabled={presetsSaving || index === draftPresets.length - 1} onPress={() => {
+              const next = [...draftPresets]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; void persistPresets(next);
+              }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                index === draftPresets.length - 1 && styles.disabled,
+                pressed && index < draftPresets.length - 1 && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, {
+                color: index === draftPresets.length - 1 ? theme.textMuted : theme.accent,
+              }]}>↓</Text>
+            </DetailPressable>
+            <DetailPressable accessibilityRole="button" accessibilityLabel={`删除预设 ${tag}`} disabled={presetsSaving}
+              onPress={() => void persistPresets(draftPresets.filter((item) => item !== tag))}
+              style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                pressed && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, { color: theme.danger }]}>×</Text>
+            </DetailPressable>
+          </> : null}
+        </View>)}
+        {!draftPresets.length ? <Text style={[styles.presetEmptyText, { color: theme.textMuted }]}>
+          {presetsEditable ? '暂无预设，可从下方历史拖入' : '当前谱面暂无可用预设'}
+        </Text> : null}
+      </View>
+      {presetsEditable ? <View style={styles.inputRow}>
+        <TextInput accessibilityLabel="新预设标签" editable={!saving} placeholder="新增预设" placeholderTextColor={theme.textMuted}
+          value={presetInput} onChangeText={setPresetInput} onSubmitEditing={() => void addPreset(presetInput, true)}
+          style={[styles.input, styles.sheetInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+        <DetailPressable accessibilityRole="button" accessibilityLabel="添加预设标签" disabled={presetsSaving}
+          onPress={() => void addPreset(presetInput, true)}
+          style={({ pressed }) => [styles.sheetAdd, { backgroundColor: theme.accent }, pressed && styles.softPressed]}>
+          <Text style={[styles.sheetAddText, { color: theme.onAccent }]}>添加</Text>
+        </DetailPressable>
+      </View> : null}
+      <Text style={[styles.sectionLabel, styles.historyLabel, { color: theme.textMuted }]}>历史标签</Text>
+      <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
+        {presetsEditable ? '点按选择；拖到上方可复制为预设' : '点按选择'}
+      </Text>
+      <View style={styles.historyGrid}>
+        {historyTags.map((tag) => presetsEditable
+          ? <DraggableHistoryTag key={normalizeTagName(tag).key} tag={tag}
+              selected={selectedKeys.has(normalizeTagName(tag).key)} onPress={() => toggle(tag)}
+              onDrop={(pageY) => copyIfDropped(tag, pageY)} onCopy={() => void addPreset(tag)} />
+          : <View key={normalizeTagName(tag).key} style={[styles.historyItem, { backgroundColor: theme.surface }]}>
+              <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)}
+                onPress={() => toggle(tag)} />
+            </View>)}
+        {!historyTags.length ? <View style={[styles.historyEmpty, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.emptyCardText, { color: theme.textMuted }]}>暂无其他歌曲使用过的标签</Text>
+        </View> : null}
+      </View>
+      {message ? <View testID="tag-preset-message" style={[styles.messageCard, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.messageText, { color: theme.danger }]}>{message}</Text>
+      </View> : null}
+    </ScrollView>
+  </AppSheet>;
+}
+
+function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
+  tag: string;
+  selected: boolean;
+  layout?: 'row' | 'chip';
+  onPress: () => void;
+}) {
+  const theme = useAppTheme();
+  return <DetailPressable accessibilityRole="checkbox" accessibilityLabel={`选择标签 ${tag}`} accessibilityState={{ checked: selected }}
+    onPress={onPress} style={({ pressed }) => [
+      layout === 'row' ? styles.rowSelection : styles.chipSelection,
+      layout === 'chip' && {
+        borderColor: selected ? theme.accent : theme.border,
+        backgroundColor: selected ? theme.accentSoft : theme.surface,
+      },
+      pressed && styles.softPressed,
+    ]}>
+    <View style={[styles.selectionBox, { borderColor: theme.border, backgroundColor: theme.input },
+      selected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+      {selected ? <Text style={[styles.selectionMark, { color: theme.onAccent }]}>✓</Text> : null}
+    </View>
+    <Text style={[layout === 'row' ? styles.rowSelectionText : styles.chipSelectionText,
+      { color: selected ? theme.accent : theme.textSecondary }]}>{tag}</Text>
+  </DetailPressable>;
+}
+
+function DraggableHistoryTag({ tag, selected, onPress, onDrop, onCopy }: {
+  tag: string; selected: boolean; onPress: () => void; onDrop: (pageY: number) => void; onCopy: () => void;
+}) {
+  const offset = useRef(new Animated.ValueXY()).current;
+  const pan = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) + Math.abs(gesture.dy) > 8,
+    onPanResponderMove: Animated.event([null, { dx: offset.x, dy: offset.y }], { useNativeDriver: false }),
+    onPanResponderRelease: (_, gesture) => {
+      onDrop(gesture.moveY);
+      Animated.spring(offset, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start();
+    },
+    onPanResponderTerminate: () => Animated.spring(offset, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start(),
+  }), [offset, onDrop]);
+  const theme = useAppTheme();
+  return <View style={[styles.historyItem, { backgroundColor: theme.surface }]}>
+    <Animated.View {...pan.panHandlers} style={{ transform: offset.getTranslateTransform(), zIndex: 10 }}>
+      <SelectableTag tag={tag} selected={selected} onPress={onPress} />
+    </Animated.View>
+    <DetailPressable accessibilityRole="button" accessibilityLabel={`复制到预设 ${tag}`} onPress={onCopy}
+      style={({ pressed }) => [styles.copyButton, pressed && styles.softPressed]}>
+      <Text style={[styles.copyText, { color: theme.accent }]}>复制到预设</Text>
+    </DetailPressable>
+  </View>;
+}
+
+const styles = StyleSheet.create({
+  wrap: { gap: 7, marginTop: 9 }, label: { fontSize: 12, fontWeight: '600' },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, tag: { borderRadius: 14, paddingHorizontal: 9, paddingVertical: 5 },
+  tagText: { fontSize: 11 }, empty: { fontSize: 11 }, inputRow: { flexDirection: 'row', gap: 7 },
+  input: { flex: 1, minWidth: 0, minHeight: 40, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 7 },
+  add: { borderRadius: 8, paddingHorizontal: 13, justifyContent: 'center' }, addText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
+  presetButton: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, justifyContent: 'center' }, presetText: { fontWeight: '700', fontSize: 12 },
+  error: { fontSize: 11 },
+  softPressed: { opacity: 0.7 },
+  disabled: { opacity: 0.55 },
+  sheetContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
+  sectionLabel: { fontSize: 13, fontWeight: '600', marginTop: 4 },
+  sectionHint: { fontSize: 12, lineHeight: 18, marginTop: -6 },
+  presetList: { minHeight: 76, borderRadius: 14, overflow: 'hidden' },
+  presetRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  presetRowBorder: { borderTopWidth: StyleSheet.hairlineWidth },
+  rowSelection: { flex: 1, minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rowSelectionText: { flex: 1, fontSize: 15, fontWeight: '600' },
+  chipSelection: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chipSelectionText: { fontSize: 14, fontWeight: '600' },
+  selectionBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectionMark: { color: '#FFF', fontSize: 14, fontWeight: '700', lineHeight: 16 },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconButtonText: { fontSize: 17, fontWeight: '700', lineHeight: 20 },
+  emptyCardText: { fontSize: 13, lineHeight: 18 },
+  presetEmptyText: { padding: 16, fontSize: 13, lineHeight: 18 },
+  historyLabel: { marginTop: 8 },
+  sheetInput: {
+    minHeight: 48,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 17,
+  },
+  sheetAdd: {
+    minWidth: 72,
+    minHeight: 48,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetAddText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  historyGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 10 },
+  historyItem: {
+    flexGrow: 1,
+    flexBasis: 140,
+    maxWidth: 240,
+    borderRadius: 12,
+    padding: 10,
+    gap: 4,
+  },
+  copyButton: { alignSelf: 'flex-end', minHeight: 28, paddingHorizontal: 4, justifyContent: 'center' },
+  copyText: { fontSize: 12, fontWeight: '600' },
+  historyEmpty: { flex: 1, borderRadius: 12, padding: 16 },
+  messageCard: { borderRadius: 12, padding: 14 },
+  messageText: { fontSize: 13, lineHeight: 18 },
+});

@@ -20,7 +20,7 @@ export type PluginPageTarget = {
   params?: DetailParams;
 };
 
-export function pluginHref(target: PluginPageTarget) {
+export function pluginHref(target: PluginPageTarget): { pathname: '/plugins/[pluginId]/[pageId]'; params: DetailParams } {
   return {
     pathname: '/plugins/[pluginId]/[pageId]' as const,
     params: {

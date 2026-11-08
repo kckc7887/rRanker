@@ -1,0 +1,13 @@
+{
+  "name": "@rranker/resource-integrity",
+  "version": "1.0.0",
+  "license": "AGPL-3.0-only",
+  "files": [
+    "android",
+    "ios",
+    "expo-module.config.json"
+  ],
+  "peerDependencies": {
+    "expo": "~57.0.28"
+  }
+}
