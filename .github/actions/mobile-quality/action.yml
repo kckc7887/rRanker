@@ -7,10 +7,10 @@ runs:
       with:
         node-version: "22"
         cache: npm
-        cache-dependency-path: apps/mobile/package-lock.json
+        cache-dependency-path: package-lock.json
     - name: Install dependencies
       shell: bash
-      working-directory: apps/mobile
+      working-directory: .
       run: npm ci --no-audit --no-fund
     - name: Lint
       shell: bash

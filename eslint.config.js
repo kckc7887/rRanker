@@ -5,10 +5,10 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: [
-      'dist/*',
-      'assets/maimai-chart-preview/player.js',
-      'src/features/simai-chart-preview/engine/**',
-      'src/features/simai-chart-preview/webview-player/**',
+      'apps/mobile/dist/*',
+      'apps/mobile/assets/maimai-chart-preview/player.js',
+      'apps/mobile/src/features/simai-chart-preview/engine/**',
+      'apps/mobile/src/features/simai-chart-preview/webview-player/**',
     ],
     rules: {
       'react-hooks/set-state-in-effect': 'off',

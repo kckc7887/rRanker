@@ -40,7 +40,7 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 需要 Node.js 22.13 或更高版本。
 
 ```bash
-cd apps/mobile
+git submodule update --init --recursive
 npm ci --no-audit --no-fund
 npm start
 ```

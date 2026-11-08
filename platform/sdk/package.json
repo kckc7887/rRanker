@@ -1,0 +1,15 @@
+{
+  "name": "@rranker/sdk",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./navigation": "./src/navigation.ts",
+    "./library": "./src/library.ts"
+  },
+  "files": ["src"],
+  "peerDependencies": {
+    "react": "19.2.3"
+  }
+}

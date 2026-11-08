@@ -2,6 +2,10 @@
 
 实现、导出和调用方是当前事实。改动前先检查已有入口，复用实际业务路径；不为测试或假想扩展增加公共 API。测试模拟外部依赖，验证产品结果。
 
+## 插件公共接口
+
+`@rranker/sdk` 由 `platform/sdk` 提供。`DetailTarget` 携带游戏 ID 和字符串参数，`detailHref` 生成详情地址；`PluginPageTarget` 通过 `pluginHref` 生成插件页面地址。`LibraryTarget` 携带游戏 ID、歌曲或谱面种类、适配器定义的稳定 ID 与详情参数。SDK 不解释游戏内的谱面身份。
+
 ## 领域与查询
 
 | 内容 | 公共入口 |

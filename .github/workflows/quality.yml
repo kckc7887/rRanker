@@ -19,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          submodules: recursive
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v6
@@ -40,6 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          submodules: recursive
           ref: ${{ needs.changed-scope.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/mobile-quality
@@ -58,6 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          submodules: recursive
           ref: ${{ needs.changed-scope.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/android-build
@@ -94,6 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          submodules: recursive
           ref: ${{ needs.changed-scope.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/ios-build
@@ -111,6 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          submodules: recursive
           ref: ${{ needs.changed-scope.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/android-build
@@ -128,6 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          submodules: recursive
           ref: ${{ needs.changed-scope.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/ios-build

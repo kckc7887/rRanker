@@ -1,0 +1,29 @@
+{
+  "name": "rranker",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "workspaces": [
+    "apps/mobile",
+    "platform/*",
+    "plugins/games/*",
+    "plugins/providers/*",
+    "plugins/tools/*",
+    "plugins/shared/*"
+  ],
+  "scripts": {
+    "start": "npm run start --workspace mobile",
+    "lint": "npm run lint --workspace mobile",
+    "typecheck": "npm run typecheck --workspace mobile",
+    "test": "npm run test --workspace mobile",
+    "check:generated": "npm run check:generated --workspace mobile"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "overrides": {
+    "decode-uri-component": "0.5.0",
+    "xcode": {
+      "uuid": "11.1.1"
+    }
+  }
+}

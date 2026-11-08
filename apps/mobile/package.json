@@ -9,7 +9,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "eslint app src tests vitest.config.ts jest.config.js",
+    "lint": "eslint app src tests vitest.config.ts jest.config.js ../../platform/sdk/src",
     "typecheck": "tsc --noEmit && npm run typecheck:maimai-player && npm run typecheck:phigros-player && npm run typecheck:osu-player && npm run typecheck:rizline-player",
     "typecheck:phigros-player": "tsc -p tsconfig.phigros-player.json",
     "check:generated": "node scripts/build-chart-preview.mjs --check && node scripts/build-phigros-chart-preview.mjs --check && node scripts/build-osu-chart-preview.mjs --check && node scripts/build-rizline-chart-preview.mjs --check",
@@ -81,7 +81,8 @@
     "react-native-worklets": "0.10.1",
     "wanakana": "^5.3.1",
     "zod": "^4.4.3",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "@rranker/sdk": "0.1.0"
   },
   "devDependencies": {
     "@react-native/jest-preset": "0.86.3",
@@ -101,12 +102,6 @@
     "typescript": "~6.0.3",
     "vitest": "^4.1.11",
     "yaml": "2.9.0"
-  },
-  "overrides": {
-    "decode-uri-component": "0.5.0",
-    "xcode": {
-      "uuid": "11.1.1"
-    }
   },
   "private": true,
   "engines": {

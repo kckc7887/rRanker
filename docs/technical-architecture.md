@@ -2,6 +2,8 @@
 
 ## 工程与入口
 
+仓库使用 npm workspace，根目录的 `package-lock.json` 固定依赖。`plugins` 子模块固定官方插件仓库的源码提交，安装前通过 `git submodule update --init --recursive` 取得对应源码。
+
 移动应用位于 `apps/mobile`，使用 Expo 57、React Native 0.86、React 19.2、Expo Router 57、TypeScript 6。入口是 `expo-router/entry`，启用 New Architecture。Node 最低版本为 22.13。
 
 `app.config.js` 从 Expo 传入的静态配置装配原生插件和构建参数。Android 最低版本为 7，compile/target SDK 为 36；iOS 最低版本为 16.4，构建要求 Xcode 26.4 或更新版本。
@@ -10,6 +12,8 @@ Android 原生库与 Hermes 字节码压缩打包，原生库在安装时解压�
 
 | 目录 | 内容 |
 |---|---|
+| `platform/sdk` | 公共插件类型与导航、个人曲库目标接口 |
+| `plugins` | 官方插件源码子模块 |
 | `apps/mobile/app` | 文件路由、根布局与标签页 |
 | `apps/mobile/src/domain` | 游戏模型、计算、筛选与持久化格式 |
 | `apps/mobile/src/providers` | 上游请求、认证和响应转换 |
@@ -223,11 +227,11 @@ KALEIDXSCOPE 的国服日程、课题和手工进度位于 `domain/kaleidx-scope
 
 ## 验证与构建
 
-以下命令在 `apps/mobile` 运行：
+依赖安装在仓库根目录运行；应用检查与构建命令在 `apps/mobile` 运行，根目录同名检查脚本转发到应用 workspace：
 
 | 命令 | 验证内容 |
 |---|---|
-| `npm ci --no-audit --no-fund` | 安装锁定依赖并执行现有功能补丁 |
+| `npm ci --no-audit --no-fund` | 在仓库根目录安装锁定依赖并执行现有功能补丁 |
 | `npm run lint` | 应用、测试与配置 lint |
 | `npm run typecheck` | 应用与播放器类型检查 |
 | `npm test` | 单元与 UI 行为测试 |
@@ -252,7 +256,7 @@ postinstall 按实际源码调用点应用 decode-uri-component、WebView 和 vi
 
 `quality.yml` 接受所有分支 push、手动触发及 fork PR 的复用调用。两个入口共用 `.github/actions/changed-scope` 区分文档与功能变更，通过 `.github/actions/mobile-quality` 执行 lint、五组类型检查、单元/UI、生成物和 CI 脚本行为测试。`quality-gate` 汇总结果：必要作业失败、取消或意外跳过会失败，文档快速路径允许预期跳过。
 
-正式仓库分支 push/手动触发走 Android/iOS 正式构建；向 master 提交的 fork PR 走双端测试构建。正式构建与 fork 测试构建按事件互斥，fork 作业不取得发布凭据。
+质量检查与原生构建检出固定的插件子模块提交，并从根锁文件安装依赖。正式仓库分支 push/手动触发走 Android/iOS 正式构建；向 master 提交的 fork PR 走双端测试构建。正式构建与 fork 测试构建按事件互斥，fork 作业不取得发布凭据。
 
 Android 在同一作业内以 4 GiB Gradle 堆和两个工作线程构建四个 ABI，校验 Manifest、签名和产物后释放运行器 SDK 中的 NDK 与 CMake，再安装模拟器和 x86_64 APK 走生产路由冒烟并上传最终产物。手动原生诊断入口位于 `android-recovery.yml`。
 
