@@ -144,6 +144,44 @@ describe('ChartPreviewScreenShell 交互', () => {
     };
   });
 
+  it('请求视频后发送本地资源，下载失败仍保留谱面', async () => {
+    const loadBackgroundVideo = jest.fn<() => Promise<string>>()
+      .mockResolvedValueOnce('file://maimai/background.mp4')
+      .mockRejectedValueOnce(new Error('network'));
+    await renderMaimaiShell({
+      kind: 'ready', payload: { chartId: 834, difficulty: 4, title: '示例舞萌谱面' },
+      prepare: async () => ({ ...maimaiSource, loadBackgroundVideo }),
+    });
+    await waitFor(() => expect(screen.getByTestId(maimaiTestID)).toBeTruthy());
+    expect(loadBackgroundVideo).not.toHaveBeenCalled();
+    for (const requestId of [1, 2]) {
+      await act(async () => (latestWebViewProps.onMessage as (event: unknown) => void)({
+        nativeEvent: { data: JSON.stringify({ type: 'background-video-load', requestId }) },
+      }));
+    }
+    expect(injectedCommands()).toEqual(expect.arrayContaining([
+      { type: 'background-video-source', requestId: 1, uri: 'file://maimai/background.mp4' },
+      { type: 'background-video-source', requestId: 2, uri: null },
+    ]));
+    expect(screen.getByTestId(maimaiTestID)).toBeTruthy();
+  });
+
+  it('页面释放后丢弃迟到的视频资源', async () => {
+    let finish!: (uri: string) => void;
+    const pending = new Promise<string>(resolve => { finish = resolve; });
+    const view = await renderMaimaiShell({
+      kind: 'ready', payload: { chartId: 834, difficulty: 4, title: '示例舞萌谱面' },
+      prepare: async () => ({ ...maimaiSource, loadBackgroundVideo: () => pending }),
+    });
+    await waitFor(() => expect(screen.getByTestId(maimaiTestID)).toBeTruthy());
+    await act(async () => (latestWebViewProps.onMessage as (event: unknown) => void)({
+      nativeEvent: { data: JSON.stringify({ type: 'background-video-load', requestId: 1 }) },
+    }));
+    await view.unmount();
+    await act(async () => finish('file://maimai/background.mp4'));
+    expect(injectedCommands().filter(command => command.type === 'background-video-source')).toEqual([]);
+  });
+
   it('关联准备、加载和就绪，去重回调并隔离旧内容进程', async () => {
     await renderMaimaiShell({ kind: 'ready', payload: { chartId: 834, difficulty: 4, title: 'secret' }, prepare: async () => maimaiSource });
     await waitFor(() => expect(screen.getByTestId(maimaiTestID)).toBeTruthy());

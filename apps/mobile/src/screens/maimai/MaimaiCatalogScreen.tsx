@@ -1,9 +1,8 @@
 import { memo, useCallback, useEffect, useMemo } from 'react';
 import { View, type ListRenderItem } from 'react-native';
 import { CatalogListPage } from '@/components/game-content/GameListPages';
-import { FavoriteSongRow } from '@/components/game-content/FavoriteSongRow';
+import { GameSongRow, SongRowBadges } from '@/components/game-content/GameSongRow';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
-import { SIMAI_CATALOG_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { MaimaiFilterBar, dxRatingTagFilterState, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
@@ -16,10 +15,8 @@ import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useCatalogFilter } from '@/state/catalog-filter';
-import { useAppTheme } from '@/theme/app-theme';
 import {
   EMPTY_SONG_FILTERS,
   findMatchedAlias,
@@ -31,9 +28,7 @@ const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
 export function MaimaiCatalogScreen() {
   const query = useDetailedCatalog();
   const dxRatingChartTags = useDxRatingChartTags();
-  const tabBottomInset = useNativeTabBottomInset();
   const library = useUserLibrary();
-  const theme = useAppTheme();
   const {
     keyword, collapsed, type, difficulty, constantMin, constantMax, version, genre, versionLocale, selectedDxRatingTagIds,
     setKeyword, setCollapsed, setType, setDifficulty, setConstantMin, setConstantMax, setVersion, setVersionLocale,
@@ -117,36 +112,34 @@ export function MaimaiCatalogScreen() {
     versionLabelsById,
   ]);
 
+  const controls = <>
+    <GameSearchHeader accessibilityLabel="歌曲搜索"
+      placeholder="曲名 / ID / 别名 / 曲师 / 谱师 / 罗马音" value={keyword} onChangeText={setKeyword}
+      resultCountText={isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`} />
+    <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
+      difficulty={difficulty} version={version} type={type}
+      genre={genre} genres={genres} onGenreChange={setGenre}
+      constantMin={constantMin} constantMax={constantMax} versionLocale={versionLocale} versions={versions}
+      dxRatingTags={dxRatingChartTags.data?.tags ?? []}
+      selectedDxRatingTagIds={selectedDxRatingTagIds}
+      dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
+      onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
+      onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
+      onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+      onReset={clearFilters} />
+  </>;
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <GameSearchHeader layout="catalog" accessibilityLabel="歌曲搜索"
-        placeholder="曲名 / ID / 别名 / 曲师 / 谱师 / 罗马音" value={keyword} onChangeText={setKeyword}
-        resultCountText={isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`} />
-      <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
-        difficulty={difficulty} version={version} type={type}
-        genre={genre} genres={genres} onGenreChange={setGenre}
-        constantMin={constantMin} constantMax={constantMax} versionLocale={versionLocale} versions={versions}
-        dxRatingTags={dxRatingChartTags.data?.tags ?? []}
-        selectedDxRatingTagIds={selectedDxRatingTagIds}
-        dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
-        onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
-        onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-        onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
-        onReset={clearFilters} />
-      <CatalogListPage<typeof filtered[number]> isLoading={query.isLoading || (isFiltering && filtered.length === 0)} isError={query.isError}
-        isEmpty={!!query.data && filtered.length === 0}
-        error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
-        data={query.data && filtered.length > 0 ? filtered : undefined}
-        flatListProps={{
-          testID: 'catalog-results-list',
-          contentInsetAdjustmentBehavior: 'automatic',
-          keyExtractor: (item) => item.song.id,
-          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
-          scrollIndicatorInsets: { bottom: tabBottomInset },
-          renderItem: renderCatalogItem,
-        }}
-      />
-    </View>
+    <CatalogListPage<typeof filtered[number]> beforeList={controls}
+      isLoading={query.isLoading || (isFiltering && filtered.length === 0)} isError={query.isError}
+      isEmpty={!!query.data && filtered.length === 0}
+      error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
+      data={query.data && filtered.length > 0 ? filtered : undefined}
+      flatListProps={{
+        testID: 'catalog-results-list',
+        keyExtractor: (item) => item.song.id,
+        renderItem: renderCatalogItem,
+      }}
+    />
   );
 }
 
@@ -174,7 +167,7 @@ const CatalogSongRow = memo(function CatalogSongRow({
     ? song.charts
     : song.charts.filter((chart) => chart.versionId === selectedChartVersionId);
   const displayedVersion = selectedVersionLabel ?? songChartVersionLabel(song, versionLabelsById);
-  return <FavoriteSongRow
+  return <GameSongRow accessibilityLabel={null}
     presentation={presentation}
     matchedAlias={matchedAlias}
     subtitleContent={<>{song.artist ?? '曲师未知'} · {displayedVersion}</>}
@@ -203,19 +196,19 @@ function songChartVersionLabel(song: Song, versionLabelsById: ReadonlyMap<number
 }
 
 const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { songId: string; charts: Chart[] }) {
-  return <View testID={`song-chart-badges-${songId}`} accessibilityLabel="谱面定数" style={styles.chartGroups}>
+  return <View testID={`song-chart-badges-${songId}`} accessibilityLabel="谱面定数" style={{ gap: 4 }}>
     {TYPES.map((chartType) => {
       const typeCharts = charts.filter((chart) => chart.type === chartType)
         .sort((left, right) => left.levelIndex - right.levelIndex);
       if (!typeCharts.length) return null;
-      return <View key={chartType} style={styles.chartGroup}>
+      return <SongRowBadges key={chartType}>
         {chartType === 'UTAGE' ? null : <ChartTypeBadge type={chartType} />}
         {typeCharts.map((chart) => <DifficultyBadge key={`${chart.type}-${chart.levelIndex}`}
           difficulty={chart.difficulty} constant={chart.difficultyConstant} display="constant" compact
           specialLabel={chart.type === 'UTAGE'
             ? `${chart.utage?.kanji?.trim() || 'U·TA·GE'} ${chart.level}`.trim()
             : undefined} />)}
-      </View>;
+      </SongRowBadges>;
     })}
   </View>;
 });

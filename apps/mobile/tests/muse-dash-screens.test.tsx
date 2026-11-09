@@ -314,22 +314,26 @@ describe('Muse Dash screens', () => {
 
   it('filters the catalog by difficulty chips, DLC and constant range and searches songs', async () => {
     const screen = await render(<MuseDashCatalogScreen />);
+    const expectOnlySong = (title: string) => waitFor(() => {
+      expect(screen.getByLabelText(`打开歌曲 ${title}`)).toBeTruthy();
+      expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
+    });
     await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(3));
     expect(screen.getAllByText('11.50').length).toBeGreaterThan(0);
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('筛选难度 HIDDEN'));
-    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1));
+    await expectOnlySong('示例歌曲');
     await fireEvent.press(screen.getByLabelText('筛选难度 全部'));
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('选择DLC Second Album'));
-    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1));
+    await expectOnlySong('Another Track');
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 Second Album'));
     await fireEvent.press(screen.getByLabelText('选择DLC 全部'));
     await act(() => useMuseDashCatalogFilter.getState().setConstantMin('12'));
-    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1));
+    await expectOnlySong('示例歌曲');
     await act(() => useMuseDashCatalogFilter.getState().setConstantMin(''));
     await fireEvent.changeText(screen.getByLabelText('搜索喵斯快跑歌曲'), 'Another');
-    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1));
+    await expectOnlySong('Another Track');
   });
 
   it('renders detail hero, metadata, difficulty carousel with practice and tags', async () => {

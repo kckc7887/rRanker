@@ -19,17 +19,23 @@ import {
 } from '@/domain/badge-theme';
 import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 
-type LayeredGradientBadgeTone = 'rainbow' | 'gold';
 type GradientColors = readonly [string, string, ...string[]];
 
 const SHIMMER: GradientColors = [
   'rgba(255,255,255,0)', 'rgba(255,255,255,0.22)', 'rgba(255,255,255,0)',
 ];
 
-function colorsFor(tone: LayeredGradientBadgeTone): {
+type BadgeGradient = {
   border: GradientColors;
   fill: GradientColors;
-} {
+  text?: string;
+  locations?: readonly [number, number, ...number[]];
+  overlay?: string | null;
+  shimmer?: GradientColors;
+};
+
+function colorsFor(tone: 'rainbow' | 'gold' | BadgeGradient): BadgeGradient {
+  if (typeof tone === 'object') return tone;
   return tone === 'rainbow'
     ? { border: BADGE_RAINBOW_BORDER_COLORS, fill: BADGE_RAINBOW_FILL_COLORS }
     : { border: BADGE_GOLD_BORDER_COLORS, fill: BADGE_GOLD_FILL_COLORS };
@@ -46,7 +52,7 @@ export function LayeredGradientBadge({
   numberOfLines,
 }: {
   label: string;
-  tone: LayeredGradientBadgeTone;
+  tone: 'rainbow' | 'gold' | BadgeGradient;
   flowing?: boolean;
   testID?: string;
   style?: StyleProp<ViewStyle>;
@@ -62,6 +68,7 @@ export function LayeredGradientBadge({
   return (
     <LinearGradient
       colors={colors.border}
+      locations={colors.locations}
       end={{ x: 1, y: 0.5 }}
       start={{ x: 0, y: 0.5 }}
       style={[styles.frame, style]}
@@ -69,19 +76,20 @@ export function LayeredGradientBadge({
     >
       <LinearGradient
         colors={colors.fill}
+        locations={colors.locations}
         end={{ x: 1, y: 0.5 }}
-        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+        onLayout={flowing ? (event) => setWidth(event.nativeEvent.layout.width) : undefined}
         start={{ x: 0, y: 0.5 }}
         style={[styles.content, contentStyle]}
       >
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.overlay]} />
+        {colors.overlay !== null && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay ?? BADGE_LAYER_OVERLAY }]} />}
         {flowing ? (
           <Animated.View
             pointerEvents="none"
             style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}
           >
             <LinearGradient
-              colors={SHIMMER}
+              colors={colors.shimmer ?? SHIMMER}
               end={{ x: 1, y: 0.5 }}
               start={{ x: 0, y: 0.5 }}
               style={StyleSheet.absoluteFill}
@@ -90,7 +98,7 @@ export function LayeredGradientBadge({
         ) : null}
         <Text
           numberOfLines={numberOfLines}
-          style={[styles.text, textStyle]}
+          style={[styles.text, colors.text ? { color: colors.text } : undefined, textStyle]}
         >
           {label}
         </Text>
@@ -109,7 +117,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  overlay: { backgroundColor: BADGE_LAYER_OVERLAY },
   flowTrack: { position: 'absolute', top: 0, bottom: 0, left: 0 },
   text: { color: BEST_IMAGE_RAINBOW_TEXT, textAlign: 'center' },
 });

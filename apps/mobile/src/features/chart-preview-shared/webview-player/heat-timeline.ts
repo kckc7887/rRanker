@@ -29,6 +29,10 @@ export interface HeatTimelineElements {
 }
 
 export class HeatTimelineView {
+  private width = -1;
+  private progressPixel = -1;
+  private duration = -1;
+  private tracks: readonly HeatTimelineTrack[] = [];
   private loop: readonly [number | null, number | null] = [null, null];
   private markers: { a: HTMLElement; b: HTMLElement; range: HTMLElement }[] = [];
 
@@ -46,8 +50,34 @@ export class HeatTimelineView {
   }
 
   build(duration: number, tracks: readonly HeatTimelineTrack[], labels: readonly { percent: number; text: string }[]): void {
-    const { host, bars, ruler } = this.elements;
-    const densities = buildHeatDensity(duration, tracks, host.getBoundingClientRect().width);
+    const { host, ruler } = this.elements;
+    const width = Math.max(1, Math.round(host.getBoundingClientRect().width));
+    const sameTracks = duration === this.duration && tracks.length === this.tracks.length
+      && tracks.every((track, i) => track.times === this.tracks[i]!.times && track.label === this.tracks[i]!.label);
+    if (!sameTracks || Math.min(200, width) !== Math.min(200, this.width)) {
+      this.buildBars(duration, tracks, width);
+    }
+    if (this.width !== width) this.progressPixel = -1;
+    this.width = width;
+    this.duration = duration;
+    this.tracks = tracks;
+    ruler.replaceChildren();
+    let last = -Infinity;
+    for (const { percent, text } of labels) {
+      const x = percent * width / 100;
+      if (percent < 0 || percent > 100 || x - last < 44 || (percent > 0 && width - x < 20)) continue;
+      last = x;
+      const label = document.createElement('span');
+      label.className = 'heat-label';
+      label.style.left = `${percent}%`;
+      label.textContent = text;
+      ruler.append(label);
+    }
+  }
+
+  private buildBars(duration: number, tracks: readonly HeatTimelineTrack[], width: number): void {
+    const { host, bars } = this.elements;
+    const densities = buildHeatDensity(duration, tracks, width);
     host.dataset.tracks = String(tracks.length);
     this.markers = [];
     bars.replaceChildren();
@@ -94,30 +124,24 @@ export class HeatTimelineView {
       row.append(strip);
       bars.append(row);
     });
-    ruler.replaceChildren();
-    const width = Math.max(1, host.getBoundingClientRect().width);
-    let last = -Infinity;
-    for (const { percent, text } of labels) {
-      const x = percent * width / 100;
-      if (percent < 0 || percent > 100 || x - last < 44 || (percent > 0 && width - x < 20)) continue;
-      last = x;
-      const label = document.createElement('span');
-      label.className = 'heat-label';
-      label.style.left = `${percent}%`;
-      label.textContent = text;
-      ruler.append(label);
-    }
     this.updateLoop(...this.loop);
   }
 
   updateProgress(percent: number, text: string): void {
     const value = Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0));
     const { host, playhead, badge } = this.elements;
-    host.style.setProperty('--heat-progress', `${value}%`);
+    const pixel = Math.round(value * this.width * (globalThis.devicePixelRatio || 1) / 100);
+    if (pixel !== this.progressPixel || value === 0 || value === 100) {
+      this.progressPixel = pixel;
+      const percent = `${value}%`;
+      host.style.setProperty('--heat-progress', percent);
+      playhead.style.left = percent;
+    }
     host.setAttribute('aria-valuenow', String(value));
-    host.setAttribute('aria-valuetext', text);
-    playhead.style.left = `${value}%`;
-    badge.textContent = text;
+    if (badge.textContent !== text) {
+      host.setAttribute('aria-valuetext', text);
+      badge.textContent = text;
+    }
   }
 
   updateLoop(a: number | null, b: number | null): void {

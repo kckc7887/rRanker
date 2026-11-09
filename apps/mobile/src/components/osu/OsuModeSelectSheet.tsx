@@ -1,14 +1,6 @@
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollView, StyleSheet } from 'react-native';
 import type { OsuGameId } from '@/domain/game-mode-family';
-import { useAppTheme } from '@/theme/app-theme';
-import { AppModal } from '@/components/AppModal';
+import { AppSheet } from '@/components/AppSheet';
 import { OsuModeSelectContent } from './OsuModeSelectContent';
 
 export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSubmit, submitLabel = '绑定选中模式' }: {
@@ -19,65 +11,21 @@ export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSub
   onSubmit: (selected: readonly OsuGameId[]) => void;
   submitLabel?: string;
 }) {
-  const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   return (
-    <AppModal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={busy ? undefined : onClose}
-    >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="关闭模式选择"
-            hitSlop={12}
-            disabled={busy}
-            onPress={onClose}
-            style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
-          >
-            <Text style={[styles.close, { color: theme.accent }]}>取消</Text>
-          </Pressable>
-          <Text style={[styles.title, { color: theme.text }]}>选择 osu! 模式</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <OsuModeSelectContent
-            alreadyBound={alreadyBound}
-            busy={busy}
-            submitLabel={submitLabel}
-            onSubmit={onSubmit}
-          />
-        </ScrollView>
-      </View>
-    </AppModal>
+    <AppSheet visible={visible} onRequestClose={busy ? undefined : onClose} title="选择 osu! 模式"
+      leftAction={{ label: '取消', accessibilityLabel: '关闭模式选择', disabled: busy, onPress: onClose }}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <OsuModeSelectContent
+          alreadyBound={alreadyBound}
+          busy={busy}
+          submitLabel={submitLabel}
+          onSubmit={onSubmit}
+        />
+      </ScrollView>
+    </AppSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 5,
-    borderRadius: 3,
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerAction: { minWidth: 56, paddingVertical: 4 },
-  headerSpacer: { minWidth: 56 },
-  title: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700' },
-  close: { fontSize: 16, fontWeight: '600' },
-  pressed: { opacity: 0.7 },
   scroll: { flexGrow: 1, paddingTop: 8 },
 });

@@ -1,3 +1,4 @@
+import { SongInformationCard } from '@/components/game-content/SongInformationCard';
 import { useCachedTabActive, useStackScreenReady } from '@/components/CachedTabScreen';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
@@ -11,17 +12,14 @@ import {
   View,
 } from 'react-native';
 import { Card } from '@/components/Card';
-import { AutoScrollText } from '@/components/game-content/AutoScrollText';
-import { DetailPressable } from '@/components/game-content/DetailPressable';
-import { ExpandableTextLine } from '@/components/game-content/ExpandableTextLine';
 import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
-import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { ChartAction, GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { FloatingSongDetailChrome as PhigrosDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
+import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { VERTICAL_SONG_DETAIL_STYLES as PHIGROS_SONG_DETAIL_STYLES } from '@/components/game-content/SongDetailChromeStyles';
 import { SongDetailHero } from '@/components/game-content/SongDetailHero';
-import { TagEditor } from '@/components/TagEditor';
+import { LibraryTagEditor } from '@/components/game-content/LibraryTagEditor';
 import { PhigrosKyouChartTags, PhigrosKyouChartTagsSheet } from './PhigrosKyouChartTags';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
@@ -38,7 +36,6 @@ import {
 } from '@/domain/phigros-kyou';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { resolvePhigrosXingKind } from '@/domain/phigros-xing';
-import { buildTagHistory } from '@/domain/user-library';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
@@ -118,7 +115,7 @@ export function PhigrosSongDetail({
           />
         )}
       />
-      <PhigrosDetailChrome
+      <SongDetailChrome
         songTitle={song?.title}
         favorite={favorite}
         favoriteDisabled={favoriteDisabled}
@@ -128,7 +125,6 @@ export function PhigrosSongDetail({
   </>;
 }
 
-export { FloatingSongDetailChrome as PhigrosDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
 
 function Detail({
   song,
@@ -153,10 +149,8 @@ function Detail({
   catalogFetching: boolean;
   onEnsureLatestNoteCounts: () => void;
 }) {
-  const theme = useAppTheme();
   const { width } = useWindowDimensions();
   const active = useCachedTabActive();
-  const songItem = library.data?.find((item) => item.key === library.songKey(song.id));
   const sortedCharts = useMemo(
     () => [...song.charts].sort((a, b) => b.levelIndex - a.levelIndex),
     [song.charts],
@@ -205,10 +199,8 @@ function Detail({
 
   return (
     <ScrollView testID="phigros-song-detail-scroll" contentContainerStyle={styles.content}>
-      <SongDetailHero
-        size={width}
-        style={styles.hero}
-        cover={coverFailed || !coverSource ? undefined : (
+      <SongDetailHero size={width} id={`#${song.id}`} title={song.title} artist={song.artist ?? '曲师未知'} titleTestID="phigros-song-title-scroll"
+      cover={coverFailed || !coverSource ? undefined : (
           <Image
             accessibilityLabel="曲绘"
                   cacheProfile="artwork"
@@ -229,34 +221,12 @@ function Detail({
             style={StyleSheet.absoluteFill}
             transition={120}
           />
-        )}
-        placeholderStyle={[styles.heroPlaceholder, { backgroundColor: theme.input }]}
-        placeholderNoteStyle={styles.heroPlaceholderNote}
-        shadeColors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
-        shadeStyle={styles.heroShade}
-        copyStyle={styles.heroCopy}
-      >
-        <Text numberOfLines={1} style={styles.songId}>#{song.id}</Text>
-        <AutoScrollText
-          testID="phigros-song-title-scroll"
-          text={song.title}
-          textStyle={styles.title}
-          style={styles.singleLine}
-          contentContainerStyle={styles.singleLineContent}
-        />
-        <Text numberOfLines={1} style={styles.artist}>{song.artist ?? '曲师未知'}</Text>
-      </SongDetailHero>
+        )} />
 
       <SongMetadataTable
         accessibilityLabel="歌曲详情数据"
-        cellStyle={styles.metadataCell}
         items={metadataItems}
-        labelStyle={styles.metadataLabel}
-        measureStyle={styles.metadataValueMeasure}
-        style={styles.metadataTable}
         testIDPrefix="phigros-metadata"
-        valueBlockStyle={styles.metadataValueBlock}
-        valueStyle={styles.metadataValue}
       />
 
       {deferredReady ? <>
@@ -280,18 +250,9 @@ function Detail({
           }}
         />
         <View style={styles.details}>
+          <SongInformationCard prominent style={styles.songInformation} aliases={song.aliases} aliasPrefix="phigros-alias" />
           <Card>
-            <PhigrosSongInformation aliases={song.aliases ?? []} />
-          </Card>
-          <Card>
-            <TagEditor readState={library.tagReadState}
-              tags={songItem?.kind === 'song' ? songItem.tags : []}
-              presets={library.tagPresets ?? []}
-              historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
-              disabled={library.isUpdating}
-              onPresetsChange={library.setTagPresets}
-              onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)}
-            />
+            <LibraryTagEditor library={library} target={{ kind: 'song', songId: song.id }} />
           </Card>
         </View>
       </> : <View testID="phigros-song-detail-deferred-placeholder" style={styles.deferredPlaceholder} />}
@@ -438,78 +399,23 @@ function ChartCard({
           borderColor: colors.fg,
         },
       ]}
-    >
-      <View style={styles.chartHeader}>
-        <View style={[styles.diffPill, { backgroundColor: colors.fg }]}>
-          <Text style={styles.diffPillText}>{label}</Text>
-        </View>
-        <View style={styles.levelBlock}>
-          <Text style={[styles.level, { color: colors.fg }]}>{levelNumber}</Text>
-          <Text style={[styles.constant, { color: theme.textMuted }]}>
-            {chart.difficultyConstant.toFixed(1)}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.resultBlock}>
-        <Text style={[styles.resultLabel, { color: theme.textMuted }]}>Score</Text>
-        {score == null ? (
-          <Text
-            accessibilityLabel="未游玩"
-            style={[styles.scoreValue, { color: theme.text }]}
-          >
-            —
-          </Text>
-        ) : (
-          <PhigrosScoreValue
-            score={score}
-            variant={isPhi ? 'phi' : isFc ? 'fc' : 'normal'}
-            textColor={theme.text}
-            fontSize={styles.scoreValue.fontSize}
-            lineHeight={styles.scoreValue.lineHeight}
-          />
-        )}
-        {best || xingKind ? (
-          <View style={styles.badgeRow}>
-            {best ? <DetailRateBadge record={best} /> : null}
-            {xingKind ? <PhigrosXingBadge kind={xingKind} /> : null}
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.statRow}>
-        <View style={styles.statCell}>
-          <Text style={[styles.resultLabel, { color: theme.textMuted }]}>Acc</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>{accText}</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={[styles.resultLabel, { color: theme.textMuted }]}>RKS</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>{rksText}</Text>
-        </View>
-      </View>
-
-      <View style={[styles.chartDivider, { backgroundColor: theme.border }]} />
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
-        谱师：{chart.charter || '未提供'}
-      </Text>
+      summary={{
+        difficulty: label, level: levelNumber, levelColor: colors.fg, constant: chart.difficultyConstant.toFixed(1),
+        label: 'Score', value: score == null ? null : <PhigrosScoreValue score={score}
+          variant={isPhi ? 'phi' : isFc ? 'fc' : 'normal'} textColor={theme.text}
+          fontSize={styles.scoreValue.fontSize} lineHeight={styles.scoreValue.lineHeight} />,
+        badges: (best || xingKind) && <>{best && <DetailRateBadge record={best} />}
+          {xingKind && <PhigrosXingBadge kind={xingKind} />}</>,
+        metrics: [{ label: 'Acc', text: accText }, { label: 'RKS', text: rksText }], charter: chart.charter || '未提供',
+      }}>
       <PhigrosKyouChartTags tags={kyouTags} onShowAll={onShowAllKyouTags} />
       <NotesTable notes={asPhigrosNotes(chart.notes)} pending={notesPending} />
-      <DetailPressable
-        accessibilityRole="button"
-        accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
+      <ChartAction label={practice ? '已加入练习清单' : '加入练习清单'}
         disabled={library.isUpdating}
         onPress={() => void library.setChartPractice(song.id, PHIGROS_CHART_TYPE, chart.levelIndex, !practice)}
-        style={[
-          styles.action,
-          practiceActionStyle(colors.fg, practice),
-        ]}
-      >
-        <Text style={[styles.actionText, practiceTextStyle(colors.fg, practice)]}>
-          {practice ? '已加入练习清单' : '加入练习清单'}
-        </Text>
-      </DetailPressable>
-      <DetailPressable
-        accessibilityRole="button"
+        stack="first" style={practiceActionStyle(colors.fg, practice)}
+        textStyle={practiceTextStyle(colors.fg, practice)} />
+      <ChartAction label="查看谱面确认"
         accessibilityLabel={`查看谱面确认：${song.title} ${label}`}
         onPress={() => {
           cancelPreviewNavigation.current?.();
@@ -531,72 +437,18 @@ function ChartCard({
             }),
           });
         }}
-        style={[
-          styles.action,
-          styles.chartSearchAction,
-          practiceActionStyle(colors.fg, false),
-        ]}
-      >
-        <Text style={[styles.actionText, practiceTextStyle(colors.fg, false)]}>
-          查看谱面确认
-        </Text>
-      </DetailPressable>
-      <DetailPressable
-        accessibilityRole="button"
+        stack="next" style={practiceActionStyle(colors.fg, false)}
+        textStyle={practiceTextStyle(colors.fg, false)} />
+      <ChartAction label="下载谱面文件"
         accessibilityLabel={`下载谱面文件：${song.title} ${label}`}
         accessibilityState={{ disabled: downloadRunning }}
         disabled={downloadRunning}
         onPress={() => onDownloadChart(chart)}
-        style={[
-          styles.action,
-          styles.chartSearchAction,
-          practiceActionStyle(colors.fg, false),
-        ]}
-      >
-        <Text style={[styles.actionText, practiceTextStyle(colors.fg, false)]}>
-          下载谱面文件
-        </Text>
-      </DetailPressable>
-      <TagEditor readState={library.tagReadState}
-        {...carouselState.tagEditor}
-        tags={chartItem?.tags ?? []}
-        presets={library.tagPresets ?? []}
-        historyTags={() => buildTagHistory(
-          library.data ?? [],
-          library.chartKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex),
-          library.tagPresets ?? [],
-        )}
-        disabled={library.isUpdating}
-        onPresetsChange={library.setTagPresets}
-        onChange={(tags) => library.setTags({
-          kind: 'chart',
-          songId: song.id,
-          type: PHIGROS_CHART_TYPE,
-          levelIndex: chart.levelIndex,
-        }, tags)}
-      />
+        stack="next" style={practiceActionStyle(colors.fg, false)}
+        textStyle={practiceTextStyle(colors.fg, false)} />
+      <LibraryTagEditor library={library} target={{ kind: 'chart', songId: song.id, type: PHIGROS_CHART_TYPE, levelIndex: chart.levelIndex }}
+        {...carouselState.tagEditor} />
     </GameChartResultCard>
-  );
-}
-
-function PhigrosSongInformation({ aliases }: { aliases: readonly string[] }) {
-  const theme = useAppTheme();
-  return (
-    <View style={styles.songInformation}>
-      <Text style={[styles.informationTitle, { color: theme.text }]}>歌曲信息</Text>
-      <ExpandableTextLine
-        actionColor={theme.accent}
-        actionLabel="别名"
-        actionStyle={styles.aliasAction}
-        actionTextStyle={styles.aliasActionText}
-        blockStyle={styles.aliasBlock}
-        measureStyle={styles.aliasMeasure}
-        testIDPrefix="phigros-alias"
-        text={`别名：${aliases.join('、') || '无'}`}
-        textColor={theme.text}
-        textStyle={styles.informationValue}
-      />
-    </View>
   );
 }
 
@@ -634,16 +486,8 @@ function NotesTable({ notes, pending }: { notes?: PhigrosChartNotes; pending?: b
   return (
     <GameNoteTable
       accessibilityLabel="谱面物量"
-      containerStyle={[styles.notesTable, {
-        backgroundColor: theme.surfaceMuted,
-        borderColor: theme.border,
-      }]}
       group={noteGroup}
-      headerRowStyle={styles.notesHeaderRow}
-      headerTextStyle={[styles.notesCell, styles.notesHeader, { color: theme.textMuted }]}
       mode="grid"
-      rowStyle={styles.notesRow}
-      valueTextStyle={[styles.notesCell, styles.notesValue, { color: theme.text }]}
     />
   );
 }

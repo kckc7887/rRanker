@@ -70,15 +70,15 @@ describe('热度时间轴', () => {
 
 describe('公共播放控制', () => {
   it.each(['simai', 'phigros', 'osu', 'rizline'])('%s 调整布局后仍可重播与修改参数', feature => {
-    const html = readFileSync(resolve(process.cwd(), `src/features/${feature}-chart-preview/webview-player/index.html`), 'utf8');
+    const html = readFileSync(resolve(process.cwd(), `assets/${feature === 'simai' ? 'maimai' : feature}-chart-preview/index.html`), 'utf8');
     const parsed = new DOMParser().parseFromString(html, 'text/html');
+    document.body.className = parsed.body.className;
     document.body.innerHTML = parsed.body.innerHTML;
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
     const element = (id: string) => document.getElementById(id)!;
-    const details = feature === 'simai' ? [element('info-bar')] : undefined;
     const clicked = vi.fn();
     element('btn-restart').addEventListener('click', clicked);
-    const dispose = installPreviewControls({ measureNavigation: feature === 'simai', details, sections: ['播放设置', '画面设置', '视觉效果'] });
+    const dispose = installPreviewControls();
     const restart = element('btn-restart') as HTMLButtonElement;
     restart.disabled = false;
     restart.click();

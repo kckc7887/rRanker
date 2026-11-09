@@ -151,6 +151,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it('媒体补画合并到最新位置，保留等待中的播放并在释放后停止', async () => {
+  const { session, context, frames, rendered } = createPlayback();
+  await session.loadMusic(new ArrayBuffer(8));
+  session.moveTo(6);
+  const pending = session.play();
+  session.playback.invalidate();
+  session.playback.invalidate();
+  frames.advance(16);
+  expect(rendered.at(-1)).toBe(6);
+  expect(context.sources).toHaveLength(0);
+  const pausedFrames = rendered.length;
+  frames.advance(500);
+  expect(rendered).toHaveLength(pausedFrames);
+  context.releaseResumeNow();
+  await pending;
+  expect(session.playing).toBe(true);
+  session.pause();
+  session.playback.invalidate();
+  session.moveTo(8);
+  frames.advance(16);
+  expect(rendered.at(-1)).toBe(8);
+  session.playback.invalidate();
+  session.dispose();
+  const finalFrames = rendered.length;
+  frames.advance(500);
+  expect(rendered).toHaveLength(finalFrames);
+});
+
 describe('Simai 播放与取消', () => {
   it('resume 未结算时暂停：旧 play Promise 不再启动播放', async () => {
     const { session, context, frames } = createPlayback();
@@ -299,13 +327,13 @@ describe('Simai 会话时间轴换算与既有函数一致', () => {
 it('AB 在谱尾先回跳，暂停不自启，倍速不改变端点，释放取消回跳帧', async () => {
   const { session, context, frames } = createPlayback();
   context.state = 'running';
-  session.loop.toggle('a', 2);
-  session.loop.toggle('b', session.totalBeats);
+  session.loop.toggle('a', session.beatsToMs(2) / 1000);
+  session.loop.toggle('b', session.totalDurationMs / 1000);
   session.moveTo(session.totalBeats - 1);
   await session.play();
   frames.advance(1000);
   for (let i = 0; i < 8; i++) await Promise.resolve();
-  expect(session.positionBeats).toBe(2);
+  expect(session.positionBeats).toBe(3);
   expect(session.playing).toBe(true);
   session.pause();
   session.moveTo(session.totalBeats);

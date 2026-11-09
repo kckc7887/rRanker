@@ -1,6 +1,5 @@
 import { jest } from '@jest/globals';
 import { fireEvent, render } from '@testing-library/react-native';
-import { Text } from 'react-native';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import {
@@ -103,14 +102,13 @@ describe('BoundAccountGroupedList TUF and Muse Dash metadata', () => {
 });
 
 
-it('selects an account from the switch sheet, renders its supplied score and closes on completion', async () => {
+it('selects an account from the switch sheet, renders its ranked score and closes on completion', async () => {
   const account = createTufBoundAccount({ playerId: 1, displayName: '切换玩家', rankedScore: 15000 });
   const onSelectAccount = jest.fn();
   const onClose = jest.fn();
   const screen = await render(<AccountSwitchSheet visible accounts={[account]} expandedGameId="adofai"
-    activeAccountId={null} onToggleGame={jest.fn()} onSelectAccount={onSelectAccount} onClose={onClose}
-    renderRatingTag={() => <Text>15000 分</Text>} />);
-  expect(screen.getByText('15000 分')).toBeTruthy();
+    activeAccountId={null} onToggleGame={jest.fn()} onSelectAccount={onSelectAccount} onClose={onClose} />);
+  expect(screen.getByText(account.scoreDisplay)).toBeTruthy();
   await fireEvent.press(screen.getByText('切换玩家'));
   expect(onSelectAccount).toHaveBeenCalledWith(account);
   await fireEvent.press(screen.getByText('完成'));

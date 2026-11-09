@@ -11,7 +11,7 @@ const mockFiles = new Map<string, string>();
 
 jest.mock('@/components/AppNotification', () => {
   const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
-  return { useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+  return { ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 
 jest.mock('expo-asset', () => {
@@ -275,8 +275,8 @@ describe('chunithm best image custom', () => {
 
   it('shows the Best50 and 自定义 tabs with the Best50 content by default', async () => {
     const screen = await render(<ChunithmBestImageScreen />);
-    expect(screen.getByLabelText('Best50').props.accessibilityState).toEqual({ selected: true });
-    expect(screen.getByLabelText('自定义').props.accessibilityState).toEqual({ selected: false });
+    expect(screen.getByLabelText('Best50').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText('自定义').props.accessibilityState.selected).toBe(false);
     await waitFor(() => expect(screen.getByTestId('chunithm-best-image-html-preview-0')).toBeTruthy());
     const html = previewHtml(screen);
     expect(html).toContain('Best 30');

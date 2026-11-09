@@ -1,26 +1,26 @@
+import { SongInformationCard } from '@/components/game-content/SongInformationCard';
+import { SongDetailHero } from '@/components/game-content/SongDetailHero';
+import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useStackScreenReady } from '@/components/CachedTabScreen';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
-import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { InfinitePageFooter } from '@/components/game-content/InfinitePageFooter';
-import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
-import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { DetailGestureRoot } from '@/components/game-content/DetailPressable';
+import { ChartAction, GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { Card } from '@/components/Card';
-import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
-import { TagEditor } from '@/components/TagEditor';
+import { LibraryTagEditor } from '@/components/game-content/LibraryTagEditor';
 import { PhiraFilterBar } from '@/components/phira/PhiraFilterBar';
 import { PhiraRateBadge, resolvePhiraRate, PhiraScoreValue, PhiraXingBadge } from '@/components/phira/PhiraScoreVisuals';
-import { FloatingSongDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
+import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { VERTICAL_SONG_DETAIL_STYLES as detailStyles } from '@/components/game-content/SongDetailChromeStyles';
 import { useNotification } from '@/components/AppNotification';
 import { openChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-open';
@@ -31,13 +31,11 @@ import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
 import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
 import { dedupePhiraCharts, filterPhiraBests, filterPhiraCharts, type PhiraCatalogSort, type PhiraScoreSort } from '@/domain/phira-filters';
 import { formatPhiraAccuracy, formatPhiraRating, phiraCatalogListView, phiraCatalogPageState, phiraCatalogQueryIdentity, phiraCatalogScanNext, phiraCatalogScanObservation, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraCatalogScanRequest, type PhiraChart, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
-import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { buildMaxedPhiraBest } from '@/providers/maxed-phira-test-provider';
 import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraDemoBests, usePhiraNotes, usePhiraUploader, useRefreshAllPhiraBests, type PhiraBestRefreshOutcome } from '@/hooks/use-phira';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhiraRecordsFilter } from '@/state/phira-records-filter';
@@ -60,7 +58,7 @@ const PHIRA_CATALOG_SORT_OPTIONS = [
 ] as const;
 
 export function PhiraBestScreen() {
-  const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const gameData = useGameData();
+  const id = usePlayerId(); const gameData = useGameData();
   const accountId = useSession((state) => state.activeAccountId);
   const example = accountId === 'phira:test';
   const demo = usePhiraDemoBests(accountId, example);
@@ -71,24 +69,23 @@ export function PhiraBestScreen() {
   const ordered = example ? demo.items : official;
   const query = example ? demo : gameData;
   const presented = presentPhiraBestSection(ordered); const sections = [{ id: presented.id, title: example ? '最佳成绩' : presented.title, data: ordered }];
-  return <View style={[styles.page, { backgroundColor: theme.background }]}><BestListPage<PhiraQueriedBest, typeof sections[number]>
+  return <BestListPage<PhiraQueriedBest, typeof sections[number]>
     isLoading={query.isLoading} isError={query.isError} error={query.error}
     onRetry={() => { void query.refetch(); }} isEmpty={!query.isLoading && ordered.length === 0}
     emptyText={example ? '当前没有最佳成绩' : id === null ? '请先绑定 Phira 玩家' : '当前官方池没有 Best 成绩'}
     emptyActionLabel={example && demo.hasNextPage ? '继续加载' : undefined}
     onEmptyAction={example && demo.hasNextPage ? () => { if (!demo.isFetchingNextPage) void demo.fetchNextPage(); } : undefined}
     data={ordered.length ? sections : undefined}
-    sectionListProps={{ testID: 'phira-best-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
-      contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
-      keyExtractor: (item) => String(item.record!.id), stickySectionHeadersEnabled: false,
-      renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text><Text style={{ color: theme.textMuted }}>{section.data.length} 条</Text></View>,
+    sectionListProps={{ testID: 'phira-best-results-list',
+      keyExtractor: (item) => String(item.record!.id),
+      renderSectionHeader: ({ section }) => <SongListSectionHeader title={section.title} value={`${section.data.length} 条`} />,
       onEndReached: () => { if (example && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage(); },
       ListFooterComponent: example ? <InfinitePageFooter loading={demo.isFetchingNextPage} failed={demo.isFetchNextPageError} hasNextPage={demo.hasNextPage === true} onRetry={() => void demo.fetchNextPage()} /> : undefined,
-      renderItem: ({ item, index }) => <PhiraScoreCard item={item} rank={index + 1} /> }} /></View>;
+      renderItem: ({ item, index }) => <PhiraScoreCard item={item} rank={index + 1} /> }} />;
 }
 
 export function PhiraRecordsScreen() {
-  const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId();
+  const id = usePlayerId();
   const accountId = useSession((state) => state.activeAccountId);
   const example = accountId === 'phira:test';
   const realQuery = usePhiraBests(id, !example);
@@ -136,8 +133,7 @@ export function PhiraRecordsScreen() {
     });
   };
   const retry = async () => { if (!example) await runRefresh(refresh.refreshAll); await query.refetch(); };
-  const controls = <><GameSearchHeader value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索已查询歌曲"
-    wrapStyle={styles.searchWrap} inputStyle={styles.search} />
+  const controls = <><GameSearchHeader value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索已查询歌曲" />
     <PhiraFilterBar
       collapsed={filter.collapsed} onCollapsedChange={filter.setCollapsed}
       constantMin={filter.constantMin} constantMax={filter.constantMax}
@@ -151,22 +147,21 @@ export function PhiraRecordsScreen() {
         accessibilityLabel: '选择成绩排序', optionAccessibilityPrefix: '选择成绩排序',
         onChange: (value) => filter.setSort(value as PhiraScoreSort),
       }]} onReset={filter.clearFilters} /></>;
-  return <View style={[styles.page, { backgroundColor: theme.background }]}><RecordsListPage beforeList={controls}
+  return <RecordsListPage beforeList={controls}
     isLoading={query.isLoading || (isFiltering && items.length === 0)} isError={query.isError} error={query.error} onRetry={() => void retry()} isEmpty={!query.isLoading && items.length === 0}
     emptyText={example ? '没有符合条件的成绩' : '查询过歌曲后，最佳成绩会显示在这里'}
     emptyActionLabel={example && demo.hasNextPage ? '继续加载' : undefined}
     onEmptyAction={example && demo.hasNextPage ? () => { if (!demo.isFetchingNextPage) void demo.fetchNextPage(); } : undefined}
     data={items.length ? items : undefined}
-    flatListProps={{ testID: 'phira-records-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
-      contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+    flatListProps={{ testID: 'phira-records-list',
       refreshing: example ? demo.isRefetching : realQuery.isFetching, onRefresh: () => void retry(), keyExtractor: (item) => String(item.record!.id),
       onEndReached: () => { if (example && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage(); },
       ListFooterComponent: example ? <InfinitePageFooter loading={demo.isFetchingNextPage} failed={demo.isFetchNextPageError} hasNextPage={demo.hasNextPage === true} onRetry={() => void demo.fetchNextPage()} /> : undefined,
-      renderItem: ({ item }) => <PhiraScoreCard item={item} /> }} /></View>;
+      renderItem: ({ item }) => <PhiraScoreCard item={item} /> }} />;
 }
 
 export function PhiraCatalogScreen() {
-  const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const [status, setStatus] = useState<PhiraChartStatus>('ranked'); const [keyword, setKeyword] = useState('');
+  const [status, setStatus] = useState<PhiraChartStatus>('ranked'); const [keyword, setKeyword] = useState('');
   const [collapsed, setCollapsed] = useState(true); const [constantMin, setConstantMin] = useState(''); const [constantMax, setConstantMax] = useState(''); const [sort, setSort] = useState<PhiraCatalogSort>('updated');
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
@@ -202,8 +197,7 @@ export function PhiraCatalogScreen() {
       if (scanRequested.current === requested) scanRequested.current = null;
     });
   }, [fetchNextPage, scanObservation]);
-  const controls = <><GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面"
-    wrapStyle={styles.searchWrap} inputStyle={styles.search} />
+  const controls = <><GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面" />
     <PhiraFilterBar collapsed={collapsed}
       constantMin={constantMin} constantMax={constantMax} onCollapsedChange={setCollapsed}
       onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
@@ -225,17 +219,16 @@ export function PhiraCatalogScreen() {
     />
   );
   const pausedByScanBudget = view.emptyReason === 'scanBudget';
-  return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage<PhiraChart> beforeList={controls}
+  return <CatalogListPage<PhiraChart> beforeList={controls}
     isLoading={view.isLoading} isError={view.isError} error={query.error}
     onRetry={() => void query.refetch()} isEmpty={view.isEmpty}
     emptyText={pausedByScanBudget ? `已扫描 ${pageCount} 页仍无匹配谱面` : '没有找到 Phira 谱面'}
     emptyActionLabel={pausedByScanBudget ? '继续扫描' : undefined}
     onEmptyAction={pausedByScanBudget ? () => void fetchNextPage() : undefined}
     data={view.data}
-    flatListProps={{ testID: 'phira-catalog-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
-      contentContainerStyle: [styles.listContent, { paddingBottom: inset + 20 }], scrollIndicatorInsets: { bottom: inset },
+    flatListProps={{ testID: 'phira-catalog-results-list',
       keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <PhiraSongRow chart={item} />,
-      onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }, ListFooterComponent: footer }} /></View>;
+      onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }, ListFooterComponent: footer }} />;
 }
 
 export function PhiraSongDetailScreen({ chartId }: { chartId: string }) {
@@ -263,7 +256,7 @@ export function PhiraSongDetailScreen({ chartId }: { chartId: string }) {
           playerId={playerId}
         />}
       />
-      <FloatingSongDetailChrome
+      <SongDetailChrome
         songTitle={chart?.name}
         favorite={favorite}
         favoriteDisabled={library.isLoading || library.isUpdating}
@@ -301,7 +294,6 @@ function PhiraSongDetailContent({
   const score = { ...scoreQuery, data: example ? buildMaxedPhiraBest(chart, notes.data?.counts) : scoreQuery.data };
   const uploader = usePhiraUploader(deferredReady ? chart.uploader : null);
   useEffect(() => setCoverFailed(false), [chart.id]);
-  const item = library.data?.find((entry) => entry.key === library.songKey(String(chart.id)));
   const colors = { bg: theme.dark ? theme.surface : '#EDE9FE', fg: '#8D5BD6' }; const presented = presentPhiraChart({ chart, notes: notes.data?.counts }, score.data);
   const xingTone = presented.achievementRows.flat().find((badge) => badge.key === 'xing')?.tone;
   const xing = xingTone === 'xing-good' ? 'good' : xingTone === 'xing-miss' ? 'miss' : null;
@@ -310,25 +302,28 @@ function PhiraSongDetailContent({
     { key: 'bad', label: 'Bad', value: score.data.record.bad }, { key: 'miss', label: 'Miss', value: score.data.record.miss },
   ] } : null;
   return <ScrollView testID="phira-song-detail-scroll" contentContainerStyle={detailStyles.content}>
-      <View style={[detailStyles.hero, { width, height: width }]}>{chart.illustration && !coverFailed ? <Image accessibilityLabel="曲绘" source={chart.illustration} cacheProfile="artwork" gameId="phira" contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFill} transition={120} /> : <View style={[detailStyles.heroPlaceholder, { backgroundColor: theme.input }]}><Text style={detailStyles.heroPlaceholderNote}>♪</Text></View>}
-        <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']} locations={[0, 1]} style={detailStyles.heroShade} />
-        <View style={detailStyles.heroCopy}><Text numberOfLines={1} style={detailStyles.songId}>#{chart.id}</Text><AutoScrollText testID="phira-song-title-scroll" text={chart.name} textStyle={detailStyles.title} style={detailStyles.singleLine} contentContainerStyle={detailStyles.singleLineContent} /><Text numberOfLines={1} style={detailStyles.artist}>{chart.composer || '曲师未知'}</Text></View></View>
+      <SongDetailHero size={width} id={`#${chart.id}`} title={chart.name} artist={chart.composer || '曲师未知'} titleTestID="phira-song-title-scroll"
+        cover={chart.illustration && !coverFailed ? <Image accessibilityLabel="曲绘" source={chart.illustration} cacheProfile="artwork" gameId="phira" contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFill} transition={120} /> : undefined} />
       <SongMetadataTable accessibilityLabel="歌曲详情数据" items={[
         ...(chart.illustrator?.trim() ? [{ key: 'illustrator', label: '曲绘画师', value: chart.illustrator.trim(), flex: 1 }] : []),
         { key: 'author', label: '作者', value: uploader.data?.name ?? `#${chart.uploader}`, flex: 1 },
         { key: 'status', label: '类型', value: PHIRA_STATUS_LABELS[phiraChartStatus(chart)], flex: 1 },
-      ]} cellStyle={detailStyles.metadataCell} labelStyle={detailStyles.metadataLabel} measureStyle={detailStyles.metadataValueMeasure} style={detailStyles.metadataTable} testIDPrefix="phira-metadata" valueBlockStyle={detailStyles.metadataValueBlock} valueStyle={detailStyles.metadataValue} />
-      {deferredReady ? <><View style={detailStyles.carousel}><GameChartResultCard testID="phira-chart-card" accessibilityLabel={`${chart.level} 难度卡片`} style={[detailStyles.chartCard, { width: Math.max(280, width - 40), backgroundColor: colors.bg, borderColor: colors.fg }]}>
-        <View style={detailStyles.chartHeader}><View style={[detailStyles.diffPill, { backgroundColor: colors.fg }]}><Text style={detailStyles.diffPillText}>{chart.level}</Text></View><Text style={[detailStyles.level, { color: colors.fg }]}>{chart.difficulty.toFixed(1)}</Text></View>
-        <View style={detailStyles.resultBlock}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>Score</Text>{score.data?.record ? <PhiraScoreValue score={score.data.record.score} variant={score.data.record.score >= 1_000_000 ? 'phi' : score.data.record.fullCombo ? 'fc' : 'normal'} textColor={theme.text} fontSize={38} lineHeight={43} /> : <Text style={[detailStyles.scoreValue, { color: theme.text }]}>—</Text>}
-          {score.data?.record ? <View style={detailStyles.badgeRow}><PhiraRateBadge rate={resolvePhiraRate(score.data.record)} fc={score.data.record.fullCombo} />{xing ? <PhiraXingBadge kind={xing} /> : null}</View> : null}</View>
-        <View style={detailStyles.statRow}><View style={detailStyles.statCell}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>ACC</Text><Text style={[detailStyles.statValue, { color: theme.text }]}>{score.data?.record ? formatPhiraAccuracy(score.data.record.accuracy) : '—'}</Text></View><View style={detailStyles.statCell}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>RKS</Text><Text style={[detailStyles.statValue, { color: theme.text }]}>{score.data?.poolRks == null ? '—' : score.data.poolRks.toFixed(4)}</Text></View></View>
-        <View style={[detailStyles.chartDivider, { backgroundColor: theme.border }]} /><Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
-        {noteGroup ? <GameNoteTable mode="grid" group={noteGroup} accessibilityLabel="谱面物量" containerStyle={[detailStyles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} rowStyle={detailStyles.notesRow} headerRowStyle={detailStyles.notesHeaderRow} headerTextStyle={[detailStyles.notesCell, detailStyles.notesHeader, { color: theme.textMuted }]} valueTextStyle={[detailStyles.notesCell, detailStyles.notesValue, { color: theme.text }]} /> : <Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>{notes.isLoading ? '加载物量中…' : `物量不可用${notes.data?.unavailableReason ? `：${notes.data.unavailableReason}` : ''}`}</Text>}
-        {judgement ? <GameNoteTable mode="grid" group={judgement} accessibilityLabel="判定详情" containerStyle={[detailStyles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} rowStyle={detailStyles.notesRow} headerRowStyle={detailStyles.notesHeaderRow} headerTextStyle={[detailStyles.notesCell, detailStyles.notesHeader, { color: theme.textMuted }]} valueTextStyle={[detailStyles.notesCell, detailStyles.notesValue, { color: theme.text }]} /> : null}
+      ]} testIDPrefix="phira-metadata" />
+      {deferredReady ? <><View style={detailStyles.carousel}><GameChartResultCard testID="phira-chart-card" accessibilityLabel={`${chart.level} 难度卡片`} style={[detailStyles.chartCard, { width: Math.max(280, width - 40), backgroundColor: colors.bg, borderColor: colors.fg }]}
+          summary={{
+            difficulty: chart.level, level: chart.difficulty.toFixed(1), levelColor: colors.fg, label: 'Score',
+          value: score.data?.record && <PhiraScoreValue score={score.data.record.score}
+            variant={score.data.record.score >= 1_000_000 ? 'phi' : score.data.record.fullCombo ? 'fc' : 'normal'}
+            textColor={theme.text} fontSize={38} lineHeight={43} />,
+          badges: score.data?.record && <><PhiraRateBadge rate={resolvePhiraRate(score.data.record)} fc={score.data.record.fullCombo} />
+            {xing && <PhiraXingBadge kind={xing} />}</>,
+          metrics: [{ label: 'ACC', text: score.data?.record ? formatPhiraAccuracy(score.data.record.accuracy) : '—' },
+            { label: 'RKS', text: score.data?.poolRks?.toFixed(4) ?? '—' }], charter: chart.charter || '未提供',
+          }}>
+        {noteGroup ? <GameNoteTable mode="grid" group={noteGroup} accessibilityLabel="谱面物量" /> : <Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>{notes.isLoading ? '加载物量中…' : `物量不可用${notes.data?.unavailableReason ? `：${notes.data.unavailableReason}` : ''}`}</Text>}
+        {judgement ? <GameNoteTable mode="grid" group={judgement} accessibilityLabel="判定详情" /> : null}
         <DetailGestureRoot>
-          <DetailPressable
-            accessibilityRole="button"
+          <ChartAction label="查看谱面确认"
             accessibilityLabel={`查看谱面确认：${chart.name}`}
             onPress={() => {
               cancelPreviewNavigation.current?.();
@@ -345,37 +340,29 @@ function PhiraSongDetailContent({
                 }),
               });
             }}
-            style={[detailStyles.action, { backgroundColor: 'transparent', borderColor: colors.fg }]}
-          >
-            <Text style={[detailStyles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
-          </DetailPressable>
-          <DetailPressable
-            accessibilityRole="button"
+            stack="first" style={{ backgroundColor: 'transparent', borderColor: colors.fg }}
+            textStyle={{ color: colors.fg }} />
+          <ChartAction label="下载谱面文件"
             accessibilityLabel={`下载谱面文件：${chart.name}`}
             accessibilityState={{ disabled: downloadRunning }}
             disabled={downloadRunning}
             onPress={() => {
               void startChartDownload((options) => downloadPhiraChartPackage(chart, options));
             }}
-            style={[
-              detailStyles.action,
-              detailStyles.chartSearchAction,
-              { backgroundColor: 'transparent', borderColor: colors.fg },
-            ]}
-          >
-            <Text style={[detailStyles.actionText, { color: colors.fg }]}>下载谱面文件</Text>
-          </DetailPressable>
+            stack="next" style={{ backgroundColor: 'transparent', borderColor: colors.fg }}
+            textStyle={{ color: colors.fg }} />
         </DetailGestureRoot>
       </GameChartResultCard></View>
       <View style={detailStyles.details}>
-        <Card><View style={detailStyles.songInformation}><Text style={[detailStyles.informationTitle, { color: theme.text }]}>歌曲信息</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>标签：{chart.tags.join('、') || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>更新于：{chart.updated ? new Date(chart.updated).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>上传于：{chart.created ? new Date(chart.created).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>简介：{chart.description || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>评分：{formatPhiraRating(chart.rating)}（{chart.ratingCount} 票）</Text></View></Card>
-        <Card><TagEditor readState={library.tagReadState} tags={item?.kind === 'song' ? item.tags : []} presets={library.tagPresets ?? []} historyTags={() => buildTagHistory(library.data ?? [], library.songKey(String(chart.id)), library.tagPresets ?? [])} disabled={library.isUpdating} onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: String(chart.id) }, tags)} /></Card>
+        <SongInformationCard prominent style={detailStyles.songInformation} fields={[
+          { label: '标签', value: chart.tags.join('、') || '—' },
+          { label: '更新于', value: chart.updated ? new Date(chart.updated).toLocaleString() : '—' },
+          { label: '上传于', value: chart.created ? new Date(chart.created).toLocaleString() : '—' },
+          { label: '简介', value: chart.description || '—' },
+          { label: '评分', value: `${formatPhiraRating(chart.rating)}（${chart.ratingCount} 票）` },
+        ]} />
+        <Card><LibraryTagEditor library={library} target={{ kind: 'song', songId: String(chart.id) }} /></Card>
       </View>
       </> : null}
     </ScrollView>;
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center' }, list: { flex: 1 }, listContent: { padding: 16, gap: 10 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }, sectionTitle: { fontSize: 18, fontWeight: '800' },
-  searchWrap: { padding: 12, borderBottomWidth: StyleSheet.hairlineWidth }, search: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
-});

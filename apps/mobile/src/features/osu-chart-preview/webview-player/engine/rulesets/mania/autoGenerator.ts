@@ -43,9 +43,9 @@ interface ActionPoint {
 const endTimeOf = (o: ManiaHitObject): number => (o.kind === 'note' ? o.time : o.endTime);
 const startTimeOf = (o: ManiaHitObject): number => (o.kind === 'note' ? o.time : o.startTime);
 
-export function generateManiaAutoReplay(beatmap: BeatmapData, modDiff: ModDifficulty): AutoFrame[] {
+export function* generateManiaAutoReplay(beatmap: BeatmapData, modDiff: ModDifficulty): Generator<AutoFrame> {
   const { objects, totalColumns } = convertBeatmapToMania(beatmap, modDiff);
-  if (objects.length === 0) return [];
+  if (objects.length === 0) return;
 
   const byColumn: ManiaHitObject[][] = Array.from({ length: totalColumns }, () => []);
   for (const o of objects) byColumn[o.column]?.push(o);
@@ -69,7 +69,6 @@ export function generateManiaAutoReplay(beatmap: BeatmapData, modDiff: ModDiffic
 
   points.sort((a, b) => a.time - b.time);
 
-  const frames: AutoFrame[] = [];
   let mask = 0;
   let i = 0;
   while (i < points.length) {
@@ -80,8 +79,7 @@ export function generateManiaAutoReplay(beatmap: BeatmapData, modDiff: ModDiffic
       else mask &= ~(1 << p.column);
       i++;
     }
-    frames.push({ time: t, x: mask, y: 0, keys: 0 });
+    yield { time: t, x: mask, y: 0, keys: 0 };
   }
 
-  return frames;
 }

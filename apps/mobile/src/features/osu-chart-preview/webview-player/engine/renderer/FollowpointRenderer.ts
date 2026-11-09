@@ -113,7 +113,7 @@ function endPosStacked(obj: HitObject, radiusOsu: number, flipY: (y: number) => 
     const shift = -obj.stackHeight * radiusOsu / 10;
     return { x: obj.x + shift, y: flipY(obj.y) + shift };
   }
-  const path = sampleSlider(obj);
+  const path = sampleSlider(obj).points;
   const endPoint = (obj.slides % 2 === 1)
     ? path[path.length - 1]!
     : path[0]!;

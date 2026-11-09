@@ -1,7 +1,6 @@
-import { memo, useState } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
+import { memo } from 'react';
+import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import {
-  Animated,
   StyleSheet,
   Text,
   View,
@@ -10,7 +9,6 @@ import {
 } from 'react-native';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
 import { FlowingGradientValue } from '@/components/game-content/FlowingGradientValue';
-import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 import {
   chunithmAchievementBadges,
   chunithmRankUsesGradient,
@@ -21,7 +19,7 @@ import {
   type ChunithmScoreCardData,
 } from '@/domain/chunithm-score-presentation';
 import { useAppTheme } from '@/theme/app-theme';
-import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { GameScoreCard, ScoreCardMetric } from '@/components/game-content/GameScoreCard';
 import { presentChunithmScore } from '@/features/game-content/adapters';
 
 type GradientColors = readonly [string, string, ...string[]];
@@ -119,42 +117,9 @@ function GradientBadge({
   flowing?: boolean;
   testID: string;
 }) {
-  const colors = BADGE_TONES[tone];
-  const [width, setWidth] = useState(60);
-  const progress = useFlowingProgress(flowing, 1_400);
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
-  return (
-    <LinearGradient
-      colors={colors.border}
-      end={{ x: 1, y: 0.5 }}
-      {...(colors.locations ? { locations: colors.locations } : {})}
-      start={{ x: 0, y: 0.5 }}
-      style={styles.badgeFrame}
-      testID={testID}
-    >
-      <LinearGradient
-        colors={colors.fill}
-        end={{ x: 1, y: 0.5 }}
-        {...(colors.locations ? { locations: colors.locations } : {})}
-        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-        start={{ x: 0, y: 0.5 }}
-        style={styles.badgeFill}
-      >
-        <View pointerEvents="none" style={styles.badgeOverlay} />
-        {flowing ? (
-          <Animated.View style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
-            <LinearGradient
-              colors={SHIMMER}
-              end={{ x: 1, y: 0.5 }}
-              start={{ x: 0, y: 0.5 }}
-              style={StyleSheet.absoluteFill}
-            />
-          </Animated.View>
-        ) : null}
-        <Text style={[styles.badgeText, { color: colors.text }]}>{label}</Text>
-      </LinearGradient>
-    </LinearGradient>
-  );
+  return <LayeredGradientBadge label={label} testID={testID} flowing={flowing}
+    tone={{ ...BADGE_TONES[tone], overlay: 'rgba(75,78,85,0.12)', shimmer: SHIMMER }}
+    style={styles.badgeFrame} contentStyle={styles.badgeFill} textStyle={styles.badgeText} />;
 }
 
 export function RankBadge({ rank, flowing }: { rank: ChunithmRank; flowing?: boolean }) {
@@ -211,24 +176,11 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
   return (
     <GameScoreCard
       artwork={{ source: record.jacketUrl }}
-      cardStyle={styles.card}
-      mainStyle={styles.main}
       presentation={presentation}
       pressedStyle={styles.pressed}
-      metricSide={{
-        blockStyle: styles.ratingBlock,
-        lines: [
-          { text: 'Rating', style: styles.ratingLabel, color: theme.textMuted },
-          {
-            text: formatChunithmRating(record.rating),
-            style: styles.rating,
-            color: record.rating === undefined ? theme.textMuted : theme.accent,
-          },
-        ],
-      }}
+      side={<ScoreCardMetric label="Rating" value={formatChunithmRating(record.rating)}
+        valueColor={record.rating === undefined ? theme.textMuted : theme.accent} />}
       tagRows={{
-        containerStyle: styles.tagRows,
-        rowStyle: styles.tagRow,
         rows: [
           {
             testID: `chunithm-primary-tags-${record.key}`,
@@ -257,7 +209,6 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
         ],
       }}
       testID={`chunithm-score-card-${record.key}`}
-      titleStyle={styles.title}
     >
       {scoreGradient ? (
         <ChunithmGradientScore flowing={record.rank === 'SSS+'} text={scoreText} />
@@ -269,22 +220,11 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
 });
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
   pressed: { opacity: 0.72 },
-  main: { flex: 1, minWidth: 0, gap: 3 },
-  title: { fontSize: 15, fontWeight: '700' },
   score: { fontSize: 24, lineHeight: 30, fontWeight: '900', letterSpacing: -0.4 },
   scoreMask: { alignSelf: 'stretch', height: 30 },
   maskText: { color: '#000000' },
   flowTrack: { position: 'absolute', top: 0, bottom: 0, left: 0 },
-  tagRows: { gap: 5, marginTop: 4 },
-  tagRow: { minHeight: 24, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   badgeFrame: { minWidth: 32, height: 24, borderRadius: 999, padding: 2, overflow: 'hidden' },
   badgeFill: {
     flex: 1,
@@ -293,10 +233,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  badgeOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(75,78,85,0.12)',
   },
   badgeText: {
     fontSize: 10,
@@ -326,7 +262,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   neutralBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
-  ratingBlock: { minWidth: 58, alignItems: 'flex-end', gap: 2 },
-  ratingLabel: { fontSize: 10, fontWeight: '700' },
-  rating: { fontSize: 18, fontWeight: '900' },
 });

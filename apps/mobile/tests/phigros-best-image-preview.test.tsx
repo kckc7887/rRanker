@@ -10,7 +10,7 @@ const mockShowNotification = jest.fn();
 
 jest.mock('@/components/AppNotification', () => {
   const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
-  return { useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+  return { ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 jest.mock('expo-asset', () => {
   const actual = jest.requireActual<typeof import('expo-asset')>('expo-asset');
@@ -296,13 +296,13 @@ describe('Phigros 生成图片页', () => {
       frame: { x: 0, y: 0, width: 390, height: 844 },
       insets: { top: 0, left: 0, right: 0, bottom: 0 },
     }}><PhigrosBestImageScreen /></SafeAreaProvider>);
-    expect(screen.getByLabelText('Best30').props.accessibilityState).toEqual({ selected: true });
-    expect(screen.getByLabelText('自定义').props.accessibilityState).toEqual({ selected: false });
+    expect(screen.getByLabelText('Best30').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText('自定义').props.accessibilityState.selected).toBe(false);
     expect(screen.getByText('样式选择')).toBeTruthy();
     expect(screen.getByLabelText('选择头像')).toBeTruthy();
     expect(screen.getByLabelText('选择背景')).toBeTruthy();
-    expect(screen.getByLabelText('0 个').props.accessibilityState).toEqual({ selected: true });
-    expect(screen.getByLabelText('宽度 1080 像素').props.accessibilityState).toEqual({ selected: true });
+    expect(screen.getByLabelText('0 个').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText('宽度 1080 像素').props.accessibilityState.selected).toBe(true);
 
     const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
     expect(preview.props.source.html).toContain('file:///session/style');

@@ -1,4 +1,4 @@
-import { SONG_DETAIL_METADATA_STYLES , SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
+import { SongInformationCard } from '@/components/game-content/SongInformationCard';
 import { useEffect, useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { router, type Href } from 'expo-router';
@@ -13,19 +13,16 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
-import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { DetailPressable } from '@/components/game-content/DetailPressable';
-import { ExpandableTextLine } from '@/components/game-content/ExpandableTextLine';
 import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
-import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { ChartAction, GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
+import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { SongDetailHero } from '@/components/game-content/SongDetailHero';
 import { QueryStateView } from '@/components/QueryStateView';
-import { TagEditor } from '@/components/TagEditor';
+import { LibraryTagEditor } from '@/components/game-content/LibraryTagEditor';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
   type ChunithmDifficulty,
@@ -34,9 +31,6 @@ import {
 } from '@/domain/chunithm';
 import { CHUNITHM_DIFFICULTY_CARD_VISUAL } from '@/domain/chunithm-level-theme';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
-import {
-  buildTagHistory,
-} from '@/domain/user-library';
 import {
   chunithmAchievementBadges,
   chunithmRankFromScore,
@@ -169,54 +163,16 @@ export function ChunithmSongDetail({
             />
           )}
         />
-        <DetailChrome
+        <SongDetailChrome
           favorite={favorite}
           favoriteDisabled={favoriteDisabled}
           onToggleFavorite={song
             ? () => void library.setSongFavorite(String(song.id), !favorite)
             : undefined}
-          song={song}
+          songTitle={song?.title}
         />
       </View>
     </>
-  );
-}
-
-function DetailChrome({
-  song,
-  favorite,
-  favoriteDisabled,
-  onToggleFavorite,
-}: {
-  song?: ChunithmSong;
-  favorite: boolean;
-  favoriteDisabled: boolean;
-  onToggleFavorite?: () => void;
-}) {
-  const insets = useSafeAreaInsets();
-  return (
-    <SharedSongDetailChrome
-      topInset={insets.top}
-      backStyle={(pressed) => [
-        SONG_DETAIL_CHROME_STYLES.headerButton,
-        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
-        { top: insets.top, left: 8 },
-        pressed && styles.pressed,
-      ]}
-      favorite={song && onToggleFavorite ? {
-        label: favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`,
-        active: favorite,
-        disabled: favoriteDisabled,
-        onPress: onToggleFavorite,
-      } : undefined}
-      favoriteStyle={(pressed) => [
-        SONG_DETAIL_CHROME_STYLES.headerButton,
-        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
-        { top: insets.top, right: 8 },
-        pressed && styles.pressed,
-        favoriteDisabled && styles.disabled,
-      ]}
-    />
   );
 }
 
@@ -235,7 +191,6 @@ function ChunithmDetailBody({
   detailError: boolean;
   onRetryDetail: () => void;
 }) {
-  const theme = useAppTheme();
   const { width } = useWindowDimensions();
   const cardWidth = Math.max(280, width - 40);
   const difficulties = useMemo(
@@ -251,7 +206,6 @@ function ChunithmDetailBody({
     : difficulties.findIndex((difficulty) => difficulty.difficulty === initialLevelIndex);
   const masterIndex = difficulties.findIndex((difficulty) => difficulty.difficulty === 3);
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex >= 0 ? masterIndex : 0;
-  const songItem = library.data?.find((item) => item.key === library.songKey(String(song.id)));
   const mapValue = song.map?.trim();
   const metadataItems: SongMetadataItem[] = [
     { key: 'genre', label: '分类', value: song.genre || '未提供', flex: 1 },
@@ -267,18 +221,11 @@ function ChunithmDetailBody({
       testID="chunithm-song-detail-scroll"
     >
       <Hero song={song} width={width} />
-      <SongMetadataTable
+      <SongMetadataTable appearance="centered"
         accessibilityLabel="中二歌曲详情数据"
-        cellRootStyle={styles.metadataCellRoot}
-        cellStyle={styles.metadataCell}
         interaction="platform-detail"
         items={metadataItems}
-        labelStyle={styles.metadataLabel}
-        measureStyle={styles.metadataValueMeasure}
-        style={styles.metadataTable}
         testIDPrefix="chunithm-metadata"
-        valueBlockStyle={styles.metadataValueBlock}
-        valueStyle={styles.metadataValue}
       />
 
       <DifficultyCarousel
@@ -293,46 +240,15 @@ function ChunithmDetailBody({
       />
 
       <View style={styles.details}>
-        <Card testID="chunithm-song-info-card">
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>歌曲信息</Text>
-          <ChunithmAliasLine aliases={song.aliases ?? []} />
-          <Text style={[styles.body, { color: theme.textSecondary }]}>
-            版权：{song.rights || '未提供'}
-          </Text>
-          <Text style={[styles.body, { color: theme.textSecondary }]}>
-            状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}
-          </Text>
-        </Card>
+        <SongInformationCard aliases={song.aliases} testID="chunithm-song-info-card" aliasPrefix="chunithm-alias" fields={[
+          { label: '版权', value: song.rights || '未提供' },
+          { label: '状态', value: song.disabled ? '禁用' : song.locked ? '锁定' : '可用' },
+        ]} />
         <Card>
-          <TagEditor readState={library.tagReadState}
-            disabled={library.isUpdating}
-            historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
-            onChange={(tags) => library.setTags({ kind: 'song', songId: String(song.id) }, tags)}
-            onPresetsChange={library.setTagPresets}
-            presets={library.tagPresets ?? []}
-            tags={songItem?.kind === 'song' ? songItem.tags : []}
-          />
+          <LibraryTagEditor library={library} target={{ kind: 'song', songId: String(song.id) }} />
         </Card>
       </View>
     </ScrollView>
-  );
-}
-
-function ChunithmAliasLine({ aliases }: { aliases: readonly string[] }) {
-  const theme = useAppTheme();
-  return (
-    <ExpandableTextLine
-      actionColor={theme.accent}
-      actionLabel="别名"
-      actionStyle={styles.aliasAction}
-      actionTextStyle={styles.aliasActionText}
-      blockStyle={styles.aliasBlock}
-      measureStyle={styles.aliasMeasure}
-      testIDPrefix="chunithm-alias"
-      text={`别名：${aliases.join('、') || '无'}`}
-      textColor={theme.textSecondary}
-      textStyle={styles.body}
-    />
   );
 }
 
@@ -340,9 +256,7 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [song.id]);
   return (
-    <SongDetailHero
-      size={width}
-      style={styles.hero}
+    <SongDetailHero size={width} fullShade scroll="all" id={`#${song.id}`} title={song.title} artist={song.artist ?? '艺术家未知'}
       cover={failed ? undefined : (
         <Image
           accessibilityLabel={`歌曲封面 ${song.title}`}
@@ -354,17 +268,7 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
           style={StyleSheet.absoluteFill}
           transition={120}
         />
-      )}
-      placeholderStyle={styles.heroPlaceholder}
-      placeholderNoteStyle={styles.heroPlaceholderText}
-      shadeColors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.48)']}
-      shadeStyle={StyleSheet.absoluteFill}
-      copyStyle={styles.heroCopy}
-    >
-      <HorizontalText text={`#${song.id}`} textStyle={styles.songId} />
-      <HorizontalText text={song.title} textStyle={styles.songTitle} />
-      <HorizontalText text={song.artist ?? '艺术家未知'} textStyle={styles.artist} />
-    </SongDetailHero>
+      )} />
   );
 }
 
@@ -622,9 +526,7 @@ function DifficultyCard({
           ) : null}
         </View>
       )}
-      <DetailPressable
-        accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
-        accessibilityRole="button"
+      <ChartAction label={practice ? '已加入练习清单' : '加入练习清单'}
         disabled={library.isUpdating}
         onPress={() => void library.setChartPractice(
           String(song.id),
@@ -632,35 +534,15 @@ function DifficultyCard({
           difficulty.difficulty,
           !practice,
         )}
-        style={[
-          styles.action,
-          chartActionStyle(actionDark, visual, Boolean(practice), inverted),
-          library.isUpdating && styles.disabled,
-        ]}
-      >
-        <Text
-          style={[
-            styles.actionText,
-            chartActionTextStyle(actionDark, visual, Boolean(practice), inverted),
-          ]}
-        >
-          {practice ? '已加入练习清单' : '加入练习清单'}
-        </Text>
-      </DetailPressable>
-      <DetailPressable
+        stack="first"
+        style={[chartActionStyle(actionDark, visual, Boolean(practice), inverted), library.isUpdating && styles.disabled]}
+        textStyle={chartActionTextStyle(actionDark, visual, Boolean(practice), inverted)} />
+      <ChartAction label="搜索谱面确认"
         accessibilityLabel={`搜索谱面确认：${searchQuery}`}
         accessibilityRole="link"
         onPress={() => void openBilibiliChartSearch(searchQuery)}
-        style={[
-          styles.action,
-          styles.chartSearchAction,
-          chartActionStyle(actionDark, visual, false, inverted),
-        ]}
-      >
-        <Text style={[styles.actionText, chartActionTextStyle(actionDark, visual, false, inverted)]}>
-          搜索谱面确认
-        </Text>
-      </DetailPressable>
+        stack="next" style={chartActionStyle(actionDark, visual, false, inverted)}
+        textStyle={chartActionTextStyle(actionDark, visual, false, inverted)} />
       <View
         style={[
           specialCard && styles.specialTagEditorSurface,
@@ -674,20 +556,8 @@ function DifficultyCard({
           ? `chunithm-special-tag-surface-${difficulty.difficulty}`
           : undefined}
       >
-        <TagEditor readState={library.tagReadState}
-          {...carouselState.tagEditor}
-          disabled={library.isUpdating}
-          historyTags={() => buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
-          onChange={(tags) => library.setTags({
-            kind: 'chart',
-            songId: String(song.id),
-            type: CHUNITHM_CHART_TYPE,
-            levelIndex: difficulty.difficulty,
-          }, tags)}
-          onPresetsChange={library.setTagPresets}
-          presets={library.tagPresets ?? []}
-          tags={chartItem?.tags ?? []}
-        />
+        <LibraryTagEditor library={library} target={{ kind: 'chart', songId: String(song.id), type: CHUNITHM_CHART_TYPE, levelIndex: difficulty.difficulty }}
+          {...carouselState.tagEditor} />
       </View>
     </>
   );
@@ -831,35 +701,9 @@ async function openBilibiliChartSearch(query: string): Promise<void> {
   }
 }
 
-function HorizontalText({ text, textStyle }: { text: string; textStyle: object }) {
-  return (
-    <AutoScrollText
-      contentContainerStyle={styles.singleLineContent}
-      style={styles.singleLine}
-      text={text}
-      textStyle={textStyle}
-    />
-  );
-}
-
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingBottom: 32 },
-  hero: { position: 'relative', overflow: 'hidden' },
-  heroPlaceholder: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#D1D5DB',
-  },
-  heroPlaceholderText: { color: '#6B7280', fontSize: 60 },
-  heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
-  singleLine: { flexGrow: 0 },
-  singleLineContent: { paddingRight: 18 },
-  songId: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  songTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900' },
-  artist: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  ...SONG_DETAIL_METADATA_STYLES,
   carouselRoot: { flexGrow: 0 },
   carouselScroll: { flexGrow: 0, marginTop: 14 },
   carousel: { paddingHorizontal: 20, gap: CARD_GAP, paddingBottom: 4 },
@@ -917,26 +761,8 @@ const styles = StyleSheet.create({
   notesValue: { fontSize: 11, fontWeight: '900' },
   notesUnavailable: { minHeight: 50, marginTop: 9, alignItems: 'center', justifyContent: 'center', gap: 5 },
   retryText: { fontSize: 12, fontWeight: '800' },
-  action: {
-    marginTop: 13,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#667085',
-    borderRadius: 11,
-    padding: 10,
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  chartSearchAction: { marginTop: 0 },
-  actionText: { fontWeight: '700' },
   noCharts: { padding: 24, alignItems: 'center' },
   details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 7 },
   body: { fontSize: 13, lineHeight: 19 },
-  aliasBlock: { position: 'relative', alignItems: 'stretch' },
-  aliasMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
-  aliasAction: { alignSelf: 'flex-end', paddingHorizontal: 2, paddingVertical: 3 },
-  aliasActionText: { fontSize: 12, fontWeight: '700' },
-  pressed: { opacity: 0.72 },
   disabled: { opacity: 0.52 },
 });

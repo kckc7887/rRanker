@@ -1,14 +1,17 @@
+import { SongInformationCard } from '@/components/game-content/SongInformationCard';
+import { ChartTags } from '@/components/game-content/ChartTags';
+import { TrophyBadge } from '@/components/TrophyBadge';
+import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { useStackScreenReady } from '@/components/CachedTabScreen';
 import { useNotification } from '@/components/AppNotification';
 import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
 import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
 import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
-import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
-import { simaiChartActionStyle, simaiChartActionTextStyle, SimaiChartResultLayout, SimaiNoteTable, SimaiSongChrome, SimaiSongHero, SimaiSongMetadata } from '@/components/game-content/SimaiSongDetailLayout';
+import { ChartAction, GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { simaiChartActionStyle, simaiChartActionTextStyle, SimaiChartResultLayout, SimaiNoteTable, SimaiSongHero, SimaiSongMetadata } from '@/components/game-content/SimaiSongDetailLayout';
 import { simaiSongDetailStyles } from '@/components/game-content/SimaiSongDetailStyles';
 import { type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import {
   DxRatingChartTagSheet,
   type DxRatingChartTagSheetData,
@@ -17,7 +20,7 @@ import { SimaiDifficultyRadar } from '@/components/game-content/SimaiDifficultyR
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
-import { TagEditor } from '@/components/TagEditor';
+import { LibraryTagEditor } from '@/components/game-content/LibraryTagEditor';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
 import {
@@ -37,16 +40,11 @@ import type {
   ScoreRecord,
   Song,
 } from '@/domain/models';
-import { buildTagHistory } from '@/domain/user-library';
 import {
   localizedVersionName,
   VERSION_NAME_MAPPINGS,
   type VersionNameLocale,
 } from '@/domain/version-names';
-import {
-  normalizeTrophyTone,
-  TROPHY_BADGE_THEMES,
-} from '@/features/best-image/best-image-badge-theme';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
 import {
   downloadMaimaiChartPackage,
@@ -144,21 +142,12 @@ export function MaimaiSongDetailScreen({
           onRetryNotes={() => void songDetail.refetch()}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
       <SongDetailChrome
-        song={resolvedSong} favorite={favorite}
+        songTitle={resolvedSong?.title} favorite={favorite}
         favoriteDisabled={favoriteDisabled}
         onToggleFavorite={onToggleFavorite}
       />
     </View>
   </>;
-}
-
-function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }: {
-  song?: Song; favorite: boolean; favoriteDisabled: boolean; onToggleFavorite?: () => void;
-}) {
-  return <SimaiSongChrome favorite={song && onToggleFavorite ? {
-    label: favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`,
-    active: favorite, disabled: favoriteDisabled, onPress: onToggleFavorite,
-  } : undefined} />;
 }
 
 function useChartSelection(song: Song, initialChartType?: ChartType, initialLevelIndex?: number) {
@@ -214,7 +203,6 @@ function Detail({ song, versions, records, dxratingTags, library, notesLoading, 
   const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
   const [tagSheetData, setTagSheetData] = useState<DxRatingChartTagSheetData | null>(null);
   useEffect(() => setTagSheetData(null), [song.id]);
-  const songItem = library.data?.find((item) => item.key === library.songKey(song.id));
   const { sortedCharts, selectedChartType, setSelectedChartType, canSwitchChartType, nextChartType, initialIndex, setVisibleChartState, visibleChart } = useChartSelection(song, initialChartType, initialLevelIndex);
   const cardWidth = Math.max(280, width - 40);
   const visibleVersionId = visibleChart?.versionId ?? song.versionId;
@@ -271,13 +259,11 @@ function Detail({ song, versions, records, dxratingTags, library, notesLoading, 
 
       <View style={styles.details}>
         <SongCollectionsCard songId={song.id} />
-        <Card><Text style={[styles.section, { color: theme.text }]}>歌曲信息</Text><AliasLine aliases={song.aliases} />
-          <Text style={[styles.body, { color: theme.textSecondary }]}>版权：{song.rights || '未提供'}</Text>
-          <Text style={[styles.body, { color: theme.textSecondary }]}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
-        <Card><TagEditor readState={library.tagReadState} tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
-          historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
-          disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
-          onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
+        <SongInformationCard aliases={song.aliases} aliasPrefix="alias" fields={[
+          { label: '版权', value: song.rights || '未提供' },
+          { label: '状态', value: song.disabled ? '禁用' : song.locked ? '锁定' : '可用' },
+        ]} />
+        <Card><LibraryTagEditor library={library} target={{ kind: 'song', songId: song.id }} /></Card>
       </View>
     </> : <View testID="song-detail-deferred-placeholder" style={styles.deferredPlaceholder} />}
   </ScrollView>
@@ -310,24 +296,6 @@ function SongCollectionsCard({ songId }: { songId: string; }) {
   </DetailGestureRoot>;
 }
 
-function TrophyName({ name, color }: { name: string; color?: string | null; }) {
-  const tone = normalizeTrophyTone(color);
-  if (tone === 'rainbow') {
-    return <LayeredGradientBadge
-      contentStyle={styles.trophyNameRainbowContent}
-      label={name}
-      numberOfLines={1}
-      style={styles.trophyNameFrame}
-      textStyle={styles.trophyNameText}
-      tone="rainbow"
-    />;
-  }
-  const theme = TROPHY_BADGE_THEMES[tone];
-  return <View style={[styles.trophyNameFrame, styles.trophyNameSolid, { borderColor: theme.border, backgroundColor: theme.background }]}>
-    <Text style={[styles.trophyNameText, { color: theme.text }]} numberOfLines={1}>{name}</Text>
-  </View>;
-}
-
 function CollectionRow({ item }: { item: CollectionItem; }) {
   const theme = useAppTheme();
   return <View style={[styles.collectionRow, { borderTopColor: theme.border }]} accessibilityLabel={`${COLLECTION_KIND_LABEL[item.kind]} ${item.name}`}>
@@ -336,28 +304,11 @@ function CollectionRow({ item }: { item: CollectionItem; }) {
     <View style={styles.collectionCopy}>
       <Text style={[styles.collectionKind, { color: theme.textMuted }]}>{COLLECTION_KIND_LABEL[item.kind]}</Text>
       {item.kind === 'trophy'
-        ? <TrophyName name={item.name} color={item.color} />
+        ? <TrophyBadge item={item} />
         : <Text style={[styles.collectionName, { color: theme.text }]}>{item.name}</Text>}
       {item.description ? <Text style={[styles.collectionDesc, { color: theme.textMuted }]} numberOfLines={2}>{item.description}</Text> : null}
     </View>
   </View>;
-}
-
-function AliasLine({ aliases }: { aliases?: string[]; }) {
-  const theme = useAppTheme();
-  const text = `别名：${aliases?.join('、') || '无'}`;
-  const [expanded, setExpanded] = useState(false);
-  const [overflow, setOverflow] = useState(false);
-  useEffect(() => { setExpanded(false); setOverflow(false); }, [text]);
-  return <DetailGestureRoot style={styles.aliasBlock}>
-    <Text accessible={false} testID="alias-overflow-measure" style={[styles.body, styles.aliasMeasure, { color: theme.textSecondary }]}
-      onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}>{text}</Text>
-    <Text testID="song-alias-text" numberOfLines={expanded ? undefined : 1} style={[styles.body, { color: theme.textSecondary }]}>{text}</Text>
-    {overflow ? <DetailPressable accessibilityRole="button" accessibilityLabel={expanded ? '收起别名' : '展开别名'}
-      onPress={() => setExpanded((value) => !value)} hitSlop={6} style={styles.aliasAction}>
-      <Text style={[styles.aliasActionText, { color: theme.accent }]}>{expanded ? '收起' : '展开'}</Text>
-    </DetailPressable> : null}
-  </DetailGestureRoot>;
 }
 
 function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, dxratingTags, notesLoading, notesError, onRetryNotes, onShowAllDxRatingTags, onVisibleIndexChange, onToggleChartType }: {
@@ -554,36 +505,29 @@ function ChartCard({ carouselState, chart, best, song, library, width, canSwitch
       onShowAll={() => onShowAllDxRatingTags({ songTitle: song.title, chartLabel, tags: dxratingTags })} />
     {dxTagScores ? <SimaiDifficultyRadar scores={dxTagScores} color={visual.color} difficulty={chart.difficulty} /> : null}
     <ChartNotesTables chart={chart} loading={notesLoading} error={notesError} onRetry={onRetryNotes} />
-    <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
+    <ChartAction label={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
       onPress={() => void library.setChartPractice(song.id, chart.type, chart.levelIndex, !practice)}
-      style={[styles.action, chartActionStyle(theme.dark, chart.difficulty, visual, practice)]}>
-      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, practice)]}>
-        {practice ? '已加入练习清单' : '加入练习清单'}
-      </Text>
-    </DetailPressable>
-    <DetailPressable accessibilityRole="link" accessibilityLabel={`搜索谱面确认：${chartSearchQuery}`}
+      stack="first" style={chartActionStyle(theme.dark, chart.difficulty, visual, practice)}
+      textStyle={chartActionTextStyle(theme.dark, chart.difficulty, visual, practice)} />
+    <ChartAction label="搜索Ｂ站视频" accessibilityRole="link" accessibilityLabel={`搜索谱面确认：${chartSearchQuery}`}
       onPress={() => void openBilibiliChartSearch(chartSearchQuery)}
-      style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
-      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>搜索Ｂ站视频</Text>
-    </DetailPressable>
-    <DetailPressable accessibilityRole="button" accessibilityLabel={`查看谱面确认：${previewTitle}`}
+      stack="next" style={chartActionStyle(theme.dark, chart.difficulty, visual, false)}
+      textStyle={chartActionTextStyle(theme.dark, chart.difficulty, visual, false)} />
+    <ChartAction label="查看谱面确认"
+      accessibilityLabel={`查看谱面确认：${previewTitle}`}
       onPress={handleViewChartPreview}
-      style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
-      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>查看谱面确认</Text>
-    </DetailPressable>
-    <DetailPressable accessibilityRole="button" accessibilityLabel={`下载谱面文件：${previewTitle}`}
-      accessibilityState={{ disabled: downloadRunning }} disabled={downloadRunning}
+      stack="next" style={chartActionStyle(theme.dark, chart.difficulty, visual, false)}
+      textStyle={chartActionTextStyle(theme.dark, chart.difficulty, visual, false)} />
+    <ChartAction label="下载谱面文件"
+      accessibilityLabel={`下载谱面文件：${previewTitle}`}
+      accessibilityState={{ disabled: downloadRunning }}
+      disabled={downloadRunning}
       onPress={() => void handleDownloadChart()}
-      style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
-      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>
-        下载谱面文件
-      </Text>
-    </DetailPressable>
-    <TagEditor readState={library.tagReadState} {...carouselState.tagEditor} tags={chartItem?.tags ?? []} presets={chartTagPresets} presetsEditable={false}
-      historyTags={() => buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), chartTagPresets)}
-      disabled={library.isUpdating} testID={`maimai-chart-local-tags-${chart.type}-${chart.levelIndex}`}
-      onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
+      stack="next" style={chartActionStyle(theme.dark, chart.difficulty, visual, false)}
+      textStyle={chartActionTextStyle(theme.dark, chart.difficulty, visual, false)} />
+    <LibraryTagEditor library={library} target={{ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }}
+      {...carouselState.tagEditor} testID={`maimai-chart-local-tags-${chart.type}-${chart.levelIndex}`} fixedPresets={chartTagPresets} />
   </GameChartResultCard>;
 }
 
@@ -592,33 +536,16 @@ function DxRatingTags({ tags, onTagPress, onShowAll }: {
   onTagPress: (tag: DxRatingChartTag) => void;
   onShowAll: () => void;
 }) {
-  const theme = useAppTheme();
-  if (tags.length === 0) return null;
-  const visible = tags.slice(0, 4);
-  const remaining = tags.length - visible.length;
-  return <View testID="dxrating-config-tags" style={styles.configurationBlock}>
-    <View style={styles.configurationTags}>
-      {visible.map((tag) => <DetailPressable key={tag.id}
+  return <ChartTags tags={tags} testID="dxrating-config-tags" style={styles.configurationTags}
+    moreStyle={styles.configurationMore} onShowAll={onShowAll}
+    renderTag={tag => <DetailPressable key={tag.id}
         accessibilityRole="button"
         accessibilityLabel={`谱面标签 ${tag.name}，点击查看说明`}
         testID={`dxrating-config-tag-${tag.id}`}
         onPress={() => onTagPress(tag)}
         style={({ pressed }) => [styles.configurationTag, { backgroundColor: tag.color }, pressed && styles.switchPressed]}>
         <Text style={styles.configurationTagText}>{tag.name}</Text>
-      </DetailPressable>)}
-      {remaining > 0 ? <DetailPressable
-        accessibilityRole="button"
-        accessibilityLabel={`查看全部${tags.length}个谱面标签，另有${remaining}个`}
-        testID="dxrating-config-tags-more"
-        onPress={onShowAll}
-        style={({ pressed }) => [styles.configurationMore, {
-          backgroundColor: theme.surfaceMuted,
-          borderColor: theme.border,
-        }, pressed && styles.switchPressed]}>
-        <Text style={[styles.configurationMoreText, { color: theme.textSecondary }]}>+{remaining}</Text>
-      </DetailPressable> : null}
-    </View>
-  </View>;
+      </DetailPressable>} />;
 }
 
 function chartActionStyle(dark: boolean, difficulty: Difficulty, visual: (typeof DIFFICULTY_VISUAL)[Difficulty], filled: boolean) {
@@ -725,15 +652,11 @@ const styles = {
     rating: { color: '#667085', fontSize: 12, fontWeight: '700', marginTop: 10 },
     ratingValue: { color: '#172033', fontSize: 17, fontWeight: '900' },
     utageDescription: { fontSize: 12, lineHeight: 18, marginTop: 4 },
-    configurationBlock: { marginTop: 10 },
     configurationTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     configurationTag: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
     configurationTagText: { color: '#0C4A6E', fontSize: 11, lineHeight: 15, fontWeight: '700' },
     configurationMore: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
-    configurationMoreText: { fontSize: 11, lineHeight: 15, fontWeight: '700' },
     buddyNotes: { gap: 9 },
-    aliasBlock: { position: 'relative', alignItems: 'stretch' },
-    aliasMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
     aliasAction: { alignSelf: 'flex-end', paddingHorizontal: 2, paddingVertical: 3 },
     aliasActionText: { color: '#5967C9', fontSize: 12, fontWeight: '700' },
     collectionError: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
@@ -742,9 +665,5 @@ const styles = {
     collectionKind: { color: '#8A93A3', fontSize: 11, fontWeight: '700' },
     collectionName: { color: '#182130', fontSize: 14, fontWeight: '700' },
     collectionDesc: { color: '#6B7280', fontSize: 12, lineHeight: 17 },
-    trophyNameFrame: { alignSelf: 'flex-start', maxWidth: '100%', height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
-    trophyNameSolid: { borderWidth: 1, paddingHorizontal: 10 },
-    trophyNameRainbowContent: { paddingHorizontal: 8 },
-    trophyNameText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textAlign: 'center', includeFontPadding: false }
   })
 };

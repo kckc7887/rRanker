@@ -1,4 +1,5 @@
-import { SONG_DETAIL_METADATA_STYLES , SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
+import { SongInformationCard } from '@/components/game-content/SongInformationCard';
+import { JudgementTable } from '@/components/game-content/GameNoteTable';
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { RemoteImage as Image } from '@/components/RemoteImage';
@@ -10,20 +11,17 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { useNotification } from '@/components/AppNotification';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
 import { downloadOsuBeatmapsetPackage } from '@/features/osu-beatmapset-download/osu-beatmapset-download';
-import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
-import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { ChartAction, GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
+import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { SongDetailHero } from '@/components/game-content/SongDetailHero';
-import { DetailPressable } from '@/components/game-content/DetailPressable';
 import { QueryStateView } from '@/components/QueryStateView';
-import { TagEditor } from '@/components/TagEditor';
+import { LibraryTagEditor } from '@/components/game-content/LibraryTagEditor';
 import type { GamePayload } from '@/domain/game-data';
 import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
 import {
@@ -38,7 +36,6 @@ import {
 } from '@/domain/osu';
 import { resolveOsuStarTheme } from '@/domain/osu-star-theme';
 import { osuModDescription, resolveOsuModMetadata } from '@/domain/osu-mods';
-import { buildTagHistory } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
 import { buildMaxedOsuBeatmapsetScores } from '@/providers/maxed-osu-test-provider';
 import { useGameData } from '@/hooks/use-game-data';
@@ -142,54 +139,16 @@ function OsuSongDetailContent({
             />
           )}
         />
-        <DetailChrome
+        <SongDetailChrome
           favorite={favorite}
           favoriteDisabled={favoriteDisabled}
           onToggleFavorite={song
             ? () => void library.setSongFavorite(String(song.beatmapSetId), !favorite)
             : undefined}
-          song={song}
+          songTitle={song?.title}
         />
       </View>
     </>
-  );
-}
-
-function DetailChrome({
-  song,
-  favorite,
-  favoriteDisabled,
-  onToggleFavorite,
-}: {
-  song?: OsuBeatmapsetDetail;
-  favorite: boolean;
-  favoriteDisabled: boolean;
-  onToggleFavorite?: () => void;
-}) {
-  const insets = useSafeAreaInsets();
-  return (
-    <SharedSongDetailChrome
-      topInset={insets.top}
-      backStyle={(pressed) => [
-        SONG_DETAIL_CHROME_STYLES.headerButton,
-        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
-        { top: insets.top, left: 8 },
-        pressed && styles.pressed,
-      ]}
-      favorite={song && onToggleFavorite ? {
-        label: favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`,
-        active: favorite,
-        disabled: favoriteDisabled,
-        onPress: onToggleFavorite,
-      } : undefined}
-      favoriteStyle={(pressed) => [
-        SONG_DETAIL_CHROME_STYLES.headerButton,
-        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
-        { top: insets.top, right: 8 },
-        pressed && styles.pressed,
-        favoriteDisabled && styles.disabled,
-      ]}
-    />
   );
 }
 
@@ -218,9 +177,6 @@ function OsuDetailBody({
   });
   const { width } = useWindowDimensions();
   const cardWidth = Math.max(280, width - 40);
-  const songItem = library.data?.find(
-    (item) => item.key === library.songKey(String(song.beatmapSetId)),
-  );
   const metadataItems: SongMetadataItem[] = [
     { key: 'status', label: '分类', value: OSU_STATUS_LABELS[song.status ?? ''] ?? '未知', flex: 1 },
     { key: 'genre', label: '流派', value: song.genreName ?? '未知', flex: 1 },
@@ -281,18 +237,11 @@ function OsuDetailBody({
       testID="osu-song-detail-scroll"
     >
       <Hero gameId={gameId} song={song} width={width} />
-      <SongMetadataTable
+      <SongMetadataTable appearance="centered"
         accessibilityLabel="osu 歌曲详情数据"
-        cellRootStyle={styles.metadataCellRoot}
-        cellStyle={styles.metadataCell}
         interaction="platform-detail"
         items={metadataItems}
-        labelStyle={styles.metadataLabel}
-        measureStyle={styles.metadataValueMeasure}
-        style={styles.metadataTable}
         testIDPrefix="osu-metadata"
-        valueBlockStyle={styles.metadataValueBlock}
-        valueStyle={styles.metadataValue}
       />
 
       <SharedChartCarousel
@@ -323,8 +272,9 @@ function OsuDetailBody({
       />
 
       <View style={styles.details}>
-        <Card testID="osu-song-info-card">
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>歌曲信息</Text>
+        <SongInformationCard testID="osu-song-info-card" fields={[
+          { label: '玩家评价', value: song.rating != null && song.rating > 0 ? `${song.rating.toFixed(1)} 分` : '暂无评价' },
+        ]}>
           <View style={styles.tagsBlock}>
             <Text style={[styles.infoLabel, { color: theme.textMuted }]}>标签</Text>
             {song.tags.length > 0 ? (
@@ -344,28 +294,9 @@ function OsuDetailBody({
               <Text style={[styles.emptyInline, { color: theme.textMuted }]}>—</Text>
             )}
           </View>
-          <Text style={[styles.body, { color: theme.textSecondary }]}>
-            玩家评价：{song.rating != null && song.rating > 0
-              ? `${song.rating.toFixed(1)} 分`
-              : '暂无评价'}
-          </Text>
-        </Card>
+        </SongInformationCard>
         <Card>
-          <TagEditor readState={library.tagReadState}
-            disabled={library.isUpdating}
-            historyTags={() => buildTagHistory(
-              library.data ?? [],
-              library.songKey(String(song.beatmapSetId)),
-              library.tagPresets ?? [],
-            )}
-            onChange={(tags) => library.setTags({
-              kind: 'song',
-              songId: String(song.beatmapSetId),
-            }, tags)}
-            onPresetsChange={library.setTagPresets}
-            presets={library.tagPresets ?? []}
-            tags={songItem?.kind === 'song' ? songItem.tags : []}
-          />
+          <LibraryTagEditor library={library} target={{ kind: 'song', songId: String(song.beatmapSetId) }} />
         </Card>
       </View>
     </ScrollView>
@@ -376,9 +307,7 @@ function Hero({ gameId, song, width }: { gameId: OsuGameId; song: OsuBeatmapsetD
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [song.beatmapSetId]);
   return (
-    <SongDetailHero
-      size={width}
-      style={styles.hero}
+    <SongDetailHero size={width} fullShade scroll="all" id={`#${song.beatmapSetId}`} title={song.title} artist={song.artist}
       cover={failed || !song.cover ? undefined : (
         <Image
               cacheProfile="artwork"
@@ -390,17 +319,7 @@ function Hero({ gameId, song, width }: { gameId: OsuGameId; song: OsuBeatmapsetD
           style={StyleSheet.absoluteFill}
           transition={120}
         />
-      )}
-      placeholderStyle={styles.heroPlaceholder}
-      placeholderNoteStyle={styles.heroPlaceholderText}
-      shadeColors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.48)']}
-      shadeStyle={StyleSheet.absoluteFill}
-      copyStyle={styles.heroCopy}
-    >
-      <HorizontalText text={`#${song.beatmapSetId}`} textStyle={styles.songId} />
-      <HorizontalText text={song.title} textStyle={styles.songTitle} />
-      <HorizontalText text={song.artist} textStyle={styles.artist} />
-    </SongDetailHero>
+      )} />
   );
 }
 
@@ -519,9 +438,8 @@ function DifficultyCard({
       <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         达成时间：{score?.achievedAt?.slice(0, 10) ?? '—'}
       </Text>
-      <DetailPressable
+      <ChartAction label={chartItem?.kind === 'chart' && chartItem.practice ? '移出练习清单' : '加入练习清单'}
         accessibilityLabel={chartItem?.kind === 'chart' && chartItem.practice ? '移出练习清单' : '加入练习清单'}
-        accessibilityRole="button"
         disabled={library.isUpdating}
         onPress={() => void library.setChartPractice(
           String(song.beatmapSetId),
@@ -538,17 +456,12 @@ function DifficultyCard({
           library.isUpdating && styles.disabled,
         ]}
         testID={`osu-detail-practice-${beatmap.id}`}
-      >
-        <Text style={[
+        textStyle={[
           styles.practiceButtonText,
           { color: chartItem?.kind === 'chart' && chartItem.practice ? '#FFFFFF' : starTheme.background },
-        ]}>
-          {chartItem?.kind === 'chart' && chartItem.practice ? '移出练习清单' : '加入练习清单'}
-        </Text>
-      </DetailPressable>
-      <DetailPressable
+        ]} />
+      <ChartAction label="查看谱面确认"
         accessibilityLabel={`查看谱面确认：${song.title} ${beatmap.version}`}
-        accessibilityRole="button"
         onPress={() => router.push({
           pathname: '/songs/osu-chart-preview',
           params: {
@@ -566,12 +479,9 @@ function DifficultyCard({
           pressed && styles.pressed,
         ]}
         testID={`osu-detail-preview-${beatmap.id}`}
-      >
-        <Text style={[styles.practiceButtonText, { color: starTheme.background }]}>查看谱面确认</Text>
-      </DetailPressable>
-      <DetailPressable
+        textStyle={[styles.practiceButtonText, { color: starTheme.background }]} />
+      <ChartAction label="下载谱面文件"
         accessibilityLabel={`下载谱面文件：${song.title}`}
-        accessibilityRole="button"
         disabled={downloadRunning}
         onPress={onDownload}
         style={({ pressed }) => [
@@ -581,24 +491,9 @@ function DifficultyCard({
           downloadRunning && styles.disabled,
         ]}
         testID={`osu-detail-download-${beatmap.id}`}
-      >
-        <Text style={[styles.practiceButtonText, { color: starTheme.background }]}>下载谱面文件</Text>
-      </DetailPressable>
-      <TagEditor readState={library.tagReadState}
-        {...carouselState.tagEditor}
-        disabled={library.isUpdating}
-        historyTags={() => buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
-        onChange={(tags) => library.setTags({
-          kind: 'chart',
-          songId: String(song.beatmapSetId),
-          type: OSU_CHART_TYPE,
-          levelIndex: beatmap.id,
-        }, tags)}
-        onPresetsChange={library.setTagPresets}
-        presets={library.tagPresets ?? []}
-        tags={chartItem?.tags ?? []}
-        testID={`osu-detail-chart-tags-${beatmap.id}`}
-      />
+        textStyle={[styles.practiceButtonText, { color: starTheme.background }]} />
+      <LibraryTagEditor library={library} target={{ kind: 'chart', songId: String(song.beatmapSetId), type: OSU_CHART_TYPE, levelIndex: beatmap.id }}
+        {...carouselState.tagEditor} testID={`osu-detail-chart-tags-${beatmap.id}`} />
     </GameChartResultCard>
   );
 }
@@ -621,53 +516,11 @@ const OSU_JUDGEMENT_ROWS: readonly (readonly {
 ];
 
 function JudgementMatrix({ score }: { score?: OsuBestScore }) {
-  const theme = useAppTheme();
-  const statistics = score?.statistics ?? null;
-  return (
-    <View accessibilityLabel="osu 判定统计" style={styles.judgementPanel}>
-      <View style={styles.judgementMatrix}>
-        {OSU_JUDGEMENT_ROWS.map((row, rowIndex) => (
-          <View key={rowIndex} style={styles.judgementRow}>
-            {row.map((item) => (
-              <View key={item.key} style={styles.judgementCell} testID={`osu-judgement-${item.key}`}>
-                <Text numberOfLines={1} style={[styles.judgementLabel, { color: theme.textMuted }]}>
-                  {item.label}
-                </Text>
-                <Text style={[styles.judgementValue, { color: item.color }]}>
-                  {statistics?.[item.key] != null
-                    ? statistics[item.key]!.toLocaleString('en-US')
-                    : '—'}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ))}
-      </View>
-      <View
-        style={[
-          styles.ppCell,
-          { borderLeftColor: theme.dark ? 'rgba(255,255,255,0.12)' : theme.border },
-        ]}
-      >
-        <Text style={[styles.ppLabel, { color: theme.textMuted }]}>PP</Text>
-        <Text adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}
-          style={[styles.ppValue, { color: theme.text }]}>
-          {score ? formatOsuPp(score.pp) : '—'}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function HorizontalText({ text, textStyle }: { text: string; textStyle: object }) {
-  return (
-    <AutoScrollText
-      contentContainerStyle={styles.singleLineContent}
-      style={styles.singleLine}
-      text={text}
-      textStyle={textStyle}
-    />
-  );
+  const rows = OSU_JUDGEMENT_ROWS.map(row => row.map(cell => ({
+    ...cell, value: score?.statistics?.[cell.key]?.toLocaleString('en-US') ?? '—',
+  })));
+  return <JudgementTable label="osu 判定统计" testIDPrefix="osu-judgement" rows={rows}
+    summary={{ label: 'PP', value: score ? formatOsuPp(score.pp) : '—' }} />;
 }
 
 function formatOsuDuration(seconds: number | null): string {
@@ -722,21 +575,6 @@ export function buildOsuBeatmapMetricRows(
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingBottom: 32 },
-  hero: { position: 'relative', overflow: 'hidden' },
-  heroPlaceholder: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#D1D5DB',
-  },
-  heroPlaceholderText: { color: '#6B7280', fontSize: 60 },
-  heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
-  singleLine: { flexGrow: 0 },
-  singleLineContent: { paddingRight: 18 },
-  songId: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  songTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900' },
-  artist: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  ...SONG_DETAIL_METADATA_STYLES,
   carouselRoot: { flexGrow: 0 },
   carouselScroll: { flexGrow: 0, marginTop: 14 },
   carousel: { paddingHorizontal: 20, gap: CARD_GAP, paddingBottom: 4 },
@@ -777,24 +615,6 @@ const styles = StyleSheet.create({
   charterBlock: { gap: 4 },
   charterLabel: { fontSize: 10, lineHeight: 14, fontWeight: '800', letterSpacing: 0.25 },
   charterValue: { fontSize: 13, lineHeight: 19, fontWeight: '700' },
-  judgementPanel: {
-    minHeight: 104,
-    marginTop: 13,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 8,
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: 'rgba(128,128,128,0.18)',
-  },
-  judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },
-  judgementRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  judgementCell: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  judgementLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
-  judgementValue: { fontSize: 18, lineHeight: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  ppCell: { width: 78, flexShrink: 0, borderLeftWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 5, paddingLeft: 8 },
-  ppLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
-  ppValue: { width: '100%', fontSize: 21, lineHeight: 27, fontWeight: '900', fontVariant: ['tabular-nums'], textAlign: 'center' },
   chartMeta: { fontSize: 12, lineHeight: 18, marginTop: 10 },
   practiceButton: {
     minHeight: 40,
@@ -808,7 +628,6 @@ const styles = StyleSheet.create({
   practiceButtonText: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
   noCharts: { padding: 24, alignItems: 'center' },
   details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 7 },
   body: { fontSize: 13, lineHeight: 19 },
   infoLabel: { fontSize: 11, lineHeight: 18, fontWeight: '800' },
   tagsBlock: { marginBottom: 7, gap: 6 },

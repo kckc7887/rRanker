@@ -2,10 +2,8 @@ import { buildChunithmCardBackgroundAssets, useChunithmBestImageAssets } from '@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Image,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
@@ -47,8 +45,7 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
-  BestImageChoiceChip,
-  BestImageScreenShell,
+  BestImageQuantity, BestImageStyleRow, BestImageExtraCount, BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
 import { useBestImageScreenController, usePreparedBestImageSources, type BestImageTemplate } from '@/features/best-image/use-best-image-screen-controller';
@@ -396,113 +393,29 @@ export function ChunithmBestImageScreen() {
           version={customFilters.version}
           versions={catalog?.versions ?? []}
         />
-        <View style={styles.fieldRow}>
-          <View style={styles.textFieldWrap}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
-            <TextInput
-              accessibilityLabel="自定义数量"
-              autoCorrect={false}
-              keyboardType="number-pad"
-              onChangeText={(value) => {
-                setQuantityText(value);
-                const parsed = parseBestImageQuantity(value);
-                if (parsed !== null) {
-                  setCustomFilters((current) => ({ ...current, quantity: parsed }));
-                }
-              }}
-              placeholder="0 为无限制"
-              placeholderTextColor={theme.textMuted}
-              style={[
-                styles.textInput,
-                { backgroundColor: theme.input, borderColor: theme.border, color: theme.text },
-                quantityError && styles.textInputError,
-              ]}
-              value={quantityText}
-            />
-            {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
-          </View>
-        </View>
+        <BestImageQuantity value={quantityText} error={quantityError} onChange={(value) => {
+          setQuantityText(value);
+          const parsed = parseBestImageQuantity(value);
+          if (parsed !== null) {
+            setCustomFilters((current) => ({ ...current, quantity: parsed }));
+          }
+        }} />
       </> : null,
-        styleListHeader: type === 'best50' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
-        <View style={styles.overflowCopy}>
-          <Text style={[styles.styleName, { color: theme.text }]}>Selection</Text>
-          <Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text>
-        </View>
-        <View style={styles.overflowChoices}>
-          {SELECTION_COUNTS.map((count) => (
-            <BestImageChoiceChip
-              key={count}
-              label={`${count} 个`}
-              selected={stylePrefs.selectionCount === count}
-              onPress={() => setStylePrefs((current) => ({ ...current, selectionCount: count }))}
-              styles={{ chip: styles.chip, chipText: styles.chipText }}
-            />
-          ))}
-        </View>
-      </View> : null,
+        styleListHeader: type === 'best50' ? <BestImageExtraCount label="Selection" options={SELECTION_COUNTS}
+          value={stylePrefs.selectionCount} onChange={count => setStylePrefs(current => ({ ...current, selectionCount: count }))} /> : null,
         styleRows: <>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="选择角色"
-          onPress={() => setPicker('character')}
-          style={({ pressed }) => [
-            styles.styleRow,
-            { borderBottomColor: theme.border },
-            pressed && { backgroundColor: theme.surfaceMuted },
-          ]}
-        >
-          <View style={styles.stylePreview}>{characterStylePreview()}</View>
-          <View style={styles.styleCopy}>
-            <Text style={[styles.styleName, { color: theme.text }]}>角色</Text>
-            <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>
-              {characterStyleValue()}
-            </Text>
-          </View>
-          <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-        </Pressable>
-        <Pressable onPress={() => setPicker('plate')} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
-          <View style={styles.stylePreview}>
-            {assets?.plate ? <Image source={{ uri: assets.plate }} style={styles.platePreview} resizeMode="contain" /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>默认板</Text>}
-          </View>
-          <View style={styles.styleCopy}>
-            <Text style={[styles.styleName, { color: theme.text }]}>名牌</Text>
-            <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{plateStyleValue}</Text>
-          </View>
-          <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="选择称号" onPress={() => setPicker('trophy')} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
-          <View style={styles.stylePreview}>{stylePrefs.trophy.mode === 'off' ? <Text style={[styles.noAsset, { color: theme.textMuted }]}>已关闭</Text> : <ChunithmBestImageTrophyPreview trophy={selectedTrophy ? { ...selectedTrophy, name: selectedTrophy.name ?? '' } : null} />}</View>
-          <View style={styles.styleCopy}>
-            <Text style={[styles.styleName, { color: theme.text }]}>称号</Text>
-            <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{stylePrefs.trophy.mode === 'current' ? '玩家当前称号' : stylePrefs.trophy.mode === 'off' ? '已关闭' : `${stylePrefs.trophy.mode === 'random' ? '随机 · ' : ''}${selectedTrophy?.name ?? '未设置'}`}</Text>
-          </View>
-          <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="选择歌曲背景"
-          onPress={() => setPicker('background')}
-          style={({ pressed }) => [
-            styles.styleRow,
-            { borderBottomColor: theme.border },
-            pressed && { backgroundColor: theme.surfaceMuted },
-          ]}
-        >
-          <View style={styles.stylePreview}>
-            {backgroundPreviewUri ? (
+        <BestImageStyleRow label="角色" value={characterStyleValue()} onPress={() => setPicker('character')}
+          preview={characterStylePreview()} />
+        <BestImageStyleRow label="名牌" value={plateStyleValue} onPress={() => setPicker('plate')}
+          preview={assets?.plate ? <Image source={{ uri: assets.plate }} style={styles.platePreview} resizeMode="contain" /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>默认板</Text>} />
+        <BestImageStyleRow label="称号" value={stylePrefs.trophy.mode === 'current' ? '玩家当前称号' : stylePrefs.trophy.mode === 'off' ? '已关闭' : `${stylePrefs.trophy.mode === 'random' ? '随机 · ' : ''}${selectedTrophy?.name ?? '未设置'}`} onPress={() => setPicker('trophy')}
+          preview={stylePrefs.trophy.mode === 'off' ? <Text style={[styles.noAsset, { color: theme.textMuted }]}>已关闭</Text> : <ChunithmBestImageTrophyPreview trophy={selectedTrophy ? { ...selectedTrophy, name: selectedTrophy.name ?? '' } : null} />} />
+        <BestImageStyleRow label="背景" accessibilityLabel="选择歌曲背景" value={backgroundStyleValue} onPress={() => setPicker('background')}
+          preview={backgroundPreviewUri ? (
               <Image source={{ uri: backgroundPreviewUri }} style={styles.backgroundPreview} resizeMode="cover" />
             ) : (
               <View style={[styles.defaultBackgroundPreview, { backgroundColor: theme.surfaceMuted }]} />
-            )}
-          </View>
-          <View style={styles.styleCopy}>
-            <Text style={[styles.styleName, { color: theme.text }]}>背景</Text>
-            <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>
-              {backgroundStyleValue}
-            </Text>
-          </View>
-          <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-        </Pressable>
+            )} />
       </>,
         widths: WIDTHS,
         activeWidth: width,
@@ -588,9 +501,6 @@ export function ChunithmBestImageScreen() {
 }
 
 const chunithmStyles = StyleSheet.create({
-  textFieldWrap: { flex: 1, minWidth: 0, gap: 6 },
-  fieldLabel: { fontSize: 12, fontWeight: '700' },
-  errorText: { fontSize: 11, fontWeight: '600' },
   platePreview: { width: 100, height: 40 },
   characterPreview: { width: 46, height: 46, borderRadius: 10 },
   backgroundPreview: { width: 82, height: 46, borderRadius: 8 },

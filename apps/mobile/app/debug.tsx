@@ -1,8 +1,9 @@
+import { SettingsRow } from '@/components/SettingsRow';
 import { useEffect } from 'react';
 import { Stack, router, type Href } from 'expo-router';
-import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch } from 'react-native';
 import { useNotification } from '@/components/AppNotification';
-import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
+import { DetailGestureRoot } from '@/components/game-content/DetailPressable';
 import { useDebugStore } from '@/state/debug-store';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -20,11 +21,7 @@ export default function DebugScreen() {
   return <DetailGestureRoot style={[styles.page, { backgroundColor: theme.background }]}>
     <Stack.Screen options={{ title: '调试' }} />
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
-      <View style={[styles.row, { backgroundColor: theme.surface }]}>
-        <View style={styles.copy}>
-          <Text style={[styles.title, { color: theme.text }]}>启用示例账号与示例游戏</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>开启后可添加和使用示例账号与示例游戏，关闭后隐藏，已有数据保留</Text>
-        </View>
+      <SettingsRow title="启用示例账号与示例游戏" detail="开启后可添加和使用示例账号与示例游戏，关闭后隐藏，已有数据保留">
         <Switch
           accessibilityLabel="启用示例账号与示例游戏"
           value={hydrated && enabled}
@@ -35,16 +32,8 @@ export default function DebugScreen() {
             title: '保存失败', message: '暂时无法更改示例设置，请重试。', variant: 'error',
           }))}
         />
-      </View>
-      <DetailPressable accessibilityRole="button" accessibilityLabel="诊断"
-        onPress={() => router.push('/diagnostics' as Href)}
-        style={[styles.row, { backgroundColor: theme.surface }]}>
-        <View style={styles.copy}>
-          <Text style={[styles.title, { color: theme.text }]}>诊断</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>记录与分享日志，协助排查问题</Text>
-        </View>
-        <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-      </DetailPressable>
+      </SettingsRow>
+      <SettingsRow title="诊断" detail="记录与分享日志，协助排查问题" onPress={() => router.push('/diagnostics' as Href)} />
     </ScrollView>
   </DetailGestureRoot>;
 }
@@ -52,9 +41,4 @@ export default function DebugScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { padding: 16, gap: 12 },
-  row: { paddingHorizontal: 18, paddingVertical: 16, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  copy: { flex: 1, gap: 4 },
-  title: { fontSize: 17, fontWeight: '700' },
-  detail: { fontSize: 13, lineHeight: 18 },
-  chevron: { fontSize: 28, lineHeight: 28, fontWeight: '300' },
 });

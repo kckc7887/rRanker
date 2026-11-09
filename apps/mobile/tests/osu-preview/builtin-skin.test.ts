@@ -132,7 +132,7 @@ afterAll(async () => {
 describe('built-in preview skin', () => {
 
   it('fills every catch object with the same translucent disc and opaque same-colour stroke while keeping catcher geometry opaque', async () => {
-    const skin = await createBuiltinSkin('brick', 4);
+    const skin = await createBuiltinSkin('brick', 4, 60, 2);
     for (const fruit of ['pear', 'grapes', 'apple', 'orange', 'drop', 'bananas']) {
       const body = bitmap(skin, `fruit-${fruit}`);
       assert.deepEqual(body.fills, ['#ffffff80']);
@@ -329,8 +329,8 @@ describe('built-in preview skin', () => {
     assert.equal(await createBuiltinSkin('brick', 4), first);
     const circle = await createBuiltinSkin('circle', 4);
     const seven = await createBuiltinSkin('circle', 7);
-    assert.equal(bitmap(first, 'hitcircle'), bitmap(circle, 'hitcircle'));
-    assert.equal(bitmap(first, 'fruit-catcher-idle'), bitmap(seven, 'fruit-catcher-idle'));
+    assert.equal(bitmap(first, 'score-0'), bitmap(circle, 'score-0'));
+    assert.equal(bitmap(first, 'mania-stage-hint'), bitmap(seven, 'mania-stage-hint'));
     assert.equal(bitmap(circle, circle.config.maniaSections[0]!.imageLookups.keyimage0!), bitmap(seven, seven.config.maniaSections[0]!.imageLookups.keyimage0!));
     const ten = await createBuiltinSkin('circle', 10), seventeen = await createBuiltinSkin('circle', 17), eighteen = await createBuiltinSkin('circle', 18);
     const key = (skin: typeof circle) => bitmap(skin, skin.config.maniaSections[0]!.imageLookups.keyimage0!);
@@ -358,8 +358,8 @@ describe('built-in preview skin', () => {
     await disposeBuiltinSkins();
     for (const image of before) assert.equal(image.closed, 1);
     const next = await createBuiltinSkin('brick', 4);
-    assert.notEqual(bitmap(next, 'hitcircle'), bitmap(old, 'hitcircle'));
-    assert.equal(bitmap(next, 'hitcircle').closed, 0);
+    assert.notEqual(bitmap(next, 'score-0'), bitmap(old, 'score-0'));
+    assert.equal(bitmap(next, 'score-0').closed, 0);
   });
 });
 

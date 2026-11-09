@@ -3,7 +3,7 @@
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
-import { upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
+import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 
 export type HitSoundKind = 'click' | 'drag' | 'flick';
 
@@ -42,6 +42,6 @@ export function buildHitSoundEvents(chart: { lines: { notes: { kind: string; tim
   return events;
 }
 
-export function findHitSoundCursor(events: readonly HitSoundEvent[], time: number): number {
-  return upperBoundBy(events, time, (event) => event.time);
+export function findHitSoundCursor(events: readonly HitSoundEvent[], time: number, inclusive = false): number {
+  return (inclusive ? lowerBoundBy : upperBoundBy)(events, time, event => event.time);
 }

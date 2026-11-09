@@ -1,5 +1,7 @@
+import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
+import { createStageContext, stagePixels, type StageContext } from '../../chart-preview-shared/webview-player/stage';
 import { applyEase } from './easing';
-import { cssRgba, type PreparedChart, type Rgba } from './chart-prepare';
+import { cssRgba, type ChallengeWindow, type PreparedChart, type Rgba } from './chart-prepare';
 import { layoutPreviewFrame, type LayoutSpan, type PreviewFrame } from './frame-layout';
 import { visualSpeed } from '../configuration';
 
@@ -64,21 +66,15 @@ export class RizlineRenderer {
   private fieldWidth = 0;
   private frameHeight = 0;
   private scrollUnit = 0;
-  private readonly overlay: HTMLCanvasElement;
-  private readonly context: CanvasRenderingContext2D;
-  private readonly overlayContext: CanvasRenderingContext2D;
+  private readonly context: StageContext;
+  private chart?: PreparedChart;
+  private challenges?: (from: number, to: number) => ChallengeWindow[];
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly stage: HTMLElement,
   ) {
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('无法创建 Canvas 2D');
-    this.context = context;
-    this.overlay = document.createElement('canvas');
-    const overlayContext = this.overlay.getContext('2d');
-    if (!overlayContext) throw new Error('无法创建叠加 Canvas');
-    this.overlayContext = overlayContext;
+    this.context = createStageContext(canvas);
     this.resize();
   }
 
@@ -87,14 +83,10 @@ export class RizlineRenderer {
   }
 
   resize(): void {
-    const width = Math.max(1, this.stage.clientWidth * devicePixelRatio);
-    const height = Math.max(1, this.stage.clientHeight * devicePixelRatio);
-    this.canvas.width = width;
-    this.canvas.height = height;
-    this.overlay.width = width;
-    this.overlay.height = height;
+    const { width, height } = stagePixels(this.stage.clientWidth, this.stage.clientHeight, this.context.gl);
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
     this.context.lineCap = 'round';
-    this.overlayContext.lineCap = 'round';
     const metrics = measurePlayfield(width, height);
     this.judgeLineY = metrics.judgeLineY;
     this.noteScale = metrics.noteScale;
@@ -111,43 +103,46 @@ export class RizlineRenderer {
       visualSpeed: this.visualSpeed, noteRadius: this.noteScale * (TAP_OUTER + LINE_STROKE),
     });
     const context = this.context;
+    context.beginFrame();
     const scale = frame.cameraScale;
     const base = chart.themes[0]!;
-    if (chart.challengeWindows.every(window => nowSeconds < window.transStartSeconds || nowSeconds > window.endSeconds)) {
-      this.paintPlayfield(context, frame, nowSeconds, scale, base.fill, base.fillTransparent, base.fillHalf, base.noteFill);
+    if (this.chart !== chart) {
+      this.chart = chart;
+      this.challenges = createIntervalIndex(chart.challengeWindows, window => [window.startSeconds, window.transEndSeconds]);
     }
-    const activeThemeIndex = chart.challengeWindows.reduce((current, window) => {
-      if (nowSeconds > window.transStartSeconds && nowSeconds <= window.endSeconds) return window.themeIndex;
-      return current;
-    }, 0);
-    for (const window of chart.challengeWindows) {
-      if (window.themeIndex < activeThemeIndex) continue;
+    const active = this.challenges!(nowSeconds, nowSeconds);
+    const corner = Math.hypot(this.centerX, this.canvas.height);
+    let activeThemeIndex = 0;
+    let background = base;
+    const wipes: { theme: typeof base; y: number; radius: number }[] = [];
+    for (const window of active) {
+      if (nowSeconds <= window.startSeconds) continue;
       const theme = chart.themes[window.themeIndex] ?? base;
-      if (nowSeconds > window.endSeconds && nowSeconds <= window.transEndSeconds) {
-        const wipe = 1 - (nowSeconds - window.endSeconds) / (window.transEndSeconds - window.endSeconds);
-        context.globalCompositeOperation = 'destination-out';
-        context.fillStyle = 'black';
-        context.beginPath();
-        context.arc(this.centerX, 0, this.centerY * 2 * wipe * 15, 0, Math.PI * 2);
-        context.fill();
-        this.paintPlayfield(this.overlayContext, frame, nowSeconds, scale, theme.fill, theme.fillTransparent, theme.fillHalf, theme.noteFill);
-        context.globalCompositeOperation = 'destination-over';
-        context.drawImage(this.overlay, 0, 0);
-        context.globalCompositeOperation = 'source-over';
-      } else if (nowSeconds > window.transStartSeconds && nowSeconds <= window.endSeconds) {
-        this.paintPlayfield(context, frame, nowSeconds, scale, theme.fill, theme.fillTransparent, theme.fillHalf, theme.noteFill);
-      } else if (nowSeconds > window.startSeconds && nowSeconds <= window.transStartSeconds) {
-        const wipe = (nowSeconds - window.startSeconds) / (window.transStartSeconds - window.startSeconds);
-        context.globalCompositeOperation = 'destination-out';
-        context.fillStyle = 'black';
-        context.beginPath();
-        context.arc(this.centerX, this.centerY * 2, this.centerY * 2 * wipe * 15, 0, Math.PI * 2);
-        context.fill();
-        this.paintPlayfield(this.overlayContext, frame, nowSeconds, scale, theme.fill, theme.fillTransparent, theme.fillHalf, theme.noteFill);
-        context.globalCompositeOperation = 'destination-over';
-        context.drawImage(this.overlay, 0, 0);
-        context.globalCompositeOperation = 'source-over';
+      let radius = Infinity;
+      let y = this.canvas.height;
+      if (nowSeconds > window.endSeconds) {
+        y = 0;
+        radius = this.canvas.height * 15 * (window.transEndSeconds - nowSeconds) / (window.transEndSeconds - window.endSeconds);
+      } else if (nowSeconds <= window.transStartSeconds) {
+        radius = this.canvas.height * 15 * (nowSeconds - window.startSeconds) / (window.transStartSeconds - window.startSeconds);
+      } else {
+        activeThemeIndex = window.themeIndex;
       }
+      if (radius === Infinity || (radius >= corner && theme.opaque)) {
+        background = theme;
+        wipes.length = 0;
+      } else if (radius > 0) wipes.push({ theme, radius, y });
+    }
+    this.paintPlayfield(context, frame, nowSeconds, scale, background.fill, background.fillTransparent, background.fillHalf, background.noteFill);
+    for (const { theme, radius, y } of wipes) {
+      context.save();
+      if (radius < corner) {
+        context.beginPath();
+        context.arc(this.centerX, y, radius, 0, Math.PI * 2);
+        context.clip();
+      }
+      this.paintPlayfield(context, frame, nowSeconds, scale, theme.fill, theme.fillTransparent, theme.fillHalf, theme.noteFill);
+      context.restore();
     }
     this.paintJudgeRings(frame, nowSeconds, scale);
     const theme = chart.themes[activeThemeIndex] ?? base;
@@ -157,7 +152,10 @@ export class RizlineRenderer {
     context.fillRect(this.centerX + this.fieldWidth / 2, 0, this.centerX - this.fieldWidth / 2, this.canvas.height);
     context.fillRect(this.centerX - this.fieldWidth / 2, 0, this.fieldWidth, this.centerY - this.frameHeight / 2);
     context.fillRect(this.centerX - this.fieldWidth / 2, this.centerY + this.frameHeight / 2, this.fieldWidth, this.centerY - this.frameHeight / 2);
+    context.flush();
   }
+
+  dispose(): void { this.context.dispose(); }
 
   private paintJudgeRings(frame: PreviewFrame, nowSeconds: number, scale: number): void {
     const context = this.context;

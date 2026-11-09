@@ -1,20 +1,8 @@
+import { GameGroupRow } from '@/components/GameGroupRow';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import {
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  type ImageSourcePropType,
-} from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { SymbolView } from 'expo-symbols';
+import { Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { BoundAccountAvatar } from '@/components/BoundAccountAvatar';
-import { ChunithmRatingTag } from '@/components/ChunithmRatingTag';
-import { DxRatingTag } from '@/components/DxRatingTag';
-import { PhigrosAccountTags } from '@/components/PhigrosAccountTags';
-import { TintedRatingTag } from '@/components/TintedRatingTag';
 import { boundAccountRatingTag } from '@/features/game-content/account-rating-tags';
 import { groupBoundAccountGameIds, type BoundAccount } from '@/domain/bound-account';
 import { findGame, type GameId } from '@/domain/game-bind-options';
@@ -42,11 +30,6 @@ function useHydrateAccountSummaries(accountIds: string, enabled: boolean): void 
   }, [accountIds, enabled, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 }
 
-function ratingNumber(display: string): number | null {
-  const value = Number.parseInt(display, 10);
-  return Number.isFinite(value) ? value : null;
-}
-
 type ModeGroup = {
   gameId: GameId;
   title: string;
@@ -68,7 +51,7 @@ type GameGroup = {
   accounts: BoundAccount[];
 };
 
-export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpanded, activeAccountId, onToggleGame, onSelectAccount, renderActions, renderRatingTag, emptyText, hydrationEnabled = true }: {
+export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpanded, activeAccountId, onToggleGame, onSelectAccount, renderActions, emptyText, hydrationEnabled = true }: {
   accounts: BoundAccount[];
   expandedGameId: GameId | null;
   isGameExpanded?: (gameId: GameId) => boolean;
@@ -76,7 +59,6 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   onToggleGame: (gameId: GameId) => void;
   onSelectAccount?: (account: BoundAccount) => void;
   renderActions?: (account: BoundAccount) => ReactNode;
-  renderRatingTag?: (account: BoundAccount) => ReactNode;
   emptyText?: string;
   hydrationEnabled?: boolean;
 }) {
@@ -130,19 +112,6 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
 
   const renderAccount = (account: BoundAccount) => {
     const current = account.id === activeAccountId;
-    const scoreTheme = findGame(account.gameId)?.accountScoreTheme;
-    const ratingTag = renderRatingTag?.(account)
-      ?? (account.gameId === 'maimai' ? <DxRatingTag rating={ratingNumber(account.scoreDisplay)} display={account.scoreDisplay} /> : null)
-      ?? (account.gameId === 'chunithm' ? (
-        <ChunithmRatingTag
-          display={account.scoreDisplay}
-          ratingPossession={account.ratingPossession}
-        />
-      ) : null)
-      ?? (account.gameId === 'phigros' ? <PhigrosAccountTags rks={account.scoreDisplay} challengeModeRank={account.challengeModeRank} /> : null)
-      ?? boundAccountRatingTag(account)
-      ?? (scoreTheme ? <TintedRatingTag theme={scoreTheme} display={account.scoreDisplay}
-        accessibilityLabel={`${account.scoreLabel} ${account.scoreDisplay}`} /> : null);
     return <View key={account.id} testID={`account-card-${account.id}`}
       style={[styles.accountCard, { backgroundColor: theme.surface }, current && { borderColor: theme.accent }]}>
       <Pressable accessibilityRole="button" disabled={!onSelectAccount}
@@ -153,7 +122,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
           <Text style={[styles.accountName, { color: theme.text }]}>{account.displayName}</Text>
           {current ? <Text style={[styles.currentBadge, { color: theme.accent, backgroundColor: theme.accentSoft }]}>当前</Text> : null}
         </View>
-        {ratingTag}
+        {boundAccountRatingTag(account)}
         <Text style={[styles.providerLine, { color: theme.textMuted }]}>{account.providerTitle}</Text></View>
       </Pressable>
       {renderActions ? <View style={[styles.actions, { borderTopColor: theme.border }]}>{renderActions(account)}</View> : null}
@@ -163,14 +132,8 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   const renderGameCard = (group: GameGroup) => {
     const expanded = isGameExpanded?.(group.gameId) ?? expandedGameId === group.gameId;
     return <View key={group.gameId} style={[styles.gameCard, { backgroundColor: theme.surface }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${expanded ? '收起' : '展开'}游戏 ${group.title}`}
-        accessibilityState={{ expanded }} onPress={() => onToggleGame(group.gameId)} style={styles.gameRow}>
-        <Image source={group.icon} style={styles.gameIcon} />
-        <View style={styles.copy}><Text style={[styles.gameName, { color: theme.text }]}>{group.title}</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>{expanded ? '选择或管理账号' : `${group.accounts.length} 个账号 · 点按展开`}</Text></View>
-        <SymbolView name={expanded ? 'chevron.down' : 'chevron.right'} size={14} tintColor={theme.textMuted}
-          fallback={<Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={theme.textMuted} />} />
-      </Pressable>
+      <GameGroupRow icon={group.icon} title={group.title} detail={expanded ? '选择或管理账号' : `${group.accounts.length} 个账号 · 点按展开`}
+          expanded={expanded} label={`${expanded ? '收起' : '展开'}游戏 ${group.title}`} onPress={() => onToggleGame(group.gameId)} />
       {expanded ? <View style={[styles.accountNest, { backgroundColor: theme.surfaceMuted, borderTopColor: theme.border }]}>
         {group.accounts.map(renderAccount)}
       </View> : null}
@@ -180,26 +143,14 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   const renderFamilyCard = (group: FamilyGroup) => {
     const expanded = !collapsedFamilies.has(group.familyId);
     return <View key={group.familyId} style={[styles.gameCard, { backgroundColor: theme.surface }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${expanded ? '收起' : '展开'}游戏 ${group.title}`}
-        accessibilityState={{ expanded }} onPress={() => toggleFamily(group.familyId)} style={styles.gameRow}>
-        <Image source={group.icon} style={styles.gameIcon} />
-        <View style={styles.copy}><Text style={[styles.gameName, { color: theme.text }]}>{group.title}</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>{expanded ? '选择模式' : `${group.modes.length} 个模式 · 点按展开`}</Text></View>
-        <SymbolView name={expanded ? 'chevron.down' : 'chevron.right'} size={14} tintColor={theme.textMuted}
-          fallback={<Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={theme.textMuted} />} />
-      </Pressable>
+      <GameGroupRow icon={group.icon} title={group.title} detail={expanded ? '选择模式' : `${group.modes.length} 个模式 · 点按展开`}
+          expanded={expanded} label={`${expanded ? '收起' : '展开'}游戏 ${group.title}`} onPress={() => toggleFamily(group.familyId)} />
       {expanded ? <View style={[styles.familyNest, { backgroundColor: theme.surfaceMuted, borderTopColor: theme.border }]}>
         {group.modes.map((mode) => {
           const modeExpanded = isGameExpanded?.(mode.gameId) ?? expandedGameId === mode.gameId;
           return <View key={mode.gameId} style={[styles.modeCard, { backgroundColor: theme.surface }]}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`${modeExpanded ? '收起' : '展开'}模式 ${mode.title}`}
-              accessibilityState={{ expanded: modeExpanded }} onPress={() => onToggleGame(mode.gameId)} style={styles.modeRow}>
-              <Image source={mode.icon} style={styles.modeIcon} />
-              <View style={styles.copy}><Text style={[styles.modeName, { color: theme.text }]}>{mode.title}</Text>
-                <Text style={[styles.detail, { color: theme.textMuted }]}>{modeExpanded ? '选择或管理账号' : `${mode.accounts.length} 个账号 · 点按展开`}</Text></View>
-              <SymbolView name={modeExpanded ? 'chevron.down' : 'chevron.right'} size={13} tintColor={theme.textMuted}
-                fallback={<Ionicons name={modeExpanded ? 'chevron-down' : 'chevron-forward'} size={15} color={theme.textMuted} />} />
-            </Pressable>
+            <GameGroupRow compact icon={mode.icon} title={mode.title} detail={modeExpanded ? '选择或管理账号' : `${mode.accounts.length} 个账号 · 点按展开`}
+          expanded={modeExpanded} label={`${modeExpanded ? '收起' : '展开'}模式 ${mode.title}`} onPress={() => onToggleGame(mode.gameId)} />
             {modeExpanded ? <View style={[styles.accountNest, { backgroundColor: theme.surfaceMuted, borderTopColor: theme.border }]}>
               {mode.accounts.map(renderAccount)}
             </View> : null}
@@ -221,14 +172,10 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
 
 const styles = StyleSheet.create({
   list: { gap: 12 }, empty: { fontSize: 14, lineHeight: 20, padding: 12 }, gameCard: { borderRadius: 16, overflow: 'hidden' },
-  gameRow: { paddingHorizontal: 14, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  gameIcon: { width: 52, height: 52, borderRadius: 14 }, copy: { flex: 1, gap: 2 }, gameName: { fontSize: 17, fontWeight: '700' },
-  detail: { fontSize: 13, lineHeight: 18 }, accountNest: { borderTopWidth: StyleSheet.hairlineWidth, padding: 10, gap: 8 },
+  copy: { flex: 1, gap: 2 },
+  accountNest: { borderTopWidth: StyleSheet.hairlineWidth, padding: 10, gap: 8 },
   familyNest: { borderTopWidth: StyleSheet.hairlineWidth, padding: 10, gap: 8 },
   modeCard: { borderRadius: 12, overflow: 'hidden' },
-  modeRow: { paddingHorizontal: 10, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  modeIcon: { width: 36, height: 36, borderRadius: 10 },
-  modeName: { fontSize: 15, fontWeight: '700' },
   accountCard: { borderRadius: 12, borderWidth: 1, borderColor: 'transparent', overflow: 'hidden' },
   accountRow: { paddingHorizontal: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   providerIcon: { width: 40, height: 40, borderRadius: 10 }, titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },

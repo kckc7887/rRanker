@@ -1,125 +1,15 @@
-import { type ReactElement, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { AppSheet } from '@/components/AppSheet';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   StyleSheet,
-  Modal,
   Pressable,
   Text,
   TextInput,
-  type ListRenderItem,
-  type StyleProp,
-  type TextStyle,
-  type ViewStyle,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/app-theme';
-
-export type BestImagePickerShellStyles = {
-  root: ViewStyle;
-  grabber: ViewStyle;
-  header: ViewStyle;
-  title: TextStyle;
-  count: TextStyle;
-  done: TextStyle;
-  search: TextStyle;
-  listContent: StyleProp<ViewStyle>;
-};
-
-export type BestImagePickerShellFlatListProps<TItem> = {
-  initialNumToRender?: number;
-  maxToRenderPerBatch?: number;
-  windowSize?: number;
-  keyboardShouldPersistTaps?: 'always' | 'never' | 'handled';
-  ListHeaderComponent?: ReactElement | React.ComponentType<TItem> | null;
-  ListEmptyComponent?: ReactElement | React.ComponentType<any> | null;
-  renderItem: ListRenderItem<TItem>;
-};
-
-export function BestImagePickerShell<TItem>({
-  visible,
-  onClose,
-  title,
-  countText,
-  closeLabel,
-  searchLabel,
-  searchPlaceholder,
-  searchProps,
-  query,
-  onQueryChange,
-  aboveList,
-  data,
-  keyExtractor,
-  flatListProps,
-  listNode,
-  styles,
-}: {
-  visible: boolean;
-  onClose: () => void;
-
-  title: ReactNode;
-
-  countText: ReactNode;
-  closeLabel: string;
-  searchLabel: string;
-  searchPlaceholder: string;
-  searchProps?: {
-    autoCorrect?: boolean;
-    clearButtonMode?: 'never' | 'while-editing' | 'always' | 'unless-editing';
-  };
-  query: string;
-  onQueryChange: (text: string) => void;
-  aboveList?: ReactNode;
-  data: readonly TItem[];
-  keyExtractor: (item: TItem) => string;
-  flatListProps: BestImagePickerShellFlatListProps<TItem>;
-  listNode?: ReactNode;
-  styles: BestImagePickerShellStyles;
-}) {
-  const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
-            <Text style={[styles.count, { color: theme.textMuted }]}>{countText}</Text>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} hitSlop={12} onPress={onClose}>
-            <Text style={[styles.done, { color: theme.accent }]}>完成</Text>
-          </Pressable>
-        </View>
-        <TextInput
-          accessibilityLabel={searchLabel}
-          {...searchProps}
-          onChangeText={onQueryChange}
-          placeholder={searchPlaceholder}
-          placeholderTextColor={theme.textMuted}
-          style={[styles.search, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-          value={query}
-        />
-        {aboveList}
-        {listNode ?? (
-          <FlatList
-            data={data}
-            keyExtractor={keyExtractor}
-            contentContainerStyle={styles.listContent}
-            {...flatListProps}
-          />
-        )}
-      </View>
-    </Modal>
-  );
-}
 
 type BestImagePickerChoice = {
   label: string;
@@ -166,26 +56,17 @@ export function BestImageResourcePicker<TItem>({
     return normalized ? items.filter(item => (searchText?.(item) ?? `${getName(item)} ${getKey(item)}`).toLocaleLowerCase().includes(normalized)) : items;
   }, [getKey, getName, items, query, searchText]);
 
-  return <BestImagePickerShell
-    visible={visible}
-    onClose={onClose}
-    title={title ?? `选择${label}`}
-    countText={isLoading ? '正在读取素材…' : `${filteredItems.length} ${countUnit}`}
-    closeLabel="关闭素材选择"
-    searchLabel={searchLabel ?? `搜索${label}`}
-    searchPlaceholder={searchPlaceholder ?? `搜索${label}名称或 ID`}
-    searchProps={{ autoCorrect: false, clearButtonMode: 'while-editing' }}
-    query={query}
-    onQueryChange={setQuery}
-    aboveList={aboveList}
-    data={filteredItems}
-    keyExtractor={getKey}
-    flatListProps={{
-      initialNumToRender: 16,
-      keyboardShouldPersistTaps: 'handled',
-      maxToRenderPerBatch: 16,
-      windowSize: 7,
-      ListHeaderComponent: <View style={resourceStyles.quickChoices}>
+  return <AppSheet visible={visible} onRequestClose={onClose} title={title ?? `选择${label}`}
+    subtitle={isLoading ? '正在读取素材…' : `${filteredItems.length} ${countUnit}`}
+    rightAction={{ label: '完成', accessibilityLabel: '关闭素材选择', onPress: onClose }}>
+    <TextInput accessibilityLabel={searchLabel ?? `搜索${label}`} autoCorrect={false} clearButtonMode="while-editing"
+      onChangeText={setQuery} placeholder={searchPlaceholder ?? `搜索${label}名称或 ID`} value={query}
+      placeholderTextColor={theme.textMuted}
+      style={[resourceStyles.search, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+    {aboveList}
+    <FlatList data={filteredItems} keyExtractor={getKey} contentContainerStyle={resourceStyles.listContent}
+      initialNumToRender={16} keyboardShouldPersistTaps="handled" maxToRenderPerBatch={16} windowSize={7}
+      ListHeaderComponent={<View style={resourceStyles.quickChoices}>
         {currentChoice ? <Pressable
           accessibilityRole="button"
           accessibilityLabel={currentChoice.actionLabel ?? currentChoice.label}
@@ -212,9 +93,9 @@ export function BestImageResourcePicker<TItem>({
         </Pressable>)}</View> : null}
         {isLoading && !items.length ? <View style={resourceStyles.status}><ActivityIndicator color={theme.accent} /><Text style={{ color: theme.textMuted }}>正在读取完整列表</Text></View> : null}
         {isError ? <View style={resourceStyles.status}><Text style={{ color: theme.textMuted }}>素材列表加载失败</Text>{onRetry ? <Pressable onPress={onRetry}><Text style={{ color: theme.accent }}>重试</Text></Pressable> : null}</View> : null}
-      </View>,
-      ListEmptyComponent: !isLoading && !isError ? <Text style={[resourceStyles.empty, { color: theme.textMuted }]}>没有符合条件的{label}</Text> : null,
-      renderItem: ({ item }) => {
+      </View>}
+      ListEmptyComponent={!isLoading && !isError ? <Text style={[resourceStyles.empty, { color: theme.textMuted }]}>没有符合条件的{label}</Text> : null}
+      renderItem={({ item }) => {
         const selected = isSelected(item);
         return <Pressable
           accessibilityRole="button"
@@ -227,13 +108,13 @@ export function BestImageResourcePicker<TItem>({
           <View style={resourceStyles.itemCopy}><Text numberOfLines={2} style={[resourceStyles.itemName, { color: theme.text }]}>{getName(item)}</Text><Text numberOfLines={1} style={[resourceStyles.itemMeta, { color: theme.textMuted }]}>{getMeta(item)}</Text></View>
           {selected ? <Text style={[resourceStyles.check, { color: theme.accent }]}>✓</Text> : null}
         </Pressable>;
-      },
-    }}
-    styles={{ ...standardBestImagePickerStyles, listContent: resourceStyles.listContent }}
-  />;
+      }}
+    />
+  </AppSheet>;
 }
 
 const resourceStyles = StyleSheet.create({
+  search: { marginHorizontal: 16, marginBottom: 10, minHeight: 44, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, fontSize: 15 },
   listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
   quickChoices: { gap: 8, marginBottom: 4 },
   quickChoiceRow: { flexDirection: 'row', gap: 8 },
@@ -252,14 +133,4 @@ const resourceStyles = StyleSheet.create({
   currentBadgeText: { fontSize: 11, fontWeight: '800' },
   empty: { paddingVertical: 40, fontSize: 14, textAlign: 'center' },
   status: { paddingVertical: 20, alignItems: 'center', gap: 12 },
-});
-
-export const standardBestImagePickerStyles = StyleSheet.create({
-  root: { flex: 1 },
-  grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 10 },
-  header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 20, fontWeight: '800' },
-  count: { fontSize: 12, marginTop: 3 },
-  done: { fontSize: 16, fontWeight: '700' },
-  search: { marginHorizontal: 16, marginBottom: 10, minHeight: 44, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, fontSize: 15 },
 });

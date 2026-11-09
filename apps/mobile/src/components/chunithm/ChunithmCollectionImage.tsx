@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { RemoteImage as Image } from '@/components/RemoteImage';
-import { StyleSheet, View } from 'react-native';
+import { TrophyBadge } from '../TrophyBadge';
+import { Text, View } from 'react-native';
+import type { ChunithmCollectionKind } from '@/domain/chunithm-collections';
+import { CollectionArtwork } from '@/components/CollectionImage';
 
 export const CHUNITHM_ASSET_ROOT = 'https://assets2.lxns.net/chunithm';
 
@@ -20,29 +21,35 @@ export function ChunithmCollectionImage({
   height?: number;
   borderRadius?: number;
 }) {
-  const [failed, setFailed] = useState(false);
   const aspect = kind === 'plate'
     ? PLATE_ASPECT
     : kind === 'trophy-image'
       ? TROPHY_IMAGE_ASPECT
       : 1;
-  const width = Math.round(height * aspect);
-  if (failed) {
-    return <View style={[styles.placeholder, { width, height, borderRadius }]} />;
-  }
-  return (
-    <Image
-      cacheProfile="native"
-      accessibilityLabel={`${kind === 'trophy-image' ? '称号' : kind} 预览`}
-      contentFit="contain"
-      onError={() => setFailed(true)}
-      source={`${CHUNITHM_ASSET_ROOT}/${kind === 'trophy-image' ? 'trophy' : kind}/${collectionId}.png`}
-      style={{ width, height, borderRadius }}
-      transition={120}
-    />
-  );
+  return <CollectionArtwork label={`${kind === 'trophy-image' ? '称号' : kind} 预览`}
+    source={`${CHUNITHM_ASSET_ROOT}/${kind === 'trophy-image' ? 'trophy' : kind}/${collectionId}.png`}
+    height={height} aspect={aspect} borderRadius={borderRadius} />;
 }
 
-const styles = StyleSheet.create({
-  placeholder: { backgroundColor: '#E5E7EB' },
-});
+export function ChunithmCollectionPreview({ kind, collection, height = 40, trophyHeight = 34, borderRadius = 8 }: {
+  kind: ChunithmCollectionKind;
+  collection?: { id: number; name?: string; color?: string | null } | null;
+  height?: number;
+  trophyHeight?: number;
+  borderRadius?: number;
+}) {
+  if (collection && kind !== 'trophy') return <ChunithmCollectionImage kind={kind} collectionId={collection.id}
+    height={height} borderRadius={borderRadius} />;
+  if (collection?.color === 'image') return <ChunithmCollectionImage kind="trophy-image" collectionId={collection.id}
+    height={trophyHeight} borderRadius={borderRadius} />;
+  const label = collection?.name || (collection ? `#${collection.id}` : '未设置');
+  if (collection?.color === 'platina' || collection?.color === 'platinum' || collection?.color === 'ultima') {
+    const ultima = collection.color === 'ultima';
+    return <View style={{ maxWidth: 128, minWidth: 96, height: 28, borderRadius: 999, paddingHorizontal: 10,
+      borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: ultima ? '#512D67' : '#FFFDDD', borderColor: ultima ? '#A071B9' : '#DEC27B' }}>
+      <Text numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, color: ultima ? '#FFF' : '#29333A' }}>{label}</Text>
+    </View>;
+  }
+  return <TrophyBadge item={{ name: label, color: collection?.color }} />;
+}

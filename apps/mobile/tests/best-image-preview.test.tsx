@@ -13,7 +13,7 @@ const mockStagedFiles = new Map<string, string>();
 
 jest.mock('@/components/AppNotification', () => {
   const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
-  return { useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+  return { ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 
 jest.mock('react-native-webview', () => {
@@ -214,8 +214,8 @@ describe('best image preview', () => {
     const best50 = screen.getByLabelText('Best50');
     const custom = screen.getByLabelText('自定义');
 
-    expect(best50.props.accessibilityState).toEqual({ selected: true });
-    expect(custom.props.accessibilityState).toEqual({ selected: false });
+    expect(best50.props.accessibilityState.selected).toBe(true);
+    expect(custom.props.accessibilityState.selected).toBe(false);
     await waitFor(() => expect(screen.getByLabelText('HTML图片预览窗')).toBeTruthy());
     const best50Html = screen.getByTestId('best-image-html-preview-0').props.source.html;
     expect(best50Html).toContain('测试玩家');
@@ -224,8 +224,8 @@ describe('best image preview', () => {
     expect(best50Html).toContain('B35测试曲');
 
     await fireEvent.press(custom);
-    expect(screen.getByLabelText('Best50').props.accessibilityState).toEqual({ selected: false });
-    expect(screen.getByLabelText('自定义').props.accessibilityState).toEqual({ selected: true });
+    expect(screen.getByLabelText('Best50').props.accessibilityState.selected).toBe(false);
+    expect(screen.getByLabelText('自定义').props.accessibilityState.selected).toBe(true);
     await waitFor(() => {
       const customHtml = screen.getByTestId('best-image-html-preview-0').props.source.html;
       expect(customHtml).toContain('B35测试曲');
@@ -237,11 +237,11 @@ describe('best image preview', () => {
   it('switches the player profile between the game and unified app styles', async () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
-    expect(screen.getByLabelText('游戏风格').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByLabelText('游戏风格').props.accessibilityState.selected).toBe(true);
 
     await fireEvent.press(screen.getByLabelText('应用风格'));
     await waitFor(() => expect(screen.getByLabelText('应用风格').props.accessibilityState.selected).toBe(true));
-    expect(screen.getByLabelText('应用风格').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByLabelText('应用风格').props.accessibilityState.selected).toBe(true);
     expect(screen.queryByLabelText('胶囊')).toBeNull();
     expect(screen.queryByLabelText('圆角矩形')).toBeNull();
   });

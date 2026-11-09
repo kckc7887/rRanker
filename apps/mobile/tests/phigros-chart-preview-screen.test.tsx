@@ -105,7 +105,7 @@ jest.mock('@/services/phigros-chart-preview-resources', () => ({
   loadPhigrosChartPreviewVariants: async () => [0],
   loadPhigrosChartPreviewResources: async (...args: unknown[]) => ({
     bundle: await mockLoadPhigrosBundle(args[0], args[1]),
-    chart: new Uint8Array([123, 125]), music: new Uint8Array([1]), illustration: new Uint8Array([2]),
+    chart: new TextEncoder().encode('{"formatVersion":3,"judgeLineList":[]}'), music: new Uint8Array([1]), illustration: new Uint8Array([2]),
   }),
 }));
 
@@ -138,8 +138,8 @@ async function buildPhiraZip(): Promise<ArrayBuffer> {
 async function buildPhiraRpeZip(): Promise<ArrayBuffer> {
   const zip = new JSZip();
   zip.file('info.yml', 'chart: chart.json\nmusic: song.mp3\nname: Test RPE\nlevel: IN Lv.16');
-  zip.file('chart.json', JSON.stringify({ META: { RPEVersion: 160 }, BPMList: [{ bpm: 120, startTime: [0, 0, 1] }], judgeLineList: [] }));
-  zip.file('extra.json', JSON.stringify({ bpm: [{ time: [0, 0, 1], bpm: 120 }], effects: [] }));
+  zip.file('chart.json', JSON.stringify({ META: { RPEVersion: 160, background: 'bg.png' }, BPMList: [{ bpm: 120, startTime: [0, 0, 1] }], judgeLineList: [] }));
+  zip.file('extra.json', JSON.stringify({ bpm: [{ time: [0, 0, 1], bpm: 120 }], effects: [{ shader: '/camera_pr.glsl' }] }));
   zip.file('camera_pr.glsl', 'void main(){}');
   zip.file('bg.png', new Uint8Array([9, 9, 9]));
   zip.file('song.mp3', new Uint8Array([1, 2, 3, 4]));
@@ -193,7 +193,7 @@ describe('PhigrosChartPreviewScreen', () => {
 
     await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
       game: 'phigros',
-      chartText: '{}',
+      chartText: expect.stringContaining('"formatVersion"'),
       illustrationUrl: expect.stringContaining(';base64,Ag=='),
       settings: { playbackSpeed: 1.5 },
     }), 'AQ=='));
@@ -335,7 +335,6 @@ describe('PhigrosChartPreviewScreen', () => {
     expect(mockPrepare).toHaveBeenCalledTimes(1);
     expect(mockStageRpeBundle).toHaveBeenCalledWith(38294, [
       { name: 'bg.png', bytes: expect.any(Uint8Array) },
-      { name: 'song.mp3', bytes: expect.any(Uint8Array) },
     ]);
   });
 

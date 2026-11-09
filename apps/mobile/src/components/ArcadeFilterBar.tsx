@@ -1,12 +1,11 @@
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { NeutralChip, FilterShell, filterShellStyles } from '@/components/game-content/FilterShell';
-import { RangeSelector } from '@/components/game-content/RangeSelector';
+import { MetricFilterRangeRow } from '@/components/game-content/MetricFilterRows';
+import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { FilterRow, NeutralChip, FilterShell } from '@/components/game-content/FilterShell';
 import {
   ARCADE_MAX_DISTANCE_KM,
   buildArcadeFilterSummary,
   type ArcadeGameTitle,
 } from '@/domain/arcade-shops';
-import { useAppTheme } from '@/theme/app-theme';
 
 const EXPANDED_BODY_MAX_RATIO = 0.52;
 
@@ -35,7 +34,6 @@ export function ArcadeFilterBar({
   onTitleIdsChange,
   onReset,
 }: ArcadeFilterBarProps) {
-  const theme = useAppTheme();
   const { height: windowHeight } = useWindowDimensions();
   const expandedBodyMaxHeight = Math.round(windowHeight * EXPANDED_BODY_MAX_RATIO);
   const summary = buildArcadeFilterSummary({
@@ -63,9 +61,7 @@ export function ArcadeFilterBar({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
       >
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>距离</Text>
-          <RangeSelector
+        <MetricFilterRangeRow label="距离"
             minimum={0}
             maximum={ARCADE_MAX_DISTANCE_KM}
             step={1}
@@ -75,12 +71,9 @@ export function ArcadeFilterBar({
             onUpperValueChange={value => onRadiusChange(Number(value || ARCADE_MAX_DISTANCE_KM))}
             formatValue={value => `${value} km`}
             accessibilityLabel="机厅距离范围"
-            testID="arcade-distance"
-          />
-        </View>
+            testID="arcade-distance" />
 
-        <View style={[filterShellStyles.filterRow, styles.filterRowTop]}>
-          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>机型</Text>
+        <FilterRow label="机型" wide style={styles.filterRowTop}>
           <View style={styles.chipWrap}>
             <NeutralChip label="任意" active={titleIds.length === 0} onPress={() => onTitleIdsChange([])} />
             {gameTitles.map((title) => (
@@ -93,7 +86,7 @@ export function ArcadeFilterBar({
               />
             ))}
           </View>
-        </View>
+        </FilterRow>
       </ScrollView>
     </FilterShell>
   );

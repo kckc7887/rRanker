@@ -1,7 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { MaimaiFilterBar } from '@/components/MaimaiFilterBar';
-import { DxRatingTagFilterRow } from '@/components/maimai/DxRatingTagFilterRow';
 import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -62,15 +61,7 @@ const filterBarProps = {
 };
 
 describe('舞萌谱面标签筛选入口', () => {
-  it('入口行由舞萌模块提供', async () => {
-    const row = await render(<DxRatingTagFilterRow
-      visible={false} tags={tags} selectedTagIds={[]} state="ready" value="全部"
-      onApply={noop} onOpen={noop} onClose={noop}
-    />);
-    expect(row.getByLabelText('谱面标签筛选，当前 全部')).toBeTruthy();
-  });
-
-  it('共享筛选条经注入的入口打开弹层并提交选择', async () => {
+  it('打开标签弹层并提交选择', async () => {
     const onDxRatingTagIdsChange = jest.fn();
     const screen = await render(<MaimaiFilterBar
       {...filterBarProps}
@@ -103,7 +94,7 @@ describe('舞萌谱面标签筛选入口', () => {
       dxRatingTagState="unavailable"
       onDxRatingTagIdsChange={noop}
     />);
-    expect(unavailable.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
+    expect(unavailable.getByLabelText('谱面标签筛选，暂不可用').props.accessibilityState)
       .toMatchObject({ disabled: true });
   });
 

@@ -1,3 +1,4 @@
+import type { StageContext, StageTarget } from '../../chart-preview-shared/webview-player/stage';
 
 import { indexPgrBlocks, samplePgrBlock, type PgrBlock } from './pgr-blocks';
 
@@ -110,56 +111,39 @@ void main() {
   }
   gl_FragColor = colour;
 }`;
-const QUAD = new Float32Array([-1,-1,0,0,0,0, 1,-1,0,0,0,0, -1,1,0,0,0,0, 1,1,0,0,0,0]);
+const QUAD = /* @__PURE__ */ new Float32Array([-1,-1,0,0,0,0, 1,-1,0,0,0,0, -1,1,0,0,0,0, 1,1,0,0,0,0]);
 
 /** 四通道分别记录启用/禁用区域及减区；MAX 使重叠区域取并集。 */
 export class PgrBlockRenderer {
-  private readonly canvas = document.createElement('canvas');
   private readonly gl: WebGLRenderingContext;
   private readonly maxBlend: number;
   private readonly textureLimit: number;
   private readonly shaders: WebGLShader[] = [];
   private readonly programs: WebGLProgram[] = [];
   private readonly buffer: WebGLBuffer;
-  private readonly texture: WebGLTexture;
-  private readonly warped: WebGLTexture;
-  private readonly scene: WebGLTexture;
-  private readonly framebuffer: WebGLFramebuffer;
   private vertices = new Float32Array(6 * 6 * 64);
   private candidates: (time: number) => PgrBlock[];
   private enabledCandidates: (time: number) => PgrBlock[];
-  private width = 0;
-  private height = 0;
   private disposed = false;
+  private scene: StageTarget | null = null;
+  private maskTarget: StageTarget | null = null;
+  private warpTarget: StageTarget | null = null;
 
-  constructor(blocks: readonly PgrBlock[]) {
+  constructor(blocks: readonly PgrBlock[], private readonly stage: StageContext) {
     this.candidates = indexPgrBlocks(blocks);
     this.enabledCandidates = indexPgrBlocks(blocks, true);
-    const gl = this.canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true,
-      antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false });
-    if (!gl) throw new Error('谱面区域特效需要 WebGL');
+    const gl = stage.gl;
     this.gl = gl;
     this.textureLimit = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     const blend = gl.getExtension('EXT_blend_minmax');
-    if (!blend) { gl.getExtension('WEBGL_lose_context')?.loseContext(); throw new Error('谱面区域合成不可用'); }
+    if (!blend) throw new Error('谱面区域合成不可用');
     this.maxBlend = blend.MAX_EXT;
     this.buffer = gl.createBuffer()!;
-    this.texture = gl.createTexture()!;
-    this.warped = gl.createTexture()!;
-    this.scene = gl.createTexture()!;
-    this.framebuffer = gl.createFramebuffer()!;
     try {
-      if (!this.buffer || !this.texture || !this.warped || !this.scene || !this.framebuffer) throw new Error('谱面区域显存分配失败');
+      if (!this.buffer) throw new Error('谱面区域显存分配失败');
       this.programs.push(this.program(MASK));
       this.programs.push(this.program(WARP));
       this.programs.push(this.program(EFFECT));
-      for (const texture of [this.texture, this.warped, this.scene]) {
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      }
     } catch (error) { this.dispose(); throw error; }
   }
 
@@ -212,10 +196,9 @@ export class PgrBlockRenderer {
     return cursor;
   }
 
-  private mask(cursor: number): void {
+  private mask(cursor: number, target: StageTarget): void {
     const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     this.bind(this.programs[0]!);
     gl.bufferData(gl.ARRAY_BUFFER, this.vertices.subarray(0, cursor), gl.DYNAMIC_DRAW);
@@ -224,80 +207,86 @@ export class PgrBlockRenderer {
     gl.disable(gl.BLEND);
   }
 
-  draw(context: CanvasRenderingContext2D, time: number, width: number, height: number, pixelWidth: number, pixelHeight: number,
-    showEffect = true, showBounds = false): void {
-    if (this.disposed || (!showEffect && !showBounds)) return;
-    const gl = this.gl;
-    if (gl.isContextLost()) throw new Error('谱面区域图形上下文已丢失，请重新加载');
-    if (pixelWidth > this.textureLimit || pixelHeight > this.textureLimit) {
-      throw new Error('谱面区域画面尺寸超出图形设备限制');
-    }
-    const cursor = showEffect ? this.geometry(time, width / height) : 0;
-    if (!cursor && (!showBounds || !this.enabledCandidates(time).some(block => time >= block.enable && time < block.disable))) return;
+  private releaseTargets(): void {
+    for (const target of [this.scene, this.maskTarget, this.warpTarget]) if (target) this.stage.releaseTarget(target);
+    this.scene = this.maskTarget = this.warpTarget = null;
+  }
 
-    const scale = Math.min(1, Math.sqrt(1_048_576 / (pixelWidth * pixelHeight)));
-    const w = Math.max(1, Math.round(pixelWidth * scale)), h = Math.max(1, Math.round(pixelHeight * scale));
-    if (w !== this.width || h !== this.height) {
-      this.width = this.canvas.width = w; this.height = this.canvas.height = h;
-      for (const texture of [this.texture, this.warped]) {
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('谱面区域缓冲区不可用');
+  prepare(time: number, width: number, height: number, showEffect: boolean, showBounds: boolean): { count: number; scene: StageTarget } | null {
+    if (this.disposed) return null;
+    const count = showEffect ? this.geometry(time, width / height) : 0;
+    if (!count && (!showBounds || !this.enabledCandidates(time).some(b => time >= b.enable && time < b.disable))) {
+      this.releaseTargets(); return null;
+    }
+    const w = this.stage.canvas.width, h = this.stage.canvas.height;
+    if (this.scene && (this.scene.width !== w || this.scene.height !== h)) this.releaseTargets();
+    this.scene ??= this.stage.acquireTarget(w, h);
+    return { count, scene: this.scene };
+  }
+
+  draw(scene: StageTarget, region: { count: number }, time: number, width: number, height: number, showBounds: boolean): void {
+    const cursor = region.count, gl = this.gl;
+    if (gl.isContextLost()) throw new Error('谱面区域图形上下文已丢失，请重新加载');
+    const scale = Math.min(Math.SQRT1_2, Math.sqrt(1_048_576 / (scene.width * scene.height)), this.textureLimit / Math.max(scene.width, scene.height)) * this.stage.effectScale;
+    const w = Math.max(1, Math.floor(scene.width * scale)), h = Math.max(1, Math.floor(scene.height * scale));
+    if (this.maskTarget && (this.maskTarget.width !== w || this.maskTarget.height !== h)) {
+      this.stage.releaseTarget(this.maskTarget); this.maskTarget = null;
+      if (this.warpTarget) { this.stage.releaseTarget(this.warpTarget); this.warpTarget = null; }
+    }
+    const mask = this.maskTarget ??= this.stage.acquireTarget(w, h);
+    if (!cursor && this.warpTarget) { this.stage.releaseTarget(this.warpTarget); this.warpTarget = null; }
+    const warped = cursor ? (this.warpTarget ??= this.stage.acquireTarget(w, h)) : null;
+    try {
+      gl.disable(gl.SCISSOR_TEST); gl.disable(gl.STENCIL_TEST); gl.disable(gl.BLEND);
+      gl.viewport(0, 0, w, h);
+      if (cursor) {
+        this.mask(cursor, mask);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, warped!.framebuffer);
+        const warp = this.programs[1]!;
+        this.bind(warp);
+        gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STREAM_DRAW);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, mask.texture);
+        gl.uniform1i(gl.getUniformLocation(warp, 'regions'), 0);
+        gl.uniform2f(gl.getUniformLocation(warp, 'resolution'), w, h);
+        gl.uniform1f(gl.getUniformLocation(warp, 'time'), time);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
-    }
-    gl.viewport(0, 0, w, h);
-    if (cursor) {
-      this.mask(cursor);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.warped, 0);
-      const warp = this.programs[1]!;
-      this.bind(warp);
+      if (showBounds) this.mask(this.geometry(time, width / height, true), mask);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, scene.width, scene.height);
+      gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      const effect = this.programs[2]!;
+      this.bind(effect);
       gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STREAM_DRAW);
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.texture);
-      gl.uniform1i(gl.getUniformLocation(warp, 'regions'), 0);
-      gl.uniform2f(gl.getUniformLocation(warp, 'resolution'), w, h);
-      gl.uniform1f(gl.getUniformLocation(warp, 'time'), time);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, (warped ?? mask).texture);
+      gl.uniform1i(gl.getUniformLocation(effect, 'regions'), 0);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, scene.texture);
+      gl.uniform1i(gl.getUniformLocation(effect, 'scene'), 1);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, mask.texture);
+      gl.uniform1i(gl.getUniformLocation(effect, 'bounds'), 2);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform2f(gl.getUniformLocation(effect, 'resolution'), w, h);
+      gl.uniform2f(gl.getUniformLocation(effect, 'boundsPixel'), 1 / width, 1 / height);
+      gl.uniform1f(gl.getUniformLocation(effect, 'time'), time);
+      gl.uniform1i(gl.getUniformLocation(effect, 'showEffect'), cursor ? 1 : 0);
+      gl.uniform1i(gl.getUniformLocation(effect, 'showBounds'), showBounds ? 1 : 0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    } finally {
+      this.stage.bindTarget(null);
     }
-    if (showBounds) this.mask(this.geometry(time, width / height, true));
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    const effect = this.programs[2]!;
-    this.bind(effect);
-    gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STREAM_DRAW);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.warped);
-    gl.uniform1i(gl.getUniformLocation(effect, 'regions'), 0);
-    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.scene);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, context.canvas);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    gl.uniform1i(gl.getUniformLocation(effect, 'scene'), 1);
-    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.uniform1i(gl.getUniformLocation(effect, 'bounds'), 2);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.uniform2f(gl.getUniformLocation(effect, 'resolution'), w, h);
-    gl.uniform2f(gl.getUniformLocation(effect, 'boundsPixel'), 1 / width, 1 / height);
-    gl.uniform1f(gl.getUniformLocation(effect, 'time'), time);
-    gl.uniform1i(gl.getUniformLocation(effect, 'showEffect'), cursor ? 1 : 0);
-    gl.uniform1i(gl.getUniformLocation(effect, 'showBounds'), showBounds ? 1 : 0);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    context.save(); context.globalAlpha = 1;
-    context.drawImage(this.canvas, 0, 0, width, height); context.restore();
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.releaseTargets();
     const gl = this.gl;
     this.programs.forEach(program => gl.deleteProgram(program));
     this.shaders.forEach(shader => gl.deleteShader(shader));
     this.programs.length = 0;
     this.shaders.length = 0;
-    gl.deleteBuffer(this.buffer); gl.deleteTexture(this.texture); gl.deleteTexture(this.warped); gl.deleteTexture(this.scene); gl.deleteFramebuffer(this.framebuffer);
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
-    this.canvas.width = this.canvas.height = 0;
+    gl.deleteBuffer(this.buffer);
     this.vertices = new Float32Array(0);
     this.candidates = () => [];
     this.enabledCandidates = () => [];

@@ -1,9 +1,6 @@
 import { encodeDetailTarget } from '@/domain/detail-target';
 import { StyleSheet, Text, View } from 'react-native';
-import {
-  COMPACT_METRIC_CARD_STYLES,
-  GameScoreCard,
-} from '@/components/game-content/GameScoreCard';
+import { GameScoreCard, ScoreCardMetric } from '@/components/game-content/GameScoreCard';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import { formatOsuAccuracy, formatOsuPp, type OsuBestScore } from '@/domain/osu';
 import { useAppTheme } from '@/theme/app-theme';
@@ -43,20 +40,9 @@ export function OsuScoreCard({ gameId, score, position, detailScoreId }: {
         difficulty: { key: 'difficulty', label: '★', value: '', tone: 'osu-star' },
         achievementRows: [],
       }}
-      cardStyle={COMPACT_METRIC_CARD_STYLES.card}
-      mainStyle={COMPACT_METRIC_CARD_STYLES.main}
-      titleStyle={COMPACT_METRIC_CARD_STYLES.title}
       pressedStyle={styles.pressed}
-      metricSide={{
-        blockStyle: COMPACT_METRIC_CARD_STYLES.stats,
-        lines: [
-          { text: formatOsuAccuracy(score.accuracy), style: COMPACT_METRIC_CARD_STYLES.acc, color: theme.textMuted },
-          { text: ppText, style: COMPACT_METRIC_CARD_STYLES.rks, color: theme.accent },
-        ],
-      }}
+      side={<ScoreCardMetric numericLabel label={formatOsuAccuracy(score.accuracy)} value={ppText} />}
       tagRows={{
-        containerStyle: COMPACT_METRIC_CARD_STYLES.tags,
-        rowStyle: styles.tagRow,
         rows: [{
           content: (
             <>
@@ -86,6 +72,5 @@ const styles = StyleSheet.create({
   scoreBlock: { gap: 1 },
   scoreLabel: { fontSize: 11, fontWeight: '700' },
   score: { fontSize: 24, fontWeight: '900', letterSpacing: 0.2 },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 },
   pressed: { opacity: 0.7 },
 });

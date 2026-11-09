@@ -1,6 +1,7 @@
+import { radarPoint, RadarPlot } from './RadarPlot';
 import { Fragment } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Line, Polygon, Text as SvgText } from 'react-native-svg';
+import Svg, { Text as SvgText } from 'react-native-svg';
 import { MAIMAI_DXTAG_AXES } from '@/domain/maimai-dxtag';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -11,20 +12,11 @@ const LABEL_RADIUS = 118;
 const VALUE_OFFSET = 18;
 const LABEL_GAP = 14;
 const RING_RATIOS = [0.5, 1] as const;
-const FILL_OPACITY = 0.35;
 /** 自上顺时针：技巧、体力、星星、键盘、爆发。 */
 const SLOT_SCORE = [2, 3, 1, 0, 4] as const;
 
-function slotAngle(slot: number) {
-  return -Math.PI / 2 + (slot * Math.PI * 2) / SLOT_SCORE.length;
-}
-
 function pointAt(slot: number, radius: number) {
-  const angle = slotAngle(slot);
-  return {
-    x: CENTER + Math.cos(angle) * radius,
-    y: CENTER + Math.sin(angle) * radius,
-  };
+  return radarPoint(slot, SLOT_SCORE.length, radius, CENTER, CENTER);
 }
 
 function outerXAt(y: number, side: -1 | 1): number {
@@ -42,10 +34,6 @@ function outerXAt(y: number, side: -1 | 1): number {
   return bound;
 }
 
-function pointsString(points: readonly { x: number; y: number }[]): string {
-  return points.map((point) => `${point.x},${point.y}`).join(' ');
-}
-
 export function SimaiDifficultyRadar({
   scores,
   color,
@@ -60,36 +48,11 @@ export function SimaiDifficultyRadar({
   axisNames?: readonly string[];
 }) {
   const theme = useAppTheme();
-  const axes = SLOT_SCORE.map((_, slot) => pointAt(slot, CHART_RADIUS));
-  const complete = scores.every(score => score !== null);
-  const dataPoints = SLOT_SCORE.map((scoreIndex, slot) => pointAt(slot, CHART_RADIUS * ((scores[scoreIndex] ?? 0) / 10)));
   return <View style={styles.wrap} testID={`simai-difficulty-radar-${difficulty}`}>
     <Svg width="100%" height="100%" viewBox={`0 0 ${SIZE} ${SIZE}`}>
-      {RING_RATIOS.map((ratio) => <Polygon
-        key={ratio}
-        points={pointsString(SLOT_SCORE.map((_, slot) => pointAt(slot, CHART_RADIUS * ratio)))}
-        fill="none"
-        stroke={theme.border}
-        strokeWidth={ratio === 1 ? 1.4 : 1}
-      />)}
-      {axes.map((point, slot) => <Line
-        key={axisNames[SLOT_SCORE[slot]]}
-        x1={CENTER}
-        y1={CENTER}
-        x2={point.x}
-        y2={point.y}
-        stroke={theme.border}
-        strokeWidth={1}
-      />)}
-      {complete ? <Polygon
-        testID={`simai-difficulty-radar-shape-${difficulty}`}
-        points={pointsString(dataPoints)}
-        fill={color}
-        fillOpacity={FILL_OPACITY}
-        stroke={color}
-        strokeWidth={2.4}
-        strokeLinejoin="round"
-      /> : null}
+      <RadarPlot cx={CENTER} cy={CENTER} radius={CHART_RADIUS} rings={RING_RATIOS} color={color}
+        values={SLOT_SCORE.map(index => scores[index] == null ? null : scores[index] / 10)}
+        drawShape={scores.every(score => score !== null)} shapeTestID={`simai-difficulty-radar-shape-${difficulty}`} />
       {SLOT_SCORE.map((scoreIndex, slot) => {
         const axis = axisNames[scoreIndex];
         const placed = pointAt(slot, LABEL_RADIUS);

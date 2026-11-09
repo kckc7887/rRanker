@@ -1,16 +1,14 @@
+import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { ExampleRecordsScreen } from '@/screens/ExampleScreens';
 import { useCallback, useEffect, useMemo } from 'react';
-import { Text, TextInput, View } from 'react-native';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
-import { SIMAI_RECORDS_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
-import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { indexSongsById } from '@/domain/catalog';
 import {
   buildChunithmScoreCards,
@@ -30,7 +28,6 @@ import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { MajdataRecordsScreen } from '@/screens/MajdataScreens';
@@ -43,7 +40,6 @@ import { TufRecordsScreen } from '@/screens/TufScreens';
 import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
 import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
 import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
-import { useAppTheme } from '@/theme/app-theme';
 import { searchDocumentFor, searchDocumentMatches } from '@/utils/search';
 
 export default function RecordsTabScreen() {
@@ -98,8 +94,6 @@ function ChunithmRecordsScreen() {
   const activeProviderId = useSession((state) => state.activeProviderId);
   const activeAccountId = useSession((state) => state.activeAccountId);
   const session = useSession((state) => state.session);
-  const tabBottomInset = useNativeTabBottomInset();
-  const theme = useAppTheme();
   const {
     keyword, collapsed, difficulty, version, constantMin, constantMax, rankMin, rankMax,
     setKeyword, setCollapsed, setDifficulty, setVersion, setConstantMin, setConstantMax,
@@ -171,65 +165,45 @@ function ChunithmRecordsScreen() {
     );
   }
 
+  const controls = <>
+    <GameSearchHeader accessibilityLabel="中二成绩搜索"
+      placeholder="曲名 / ID / 艺术家 / 谱师" value={keyword} onChangeText={setKeyword} />
+    <ChunithmFilterBar
+      collapsed={collapsed}
+      constantBounds={constantBounds}
+      constantMax={constantMax}
+      constantMin={constantMin}
+      difficulty={difficulty}
+      onCollapsedChange={setCollapsed}
+      onConstantMaxChange={setConstantMax}
+      onConstantMinChange={setConstantMin}
+      onDifficultyChange={setDifficulty}
+      onRankMaxChange={setRankMax}
+      onRankMinChange={setRankMin}
+      onReset={clearFilters}
+      onVersionChange={setVersion}
+      rankMax={rankMax}
+      rankMin={rankMin}
+      version={version}
+      versions={catalogQuery.data?.versions ?? []}
+    />
+  </>;
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
-        <TextInput
-          accessibilityLabel="中二成绩搜索"
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={setKeyword}
-          placeholder="曲名 / ID / 艺术家 / 谱师"
-          placeholderTextColor={theme.textMuted}
-          style={[
-            styles.searchBox,
-            { backgroundColor: theme.input, borderColor: theme.border, color: theme.text },
-          ]}
-          value={keyword}
-        />
-      </View>
-      <ChunithmFilterBar
-        collapsed={collapsed}
-        constantBounds={constantBounds}
-        constantMax={constantMax}
-        constantMin={constantMin}
-        difficulty={difficulty}
-        onCollapsedChange={setCollapsed}
-        onConstantMaxChange={setConstantMax}
-        onConstantMinChange={setConstantMin}
-        onDifficultyChange={setDifficulty}
-        onRankMaxChange={setRankMax}
-        onRankMinChange={setRankMin}
-        onReset={clearFilters}
-        onVersionChange={setVersion}
-        rankMax={rankMax}
-        rankMin={rankMin}
-        version={version}
-        versions={catalogQuery.data?.versions ?? []}
-      />
-      <RecordsListPage<ChunithmScoreCardData>
-        data={!isLoading && filtered.length ? filtered : undefined}
-        emptyText={hasActiveFilters ? '当前筛选条件下没有中二成绩' : '落雪尚未同步中二成绩'}
-        error={error}
-        isEmpty={!isLoading && filtered.length === 0}
-        isError={isError}
-        isLoading={isLoading || (isFiltering && filtered.length === 0)}
-        onRetry={retry}
-        flatListProps={{
-          ...TAB_LIST_CACHE_PROPS,
-          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
-          contentInsetAdjustmentBehavior: 'automatic',
-          keyExtractor: (item) => item.key,
-          ListHeaderComponent: <View style={styles.header}>
-            <Text style={styles.note}>共 {filtered.length} 条成绩</Text>
-          </View>,
-          renderItem: ({ item }) => <ChunithmScoreCard record={item} />,
-          scrollIndicatorInsets: { bottom: tabBottomInset },
-          style: styles.list,
-          testID: 'chunithm-records-list',
-        }}
-      />
-    </View>
+    <RecordsListPage<ChunithmScoreCardData>
+      beforeList={controls}
+      data={!isLoading && filtered.length ? filtered : undefined}
+      emptyText={hasActiveFilters ? '当前筛选条件下没有中二成绩' : '落雪尚未同步中二成绩'}
+      error={error}
+      isEmpty={!isLoading && filtered.length === 0}
+      isError={isError}
+      isLoading={isLoading || (isFiltering && filtered.length === 0)}
+      onRetry={retry}
+      count={filtered.length} flatListProps={{
+        keyExtractor: (item) => item.key,
+        renderItem: ({ item }) => <ChunithmScoreCard record={item} />,
+        testID: 'chunithm-records-list',
+      }}
+    />
   );
 }
 
@@ -240,8 +214,6 @@ function PhigrosRecordsScreen() {
   const gameData = useGameData();
   const catalogQuery = usePhigrosCatalog();
   const kyouChartTags = usePhigrosKyouChartTags();
-  const tabBottomInset = useNativeTabBottomInset();
-  const theme = useAppTheme();
   const {
     keyword, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
     selectedKyouTagIds,
@@ -351,70 +323,54 @@ function PhigrosRecordsScreen() {
 
   if (!canReadScores && !isGameLoading) {
     return (
-      <View style={[styles.page, { backgroundColor: theme.background }]}>
-        <View style={styles.center}>
-          <Text style={[styles.statusText, { color: theme.textMuted }]}>尚未绑定 TapTap 账号</Text>
-          <Text style={[styles.statusHint, { color: theme.textMuted }]}>请在游戏管理中绑定 Phigros 的 TapTap 云存档</Text>
-        </View>
-      </View>
+      <EmptyDataView title="尚未绑定 TapTap 账号" detail="请在游戏管理中绑定 Phigros 的 TapTap 云存档" />
     );
   }
 
+  const controls = <>
+    <GameSearchHeader accessibilityLabel="成绩搜索"
+      placeholder="曲名 / 别名 / 曲师 / 谱师" value={keyword} onChangeText={setKeyword} />
+    <PhigrosFilterBar
+      collapsed={collapsed} onCollapsedChange={setCollapsed}
+      level={level} constantMin={constantMin} constantMax={constantMax}
+      constantBounds={constantBounds}
+      accuracyMin={accuracyMin} accuracyMax={accuracyMax} rank={rank} xing={xing}
+      chapter={chapter} versions={catalogQuery.data?.snapshot.versions ?? []} onChapterChange={setChapter}
+      kyouTags={kyouChartTags.data?.tags ?? []}
+      selectedKyouTagIds={selectedKyouTagIds}
+      kyouTagState={kyouChartTags.data ? 'ready' : kyouChartTags.isLoading ? 'loading' : 'unavailable'}
+      onKyouTagIdsChange={setSelectedKyouTagIds}
+      onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
+      onAccuracyMinChange={setAccuracyMin} onAccuracyMaxChange={setAccuracyMax}
+      onRankChange={setRank} onXingChange={setXing}
+      onReset={clearFilters}
+    />
+  </>;
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
-        <TextInput accessibilityLabel="成绩搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / 别名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
-          value={keyword} onChangeText={setKeyword}
-          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-      </View>
-      <PhigrosFilterBar
-        collapsed={collapsed} onCollapsedChange={setCollapsed}
-        level={level} constantMin={constantMin} constantMax={constantMax}
-        constantBounds={constantBounds}
-        accuracyMin={accuracyMin} accuracyMax={accuracyMax} rank={rank} xing={xing}
-        chapter={chapter} versions={catalogQuery.data?.snapshot.versions ?? []} onChapterChange={setChapter}
-        kyouTags={kyouChartTags.data?.tags ?? []}
-        selectedKyouTagIds={selectedKyouTagIds}
-        kyouTagState={kyouChartTags.data ? 'ready' : kyouChartTags.isLoading ? 'loading' : 'unavailable'}
-        onKyouTagIdsChange={setSelectedKyouTagIds}
-        onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-        onAccuracyMinChange={setAccuracyMin} onAccuracyMaxChange={setAccuracyMax}
-        onRankChange={setRank} onXingChange={setXing}
-        onReset={clearFilters}
-      />
-      <RecordsListPage<{ record: ScoreRecord; title: string }>
-        isLoading={isGameLoading || (isFiltering && filtered.length === 0)}
-        isError={isGameError}
-        isEmpty={!isGameLoading && filtered.length === 0}
-        error={error}
-        onRetry={refetchAll}
-        emptyText={hasActiveFilters ? '筛选结果为空' : '暂无成绩数据'}
-        data={!isGameLoading && filtered.length > 0 ? filtered : undefined}
-        flatListProps={{
-          testID: 'phigros-records-list',
-          contentInsetAdjustmentBehavior: 'automatic',
-          style: styles.list,
-          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
-          scrollIndicatorInsets: { bottom: tabBottomInset },
-          keyExtractor: (item) => recordKey(item.record),
-          ...TAB_LIST_CACHE_PROPS,
-          ListHeaderComponent: <View style={styles.header}>
-            <Text style={styles.note}>共 {filtered.length} 条成绩</Text>
-          </View>,
-          renderItem: ({ item }) => (
-            <PhigrosScoreCard
-              record={item.record}
-              artworkSource={catalogQuery.data?.provider?.getIllustrationLowresUrl(item.record.songId)}
-              catalogTitle={item.title}
-              totalNotes={noteTotalByKey[
-                phigrosChartNoteKey(item.record.songId, item.record.levelIndex)
-              ]}
-            />
-          ),
-        }}
-      />
-    </View>
+    <RecordsListPage<{ record: ScoreRecord; title: string }>
+      beforeList={controls}
+      isLoading={isGameLoading || (isFiltering && filtered.length === 0)}
+      isError={isGameError}
+      isEmpty={!isGameLoading && filtered.length === 0}
+      error={error}
+      onRetry={refetchAll}
+      emptyText={hasActiveFilters ? '筛选结果为空' : '暂无成绩数据'}
+      data={!isGameLoading && filtered.length > 0 ? filtered : undefined}
+      count={filtered.length} flatListProps={{
+        testID: 'phigros-records-list',
+        keyExtractor: (item) => recordKey(item.record),
+        renderItem: ({ item }) => (
+          <PhigrosScoreCard
+            record={item.record}
+            artworkSource={catalogQuery.data?.provider?.getIllustrationLowresUrl(item.record.songId)}
+            catalogTitle={item.title}
+            totalNotes={noteTotalByKey[
+              phigrosChartNoteKey(item.record.songId, item.record.levelIndex)
+            ]}
+          />
+        ),
+      }}
+    />
   );
 }
 

@@ -1,13 +1,15 @@
 import type { PlayerEventScope } from './event-scope';
 
-/** 端点沿用调用方的时间单位。 */
 export class PlaybackLoop {
   a: number | null = null;
   b: number | null = null;
 
+  constructor(private readonly changed?: () => void) {}
+
   toggle(endpoint: 'a' | 'b', position: number): void {
     this[endpoint] = this[endpoint] === null ? position : null;
     if (this.a !== null && this.b !== null && this.a > this.b) [this.a, this.b] = [this.b, this.a];
+    this.changed?.();
   }
 
   target(position: number): number | null {

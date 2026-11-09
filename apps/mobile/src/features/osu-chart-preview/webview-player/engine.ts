@@ -16,7 +16,6 @@ export { applyPositionOffsets } from './engine/rulesets/catch/positions';
 export { Renderer } from './engine/renderer/Renderer';
 export { drawCursor } from './engine/renderer/CursorRenderer';
 export { warmSkinCaches } from './engine/renderer/HitObjectRenderer';
-export { warmSliderPaths } from './engine/renderer/SliderGeometry';
 export { PlaybackClock, audioContextTime, musicPosition, outputTime } from '../../chart-preview-shared/webview-player/playbackClock';
 export { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
 export { loadItemsBounded } from '../../../services/offset-pagination';

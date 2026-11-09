@@ -1,40 +1,32 @@
 import {
-  applyPositionOffsets,
   applyStacking,
   computeModDifficulty,
-  convertBeatmapToCatch,
   generateCatchAutoReplay,
   generateManiaAutoReplay,
   generateStdAutoReplay,
   generateTaikoAutoReplay,
   parseBeatmap,
-  synthesizeAutoReplay,
   type BeatmapData,
   type ReplayData,
 } from './engine';
 import { decodeOsuText } from './osu-text';
-import type { AutoFrame } from './engine/utils/autoReplay';
+import { createReplay, finishAutoFrames, type AutoFrame } from './engine/utils/autoReplay';
+import { preparedCatchObjects } from './engine/rulesets/catch/positions';
 import { pauseChartPreviewParse, CHART_PREVIEW_PARSE_YIELD_INTERVAL } from '../../chart-preview-shared/chart-preview-resource-budget';
-
-function stubReplay(beatmap: BeatmapData, hash: string): ReplayData {
-  return synthesizeAutoReplay(beatmap, hash, [], 0);
-}
 
 export function parseOsuBytes(bytes: Uint8Array): BeatmapData {
   return parseBeatmap(decodeOsuText(bytes));
 }
 
-function* autoFrames(beatmap: BeatmapData, hash: string): Generator<AutoFrame> {
-  const stub = stubReplay(beatmap, hash);
-  const modDiff = computeModDifficulty(beatmap, stub);
+function* autoFrames(beatmap: BeatmapData, replay: ReplayData): Generator<AutoFrame> {
+  const modDiff = computeModDifficulty(beatmap, replay);
 
   if (beatmap.mode === 1) {
     yield* generateTaikoAutoReplay(beatmap, modDiff);
     return;
   }
   if (beatmap.mode === 2) {
-    const objects = convertBeatmapToCatch(beatmap, modDiff);
-    applyPositionOffsets(objects, beatmap, modDiff);
+    const objects = preparedCatchObjects(beatmap, modDiff);
     yield* generateCatchAutoReplay(objects, modDiff);
     return;
   }
@@ -43,21 +35,25 @@ function* autoFrames(beatmap: BeatmapData, hash: string): Generator<AutoFrame> {
     return;
   }
   applyStacking(beatmap, modDiff);
-  yield* generateStdAutoReplay(beatmap, modDiff);
+  yield* generateStdAutoReplay(beatmap, modDiff, replay.motion = []);
 }
 
 async function prepareAutoReplay(source: Uint8Array | BeatmapData, hash: string, signal: AbortSignal): Promise<ReplayData> {
   signal.throwIfAborted();
   const beatmap = source instanceof Uint8Array ? parseOsuBytes(source) : source;
-  const frames: AutoFrame[] = [];
+  const replay = createReplay(beatmap, hash);
+  const frames = replay.frames;
   const cancellation = { signal };
   const slice = {};
-  for (const frame of autoFrames(beatmap, hash)) {
-    frames.push(frame);
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  signal.throwIfAborted();
+  for (const frame of autoFrames(beatmap, replay)) {
+    frames.push({ timeDelta: frame.time, x: frame.x, y: frame.y, keys: frame.keys });
     if (frames.length % CHART_PREVIEW_PARSE_YIELD_INTERVAL === 0) await pauseChartPreviewParse(frames.length, cancellation, slice);
   }
   signal.throwIfAborted();
-  return synthesizeAutoReplay(beatmap, hash, frames);
+  finishAutoFrames(frames);
+  return replay;
 }
 
 export function buildAutoReplay(source: Uint8Array | BeatmapData, hash: string): ReplayData;
@@ -65,5 +61,8 @@ export function buildAutoReplay(source: Uint8Array | BeatmapData, hash: string, 
 export function buildAutoReplay(source: Uint8Array | BeatmapData, hash: string, signal?: AbortSignal): ReplayData | Promise<ReplayData> {
   if (signal) return prepareAutoReplay(source, hash, signal);
   const beatmap = source instanceof Uint8Array ? parseOsuBytes(source) : source;
-  return synthesizeAutoReplay(beatmap, hash, autoFrames(beatmap, hash));
+  const replay = createReplay(beatmap, hash);
+  for (const f of autoFrames(beatmap, replay)) replay.frames.push({ timeDelta: f.time, x:f.x, y:f.y, keys:f.keys });
+  finishAutoFrames(replay.frames);
+  return replay;
 }

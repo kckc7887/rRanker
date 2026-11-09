@@ -25,10 +25,13 @@
  * SOFTWARE.
  */
 import { drawFlatCircleFeedback } from "../../flat-feedback";
-import { buildFlatSliderBody } from "../../flat-slider";
+import type { StageContext } from "../../../../chart-preview-shared/webview-player/stage";
+import { drawTinted } from '../../engine-performance';
+import { drawTrack } from "../../../../chart-preview-shared/webview-player/stage-track";
 import type { BeatmapData, HitResult, Slider, Spinner, SkinAssets } from '../types/index';
 import type { ModDifficulty } from '../utils/modDifficulty';
-import { sampleSlider } from './SliderGeometry';
+import { createIntervalIndex } from '../../../../chart-preview-shared/webview-player/interval-index';
+import { sampleSlider, sliderPointAt, sliderProgress, type SliderPath } from './SliderGeometry';
 import { slideDurationMs } from '../utils/sliderDuration';
 import { type SpinnerAngleData, getSpinnerStateAt, spinnerProgress } from '../utils/hitJudge';
 
@@ -58,6 +61,7 @@ function toCanvas(x: number, y: number): [cx: number, cy: number] {
 const _circleRatioCache = new WeakMap<ImageBitmap, number>();
 
 function hitCircleRatio(bitmap: ImageBitmap): number {
+  if (bitmap.width <= 1 || bitmap.height <= 1) return 1;
   const cached = _circleRatioCache.get(bitmap);
   if (cached !== undefined) return cached;
 
@@ -149,44 +153,15 @@ function canonicalDiameter(img: { bmp: ImageBitmap; scale: number }, radius: num
   return (img.bmp.width / img.scale) / OBJECT_DIAMETER_PX * (2 * radius);
 }
 
-/** multiply 会污染透明区，需用 destination-in 恢复遮罩。 */
+const sliderPathsHR = new WeakMap<Slider, SliderPath>();
 
-const _tintCache = new WeakMap<ImageBitmap, Map<string, OffscreenCanvas>>();
-
-function tintBitmap(bitmap: ImageBitmap, color: string): OffscreenCanvas {
-  let colorMap = _tintCache.get(bitmap);
-  if (colorMap === undefined) {
-    colorMap = new Map();
-    _tintCache.set(bitmap, colorMap);
-  }
-
-  const cached = colorMap.get(color);
-  if (cached !== undefined) return cached;
-
-  const { width: w, height: h } = bitmap;
-  const osc = new OffscreenCanvas(w, h);
-  const oc = osc.getContext('2d')!;
-
-  oc.drawImage(bitmap, 0, 0);
-  oc.globalCompositeOperation = 'multiply';
-  oc.fillStyle = color;
-  oc.fillRect(0, 0, w, h);
-  oc.globalCompositeOperation = 'destination-in';
-  oc.drawImage(bitmap, 0, 0);
-
-  colorMap.set(color, osc);
-  return osc;
-}
-
-const _sliderPathsHR = new WeakMap<Slider, { x: number; y: number }[]>();
-
-function getSliderPathForMod(slider: Slider, isHR: boolean): { x: number; y: number }[] {
-  if (!isHR) return sampleSlider(slider);
-  let path = _sliderPathsHR.get(slider);
-  if (path === undefined) {
-    const base = sampleSlider(slider);
-    path = base.map(p => ({ x: p.x, y: 384 - p.y }));
-    _sliderPathsHR.set(slider, path);
+function getSliderPathForMod(slider: Slider, isHR: boolean): SliderPath {
+  const base = sampleSlider(slider);
+  if (!isHR) return base;
+  let path = sliderPathsHR.get(slider);
+  if (!path) {
+    path = { points: base.points.map(p => ({ x: p.x, y: 384 - p.y })), distances: base.distances };
+    sliderPathsHR.set(slider, path);
   }
   return path;
 }
@@ -257,23 +232,19 @@ function getComboData(beatmap: BeatmapData): { indices: number[]; numbers: numbe
 
 /** 可见窗口须覆盖滑条/转盘结束与淡出，不能只按起始时间截取。 */
 
-const _maxObjectLifetimeCache = new WeakMap<BeatmapData, number>();
-
-function getMaxObjectLifetime(beatmap: BeatmapData): number {
-  const cached = _maxObjectLifetimeCache.get(beatmap);
-  if (cached !== undefined) return cached;
-  let max = 500;
-  for (const obj of beatmap.hitObjects) {
-    let life = 500;
-    if (obj.type === 'slider') {
-      life = slideDurationMs(beatmap, obj) * obj.slides + 500;
-    } else if (obj.type === 'spinner') {
-      life = obj.endTime - obj.time + 500;
-    }
-    if (life > max) max = life;
+const objectIntervals = new WeakMap<BeatmapData, (min: number, max: number) => number[]>();
+function visibleObjects(beatmap: BeatmapData, time: number, preempt: number): number[] {
+  let query = objectIntervals.get(beatmap);
+  if (!query) {
+    query = createIntervalIndex(beatmap.hitObjects.map((_, index) => index), index => {
+      const object = beatmap.hitObjects[index]!;
+      const end = object.type === 'slider' ? object.time + slideDurationMs(beatmap, object) * object.slides
+        : object.type === 'spinner' ? object.endTime : object.time;
+      return [object.time, end + 500];
+    });
+    objectIntervals.set(beatmap, query);
   }
-  _maxObjectLifetimeCache.set(beatmap, max);
-  return max;
+  return query(time, time + preempt);
 }
 
 const _hitCirclesCache = new WeakMap<readonly HitResult[], Set<number>>();
@@ -288,41 +259,6 @@ function getHitCirclesSet(hitResults: readonly HitResult[]): Set<number> {
     _hitCirclesCache.set(hitResults, cached);
   }
   return cached;
-}
-
-function findVisibleRange(
-  beatmap: BeatmapData,
-  timeMs: number,
-  preempt: number,
-  maxLifetime: number,
-): { firstIdx: number; lastIdx: number } {
-  const objects = beatmap.hitObjects;
-  const n = objects.length;
-  if (n === 0) return { firstIdx: 0, lastIdx: -1 };
-
-  const minTime = timeMs - maxLifetime;
-  const maxTime = timeMs + preempt;
-
-  let lo = 0;
-  let hi = n;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (objects[mid]!.time < minTime) lo = mid + 1;
-    else hi = mid;
-  }
-  const firstIdx = lo;
-  if (firstIdx >= n || objects[firstIdx]!.time > maxTime) {
-    return { firstIdx, lastIdx: firstIdx - 1 };
-  }
-
-  lo = firstIdx;
-  hi = n - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >>> 1;
-    if (objects[mid]!.time <= maxTime) lo = mid;
-    else hi = mid - 1;
-  }
-  return { firstIdx, lastIdx: lo };
 }
 
 function hdCircleAlpha(timeMs: number, appearTime: number, preempt: number): number {
@@ -364,7 +300,7 @@ export function drawHitObjects(
   hitResults: readonly HitResult[] = [],
   spinnerAngles: Map<number, SpinnerAngleData> = new Map(),
   modDiff: ModDifficulty,
-  qualityTotal = 1,
+
 ): void {
   const preempt = modDiff.preemptMs;
   const fadeIn  = modDiff.fadeInMs;
@@ -405,14 +341,7 @@ export function drawHitObjects(
   const visible = _visible;
   visible.length = 0;
 
-  const { firstIdx, lastIdx } = findVisibleRange(
-    beatmap,
-    timeMs,
-    preempt,
-    getMaxObjectLifetime(beatmap),
-  );
-
-  for (let i = firstIdx; i <= lastIdx; i++) {
+  for (const i of visibleObjects(beatmap, timeMs, preempt)) {
     const obj = beatmap.hitObjects[i]!;
     const color = comboColors[comboIndices[i]! % comboColors.length]!;
 
@@ -520,13 +449,17 @@ export function drawHitObjects(
     }
 
     const trackColor = skin.config.sliderTrackOverride ?? color;
-    drawSliderBody(ctx, obj, path, radius, skin.config.sliderBorder, trackColor, modDiff.isHR, qualityTotal);
+    ctx.save();
+    ctx.translate(OFFSET_X, OFFSET_Y);
+    ctx.scale(SCALE, SCALE);
+    drawTrack(ctx as StageContext, path.points, radius / SCALE * 59 / 64, radius / SCALE * 3 / 64, skin.config.sliderBorder, trackColor);
+    ctx.restore();
 
-    if (obj.slides > 1 && path.length >= 2) {
-      const lookback = Math.min(4, path.length - 2);
+    if (obj.slides > 1 && path.points.length >= 2) {
+      const lookback = Math.min(1, 4 / obj.length);
 
-      const tail    = path[path.length - 1]!;
-      const tailRef = path[path.length - 1 - lookback]!;
+      const tail    = path.points.at(-1)!;
+      const tailRef = sliderPointAt(path, 1 - lookback);
       const [tx, ty] = toCanvas(tail.x, tail.y);
 
       if (shouldShowTailArrow(obj.slides, timeMs, activeStart, slideDur)) {
@@ -535,8 +468,8 @@ export function drawHitObjects(
       }
 
       if (timeMs >= activeStart && shouldShowHeadArrow(obj.slides, timeMs, activeStart, slideDur)) {
-        const headRef = path[lookback]!;
-        const head    = path[0]!;
+        const headRef = sliderPointAt(path, lookback);
+        const head    = path.points[0]!;
         const [hax, hay] = toCanvas(head.x, head.y);
         const angle = Math.atan2(headRef.y - head.y, headRef.x - head.x);
         drawRepeatArrow(ctx, hax, hay, angle, radius, color, skin.images, timeMs, curTpTime, curBeatLen);
@@ -623,14 +556,7 @@ export function drawHitObjects(
       }
 
       if (timeMs >= activeStart && timeMs < activeEnd) {
-        const slideProgress = (timeMs - activeStart) / slideDur;
-        const slideIndex = Math.min(obj.slides - 1, Math.floor(slideProgress));
-        let t = slideProgress - Math.floor(slideProgress);
-
-        if (slideIndex % 2 === 1) t = 1 - t;
-        t = Math.max(0, Math.min(1, t));
-
-        const ballPos = pointAtFraction(path, t);
+        const ballPos = sliderPointAt(path, sliderProgress(timeMs, activeStart, slideDur, obj.slides));
         const [bx, by] = toCanvas(ballPos.x, ballPos.y);
         drawSliderBall(ctx, bx, by, radius, color, skin.images, skin.config.allowSliderBallTint);
       }
@@ -663,7 +589,7 @@ function drawCircle(
 
     if (isBlankImage(hitcircle.bmp)) return;
     const d = canonicalDiameter(hitcircle, radius);
-    ctx.drawImage(tintBitmap(hitcircle.bmp, color), cx - d / 2, cy - d / 2, d, d);
+    drawTinted(ctx, hitcircle.bmp, color, cx - d / 2, cy - d / 2, d, d);
     /** 1×1 overlay 表示隐藏，不能拉伸成灰框。 */
 
     if (overlay && !isBlankImage(overlay.bmp)) {
@@ -707,7 +633,7 @@ function drawSliderHeadCircle(
   if (base) {
     if (isBlankImage(base.bmp)) return;
     const d = canonicalDiameter(base, radius);
-    ctx.drawImage(tintBitmap(base.bmp, color), cx - d / 2, cy - d / 2, d, d);
+    drawTinted(ctx, base.bmp, color, cx - d / 2, cy - d / 2, d, d);
     if (overlay && !isBlankImage(overlay.bmp)) {
       const od = canonicalDiameter(overlay, radius);
       ctx.drawImage(overlay.bmp, cx - od / 2, cy - od / 2, od, od);
@@ -754,7 +680,7 @@ function drawApproachCircle(
   if (approach) {
 
     const d = canonicalDiameter(approach, radius);
-    ctx.drawImage(tintBitmap(approach.bmp, color), cx - d / 2, cy - d / 2, d, d);
+    drawTinted(ctx, approach.bmp, color, cx - d / 2, cy - d / 2, d, d);
     return;
   }
 
@@ -763,82 +689,6 @@ function drawApproachCircle(
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.stroke();
-}
-
-/** 每条滑条缓存紧包围盒位图，避免 Firefox 每帧全画布滤镜开销。 */
-
-interface CachedSliderBody {
-  bmp: OffscreenCanvas;
-  ox: number;        /** 位图左上角使用逻辑坐标。 */
-  oy: number;
-  w: number;         /** 绘制尺寸为逻辑尺寸，内部位图另乘 quality。 */
-  h: number;
-  radius: number;
-  borderColor: string;
-  trackColor: string;
-  isHR: boolean;
-  quality: number;
-}
-const _sliderBodyCache = new WeakMap<Slider, CachedSliderBody>();
-
-/** 沿用 LegacyDrawableSliderPath：外侧 5/64 为阴影，边框与圆形 0.922r 对齐。 */
-
-function buildSliderBody(
-  path: { x: number; y: number }[],
-  radius: number,
-  borderColor: string,
-  trackColor: string,
-  quality: number,
-): { bmp: OffscreenCanvas; ox: number; oy: number; w: number; h: number } | null {
-  return buildFlatSliderBody(path, radius, borderColor, trackColor, quality, toCanvas);
-}
-
-function drawSliderBody(
-  ctx: CanvasRenderingContext2D,
-  slider: Slider,
-  path: { x: number; y: number }[],
-  radius: number,
-  borderColor: string,
-  trackColor: string,
-  isHR: boolean,
-  quality: number,
-): void {
-  let cached = _sliderBodyCache.get(slider);
-  if (
-    cached === undefined ||
-    cached.radius !== radius ||
-    cached.borderColor !== borderColor ||
-    cached.trackColor !== trackColor ||
-    cached.isHR !== isHR ||
-    cached.quality !== quality
-  ) {
-    const built = buildSliderBody(path, radius, borderColor, trackColor, quality);
-    if (built === null) return;
-    cached = { ...built, radius, borderColor, trackColor, isHR, quality };
-    _sliderBodyCache.set(slider, cached);
-  }
-  /** 高密度位图按逻辑尺寸回绘，每个 backing-store 像素对应约一个 texel。 */
-
-  ctx.drawImage(cached.bmp, cached.ox, cached.oy, cached.w, cached.h);
-}
-
-/** 路径按弧长采样至约 1 点/像素，可直接按下标插值。 */
-function pointAtFraction(
-  path: { x: number; y: number }[],
-  t: number
-): { x: number; y: number } {
-  if (path.length === 0) return { x: 0, y: 0 };
-  if (t <= 0 || path.length === 1) return { ...path[0]! };
-  if (t >= 1) return { ...path[path.length - 1]! };
-
-  const idx = t * (path.length - 1);
-  const lo  = Math.floor(idx);
-  const hi  = Math.min(lo + 1, path.length - 1);
-  const frac = idx - lo;
-  return {
-    x: path[lo]!.x + (path[hi]!.x - path[lo]!.x) * frac,
-    y: path[lo]!.y + (path[hi]!.y - path[lo]!.y) * frac,
-  };
 }
 
 export function shouldShowTailArrow(
@@ -886,8 +736,8 @@ function drawSliderBall(
   const ball = skinImgScaled(images, 'sliderb') ?? skinImgScaled(images, 'sliderb0');
   if (ball) {
     const d = canonicalDiameter(ball, radius);
-    const sprite = allowTint ? tintBitmap(ball.bmp, color) : ball.bmp;
-    ctx.drawImage(sprite, cx - d / 2, cy - d / 2, d, d);
+    if (allowTint) drawTinted(ctx, ball.bmp, color, cx - d / 2, cy - d / 2, d, d);
+    else ctx.drawImage(ball.bmp, cx - d / 2, cy - d / 2, d, d);
   } else {
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -1115,10 +965,9 @@ function drawSpinner(
     const step = Math.round(t * 31);
     if (step > 0) {
       const chan = Math.round(255 * (1 - step / 31));
-      const off = tintBitmap(middle.bmp, `rgb(255, ${chan}, ${chan})`);
       const w = middle.bmp.width * middle.scale * completionScale;
       const h = middle.bmp.height * middle.scale * completionScale;
-      ctx.drawImage(off, cx - w / 2, cy - h / 2, w, h);
+      drawTinted(ctx, middle.bmp, `rgb(255, ${chan}, ${chan})`, cx - w / 2, cy - h / 2, w, h);
     } else {
       drawAt(middle, cx, cy, 0, completionScale);
     }

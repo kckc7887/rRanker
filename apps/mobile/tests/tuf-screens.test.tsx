@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider, type InfiniteData } from '@tanstack/r
 import { Dimensions, Linking,} from 'react-native';
 import type { TufLevel, TufLevelPass, TufPass, TufPassPage, TufPlayer, TufVideoDetails } from '@/domain/tuf';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
+import { TufSongRow } from '@/components/adofai/TufSongRow';
 import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
 import { queryClient } from '@/state/query-client';
 import { CachedContentActivityScope } from '@/components/CachedTabScreen';
@@ -550,6 +551,33 @@ describe('TUF screens', () => {
     expect(readSource()).toBe(icon);
     await fireEvent(screen.getByLabelText('关卡封面 关卡 A'), 'error');
     expect(readSource()).not.toEqual(icon);
+  });
+
+  it.each(['row', 'hero'] as const)('restarts the %s image chain when video artwork changes and ignores obsolete failures', async (kind) => {
+    const tree = (track: string) => {
+      const videoLink = `https://www.youtube.com/watch?v=${track}`;
+      mockLevelDetail = { ...level, videoLink };
+      mockVideoDetails = {
+        title: track, channelName: 'Kaleido', timestamp: null, image: `https://i.ytimg.com/vi/${track}/0.jpg`,
+        embed: null, downloadLink: null,
+      };
+      return kind === 'row' ? <TufSongRow level={mockLevelDetail} /> : <TufLevelDetailScreen levelId="11372" />;
+    };
+    const screen = await render(tree('videoA'));
+    const cover = () => screen.getByLabelText(kind === 'row' ? '关卡封面 关卡 A' : '关卡头图 关卡 A');
+    const source = () => imageDownloads.get(cover().props.source?.uri);
+    const proxy = (track: string) => `https://api.tuforums.com/v2/media/image-proxy?url=${encodeURIComponent(`https://i.ytimg.com/vi/${track}/0.jpg`)}`;
+    await waitFor(() => expect(source()).toBe(proxy('videoA')));
+    const oldError = cover().props.onError;
+    await fireEvent(cover(), 'error');
+    await waitFor(() => expect(source()).toBe('https://i.ytimg.com/vi/videoA/0.jpg'));
+
+    await screen.rerender(tree('videoB'));
+    await act(() => oldError({ error: 'late A' }));
+    await waitFor(() => expect(source()).toBe(proxy('videoB')));
+    await screen.rerender(tree('videoA'));
+    await act(() => oldError({ error: 'late previous A' }));
+    await waitFor(() => expect(source()).toBe(proxy('videoA')));
   });
 
   it('keeps long title and artist in scrolling single-line fields inside a square dark hero', async () => {

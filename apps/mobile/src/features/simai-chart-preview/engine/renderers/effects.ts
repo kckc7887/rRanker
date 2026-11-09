@@ -1,10 +1,10 @@
-/** MajdataViewX prefabs, animation curves and MaimaiColorEffect shader adapted to Canvas 2D.
+/** MajdataViewX prefabs, animation curves and MaimaiColorEffect shader.
  * Copyright MajdataViewX contributors; GPL-3.0. Modified by rRanker 2026-09-05.
  * See THIRD_PARTY_NOTICES.md and scripts/maimai-reference/Effects. */
 import { EFFECT_CURVES } from './effectCurves.generated';
 import { EFFECT_SCENES, EFFECT_SPRITES, HOLD_PARTICLES, type EffectNode } from './effectSprites.generated';
 import type { ChartPreviewSkin } from './skinAtlas';
-import { EACH_COLOR } from './skinSemantics';
+import type { StageContext } from '../../../chart-preview-shared/webview-player/stage';
 
 function sample(keys: (number | null)[][], seconds: number): number {
   if (seconds <= keys[0][0]!) return keys[0][1]!;
@@ -31,63 +31,78 @@ export function holdParticleState(ageMs: number) {
   return { size: sample(HOLD_PARTICLES.size, phase) * HOLD_PARTICLES.sizeMultiplier, alpha: phase >= 1 ? 0 : alpha };
 }
 export class EffectRenderer {
-  private tinted = new Map<string, HTMLCanvasElement>();
-  private shaderFrames: HTMLCanvasElement[] | null = null;
-  private shaderCanvas: HTMLCanvasElement | null = null;
+  private shader: WebGLProgram | null = null;
+  private buffer: WebGLBuffer | null = null;
+  private readonly vertices = new Float32Array(16);
   constructor(private skin: ChartPreviewSkin) {}
-  prepare() { if (!this.shaderFrames) this.firework(0, 0); }
+  dispose(ctx: StageContext) {
+    if (this.shader) ctx.gl.deleteProgram(this.shader);
+    if (this.buffer) ctx.gl.deleteBuffer(this.buffer);
+    this.shader = null; this.buffer = null;
+  }
   private sprite(name: string) {
     const image = this.skin.get(`ViewXEffects/${name}`);
     if (!image) throw new Error(`Missing effect sprite: ${name}`);
     return image;
   }
-  private colorSprite(name: string, color: string) {
-    const key = `${name}:${color}`, cached = this.tinted.get(key); if (cached) return cached;
-    const image = this.sprite(name), canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
-    const ctx = canvas.getContext('2d')!; ctx.drawImage(image, 0, 0); ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = color; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalCompositeOperation = 'destination-in'; ctx.drawImage(image, 0, 0);
-    if (this.tinted.size >= 32) this.tinted.delete(this.tinted.keys().next().value!);
-    this.tinted.set(key, canvas); return canvas;
-  }
-  private firework(alpha: number, time: number): HTMLCanvasElement {
-    if (!this.shaderFrames) {
-      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
-      const ctx = canvas.getContext('2d')!; ctx.drawImage(this.sprite('Firework.png'), 0, 0, 512, 512);
-      const original = ctx.getImageData(0, 0, 512, 512);
-      this.shaderFrames = Array.from({ length: 5 }, (_, phase) => {
-        const frame = document.createElement('canvas'); frame.width = frame.height = 512;
-        const context = frame.getContext('2d')!, pixels = context.createImageData(512, 512);
-        for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
-          let angle = Math.atan2(255.5 - y, x - 255.5); if (angle <= 0) angle += Math.PI * 2;
-          const hue = Math.ceil(((angle / 6.28 * 3 + phase * 0.2) % 1) * 5) / 5;
-          const index = (y * 512 + x) * 4;
-          for (let c = 0; c < 3; c++) {
-            const v = clamp(Math.abs((hue * 6 + [0, 4, 2][c]) % 6 - 3) - 1);
-            pixels.data[index + c] = original.data[index + c] * (1 - 0.545 + 0.545 * v * v * (3 - 2 * v));
-          }
-          pixels.data[index + 3] = original.data[index + 3];
+  private firework(ctx: StageContext, sprite: HTMLImageElement, x: number, y: number, w: number, h: number, alpha: number, time: number) {
+    const gl = ctx.gl;
+    ctx.flush();
+    if (!this.shader) {
+      const program = gl.createProgram()!;
+      const vertex = 'attribute vec4 vertex; varying vec2 uv; void main(){gl_Position=vec4(vertex.xy,0.,1.);uv=vertex.zw;}';
+      const fragment = `precision mediump float;
+varying vec2 uv; uniform sampler2D sprite; uniform vec3 effect;
+void main() {
+  vec2 p = uv - .5;
+  float angle = atan(-p.y,p.x); if (angle <= 0.) angle += 6.2831853;
+  float hue = ceil(fract(angle/6.28*3.+effect.x*.2)*5.)/5.;
+  vec3 v = clamp(abs(mod(hue*6.+vec3(0.,4.,2.),6.)-3.)-1.,0.,1.);
+  float radius = min(1.,dot(p,p)*4.)*effect.y;
+  float a = clamp((radius-.018)/.036,0.,1.) * clamp((.429-radius)/.069,0.,1.) * effect.z;
+  vec4 color = texture2D(sprite,uv);
+  gl_FragColor = vec4(color.rgb * mix(vec3(1.), v*v*(3.-2.*v), .545),color.a)*a;
+}`;
+      try {
+        for (const [kind, source] of [[gl.VERTEX_SHADER,vertex],[gl.FRAGMENT_SHADER,fragment]] as const) {
+          const shader = gl.createShader(kind)!;
+          try {
+            gl.shaderSource(shader, source); gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error('烟花着色器编译失败');
+            gl.attachShader(program, shader);
+          } finally { gl.deleteShader(shader); }
         }
-        context.putImageData(pixels, 0, 0); return frame;
-      });
-      this.shaderCanvas = canvas;
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('烟花着色器链接失败');
+      } catch (error) { gl.deleteProgram(program); throw error; }
+      this.shader = program;
+      this.buffer = gl.createBuffer();
     }
-    const canvas = this.shaderCanvas!, ctx = canvas.getContext('2d')!;
-    ctx.globalCompositeOperation = 'copy'; ctx.drawImage(this.shaderFrames[((Math.ceil(time * 0.5 * 5) % 5) + 5) % 5], 0, 0);
-    ctx.globalCompositeOperation = 'destination-in';
-    const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, Math.sqrt(2) * 256);
-    /** 径向采样拟合 Shader 的半径平方渐变。 */
-    for (let i = 0; i <= 128; i++) {
-      const radius = Math.min(1, (i / 128) ** 2 * 2) * alpha;
-      const opacity = clamp((radius - 0.018) / (0.054 - 0.018)) * clamp((0.429 - radius) / (0.429 - 0.36));
-      gradient.addColorStop(i / 128, `rgba(255,255,255,${opacity})`);
+    const transform = ctx.getTransform();
+    const vertices = this.vertices;
+    for (let i = 0; i < 4; i++) {
+      const u = i % 2, v = i >> 1, px = x + u*w, py = y + v*h;
+      vertices[i*4] = (transform.a*px + transform.c*py + transform.e) * 2 / ctx.canvas.width - 1;
+      vertices[i*4+1] = 1 - (transform.b*px + transform.d*py + transform.f) * 2 / ctx.canvas.height;
+      vertices[i*4+2] = u; vertices[i*4+3] = v;
     }
-    ctx.fillStyle = gradient; ctx.fillRect(0, 0, 512, 512); return canvas;
+    const texture = ctx.imageTexture(sprite);
+    gl.useProgram(this.shader);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STREAM_DRAW);
+    const attr = gl.getAttribLocation(this.shader, 'vertex');
+    gl.enableVertexAttribArray(attr); gl.vertexAttribPointer(attr, 4, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.uniform1i(gl.getUniformLocation(this.shader, 'sprite'), 0);
+    gl.uniform3f(gl.getUniformLocation(this.shader, 'effect'), Math.ceil(time*.0025) % 5, alpha, ctx.globalAlpha);
+    gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    ctx.restoreTarget();
   }
-  draw(ctx: CanvasRenderingContext2D, kind: 'tap' | 'touch' | 'hold' | 'firework', ageMs: number, isBreak: boolean, timeMs: number) {
+  draw(ctx: StageContext, kind: 'tap' | 'touch' | 'hold' | 'firework', ageMs: number, isBreak: boolean, timeMs: number) {
     if (kind === 'hold') {
       const state = holdParticleState(ageMs); ctx.globalAlpha *= state.alpha;
-      const image = this.colorSprite('Circle.png', EACH_COLOR);
+      const image = this.sprite('Circle.png'); ctx.tint(1, 245 / 255, 93 / 255);
       ctx.drawImage(image, -state.size / 2, -state.size / 2, state.size, state.size); return;
     }
     const name = isBreak && kind === 'tap' ? 'break' : kind, t = ageMs / 1000 * (name === 'break' ? 0.9 : 1);
@@ -105,10 +120,15 @@ export class EffectRenderer {
       ctx.save(); transform(node);
       const alpha = curve(node, node.shader ? 'material._Alpha' : 'm_Color.a', node.color?.a ?? 1);
       ctx.globalAlpha *= clamp(alpha);
-      const color = ['r', 'g', 'b'].map(c => Math.round(clamp(curve(node, `m_Color.${c}`, node.color?.[c as 'r' | 'g' | 'b'] ?? 1)) * 255));
-      const image = node.shader ? this.firework(alpha, timeMs / 1000) : this.colorSprite(node.sprite!, `rgb(${color.join(',')})`);
+      const image = this.sprite(node.sprite!);
       const sprite = EFFECT_SPRITES[node.sprite!], width = sprite.width / sprite.ppu, height = sprite.height / sprite.ppu;
-      ctx.drawImage(image, -width * sprite.pivot.x, -height * (1 - sprite.pivot.y), width, height);
+      const x = -width * sprite.pivot.x, y = -height * (1 - sprite.pivot.y);
+      if (node.shader) this.firework(ctx, image, x, y, width, height, alpha, timeMs);
+      else {
+        const color = (c: 'r' | 'g' | 'b') => clamp(curve(node, 'm_Color.' + c, node.color?.[c] ?? 1));
+        ctx.tint(color('r'), color('g'), color('b'));
+        ctx.drawImage(image, x, y, width, height);
+      }
       ctx.restore();
     }
   }

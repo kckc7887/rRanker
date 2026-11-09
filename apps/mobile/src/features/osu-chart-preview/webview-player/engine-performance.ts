@@ -1,7 +1,8 @@
+import { rgba } from '../../chart-preview-shared/webview-player/stage-material';
+import type { StageContext } from '../../chart-preview-shared/webview-player/stage';
 import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
 import type { HitResult } from './engine';
 import type { ManiaHitObject, ManiaSession } from './engine/rulesets/mania/types';
-import type { TaikoHitObject } from './engine/rulesets/taiko/types';
 
 export type PreviewRenderOptions = {
   maniaIgnoreSV?: boolean;
@@ -24,17 +25,6 @@ export function maniaRenderSession(session: ManiaSession, options: object): Mani
     constantManiaSessions.set(session, view);
   }
   return view;
-}
-
-const taikoLookbacks = new WeakMap<readonly TaikoHitObject[], number>();
-export function taikoLookback(objects: readonly TaikoHitObject[]): number {
-  let lookback = taikoLookbacks.get(objects);
-  if (lookback !== undefined) return lookback;
-  lookback = 500;
-  for (const object of objects) if (object.kind !== 'hit') lookback = Math.max(lookback, object.endTime - object.time);
-  lookback += 500;
-  taikoLookbacks.set(objects, lookback);
-  return lookback;
 }
 
 const maniaIndices = new WeakMap<readonly ManiaHitObject[], (min: number, max: number) => ManiaHitObject[]>();
@@ -71,4 +61,13 @@ export function visibleJudgements(results: readonly HitResult[], timeMs: number,
   for (let i = low; i < entries.length && entries[i]!.displayTime <= timeMs; i++) visible.push(entries[i]!);
   visible.sort((a, b) => a.index - b.index);
   return visible.map(entry => entry.result);
+}
+
+export function drawTinted(ctx: CanvasRenderingContext2D, image: ImageBitmap, colour: string, x: number, y: number, w: number, h: number): void {
+  const stage = ctx as StageContext;
+  stage.save();
+  const [red, green, blue] = rgba(colour);
+  stage.tint(red, green, blue);
+  stage.drawImage(image, x, y, w, h);
+  stage.restore();
 }

@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/app-theme';
 import type { NoteGroupPresentation } from '@/features/game-content/presentation';
-import { AutoScrollText } from './AutoScrollText';
 import { DetailPressable } from './DetailPressable';
 import { GameNoteTable } from './GameNoteTable';
-import { SongDetailChrome, type SongDetailFavoriteOptions } from './SongDetailChrome';
 import { SongDetailHero } from './SongDetailHero';
 import { SongMetadataTable, type SongMetadataItem } from './SongMetadataTable';
 import { simaiSongDetailStyles as styles } from './SimaiSongDetailStyles';
@@ -29,31 +26,14 @@ export function simaiChartActionTextStyle(dark: boolean, visual: SimaiChartVisua
 export function SimaiSongHero({ size, cover, id, title, artist }: {
   size: number; cover: ReactNode; id: string; title: string; artist?: string;
 }) {
-  return <SongDetailHero size={size} style={styles.hero} cover={cover}
-    placeholderStyle={styles.hero} placeholderNoteStyle={styles.title}
-    shadeColors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']} shadeStyle={styles.heroShade} copyStyle={styles.heroCopy}>
-    <AutoScrollText text={`#${id}`} textStyle={styles.songId} style={styles.singleLine} contentContainerStyle={styles.singleLineContent} />
-    <AutoScrollText text={title} textStyle={styles.title} style={styles.singleLine} contentContainerStyle={styles.singleLineContent} />
-    <AutoScrollText text={artist ?? '曲师未知'} textStyle={styles.artist} style={styles.singleLine} contentContainerStyle={styles.singleLineContent} />
-  </SongDetailHero>;
-}
-
-export function SimaiSongChrome({ favorite }: { favorite?: SongDetailFavoriteOptions }) {
-  const insets = useSafeAreaInsets();
-  return <SongDetailChrome topInset={insets.top}
-    backStyle={pressed => [styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 }, pressed && { opacity: 0.7 }]}
-    favorite={favorite}
-    favoriteStyle={pressed => [styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
-      pressed && { opacity: 0.7 }]} />;
+  return <SongDetailHero size={size} cover={cover} id={`#${id}`} title={title} artist={artist ?? '曲师未知'} scroll="all" />;
 }
 
 export function SimaiSongMetadata({ items, testIDPrefix = 'metadata' }: {
   items: readonly SongMetadataItem[]; testIDPrefix?: string;
 }) {
   return <SongMetadataTable accessibilityLabel="歌曲详情数据" items={items} interaction="platform-detail"
-    cellRootStyle={styles.metadataCellRoot} cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel}
-    measureStyle={styles.metadataValueMeasure} style={styles.metadataTable} testIDPrefix={testIDPrefix}
-    valueBlockStyle={styles.metadataValueBlock} valueStyle={styles.metadataValue} />;
+    cellRootStyle={styles.metadataCellRoot} testIDPrefix={testIDPrefix} />;
 }
 
 export function SimaiChartResultLayout({ identity, level, secondaryLevel, result, badges, extraMetric }: {
@@ -85,11 +65,7 @@ export function SimaiNoteTable({ group, label, onPress, accessibilityLabel }: {
   return <DetailPressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress}
     style={({ pressed }) => [styles.notesAction, pressed && styles.notesActionPressed]}>
     {label ? <Text style={[styles.notesPlayerLabel, { color: theme.text }]}>{label}</Text> : null}
-    <GameNoteTable mode="grid" group={group} accessibilityLabel="谱面物量"
-      containerStyle={[styles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
-      rowStyle={styles.notesRow} headerRowStyle={styles.notesHeaderRow}
-      headerTextStyle={[styles.notesCell, styles.notesHeader, { color: theme.textMuted }]}
-      valueTextStyle={[styles.notesCell, styles.notesValue, { color: theme.text }]} />
+    <GameNoteTable mode="grid" group={group} accessibilityLabel="谱面物量" />
     <Text style={[styles.notesHint, { color: theme.textMuted }]}>点击物量表，前往达成率与容错计算</Text>
   </DetailPressable>;
 }

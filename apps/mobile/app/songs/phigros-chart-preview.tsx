@@ -1,3 +1,4 @@
+import { prepareJsonChartPreview } from '@/features/prepare-json-chart-preview';
 import { useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import {
@@ -7,7 +8,6 @@ import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/
 import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
 import {
   phigrosChartPreviewAllowsFileAccess,
-  preparePhigrosChartPreviewWebViewSource,
   stagePhiraChartMusic,
   stagePhiraRpeBundle,
   createPhigrosPreviewResourceRead,
@@ -134,7 +134,7 @@ export default function PhigrosChartPreviewScreen() {
                 stageRpeBundle: (chartId, files) => stagePhiraRpeBundle(chartId, files, directory, signal),
               });
           onProgress?.({ label: CHART_PREVIEW_PLAYER_LABEL, value: resourceEnd });
-          return await preparePhigrosChartPreviewWebViewSource(
+          return await prepareJsonChartPreview(
             { ...prepared.config, theme: isDark ? 'dark' : 'light' },
             prepared.musicDataBase64 ?? null,
             directory,

@@ -4,26 +4,24 @@
  */
 
 import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
+import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
+import { createStageContext, stagePixels, type StageContext } from '../../chart-preview-shared/webview-player/stage';
 import { findEventIndex, type PgrChart, type PgrHeightEvent, type PgrLine, type PgrMoveEvent, type PgrNote, type PgrTweenEvent } from './pgr-core';
 import { PgrBlockRenderer } from './pgr-block-renderer';
 
 const NOTE_WIDTH_RATIO_BASE = 0.13175016;
-const HOLD_ATLAS = Object.freeze({ normal: [50, 50], multi: [96, 97] } as const);
+const MIN_NOTE_DISTANCE = -0.5;
+const HOLD_ATLAS = /* @__PURE__ */ Object.freeze({ normal: [50, 50], multi: [96, 97] } as const);
 const HOLD_PARTICLE_INTERVAL = 0.15;
 const HIT_FX_DURATION = 0.5;
 const HIT_FX_COLUMNS = 6;
 const HIT_FX_ROWS = 5;
 const HIT_FX_SCALE = 1;
-const JUDGE_LINE_COLORS: Readonly<Record<string, string>> = Object.freeze({
+const JUDGE_LINE_COLORS: Readonly<Record<string, string>> = /* @__PURE__ */ Object.freeze({
   white: 'rgba(255, 255, 255, 1)',
   gold: 'rgba(255, 236, 159, 0.8823529412)',
   blue: 'rgba(180, 225, 255, 0.9215686275)',
 });
-
-const MAX_DPR = 2;
-const FULLSCREEN_MIN_DPR = 1;
-
-const FULLSCREEN_MAX_PIXELS = 2_500_000;
 
 export type LineColorKey = 'white' | 'gold' | 'blue';
 export type NoteKindKey = 'tap' | 'drag' | 'flick' | 'hold';
@@ -38,8 +36,10 @@ export interface RendererSettings {
 }
 
 interface LineRenderCache {
-  holds: PgrNote[];
-  groups: { above: boolean; speed: number; notes: PgrNote[] }[];
+  activeHolds: (min: number, max: number) => PgrNote[];
+  holdHeights: (min: number, max: number) => PgrNote[];
+  holdOrder: Map<PgrNote, number>;
+  groups: { kind: NoteKindKey; above: boolean; speed: number; notes: PgrNote[] }[];
 }
 
 interface LineCursor { speed: number; disappear: number; rotate: number; move: number }
@@ -121,18 +121,22 @@ function drawTextureFlippedY(
 
 function createLineRenderCache(line: PgrLine): LineRenderCache {
   const holds: PgrNote[] = [];
-  const groups = new Map<string, { above: boolean; speed: number; notes: PgrNote[] }>();
+  const groups = new Map<string, LineRenderCache['groups'][number]>();
   for (const note of line.notes) {
     if (note.kind === 'hold') {
       holds.push(note);
       continue;
     }
-    const key = `${note.above ? 1 : 0}:${note.speed}`;
-    if (!groups.has(key)) groups.set(key, { above: note.above, speed: note.speed, notes: [] });
+    const key = `${note.kind}:${note.above ? 1 : 0}:${note.speed}`;
+    if (!groups.has(key)) groups.set(key, { kind: note.kind, above: note.above, speed: note.speed, notes: [] });
     groups.get(key)!.notes.push(note);
   }
-  for (const group of groups.values()) group.notes.sort((a, b) => a.height - b.height || a.time - b.time);
-  return { holds, groups: [...groups.values()] };
+  for (const group of groups.values()) {
+    group.notes.sort(group.speed ? (a, b) => a.height - b.height || a.time - b.time : (a, b) => a.time - b.time);
+  }
+  return { activeHolds: createIntervalIndex(holds, n => [n.time, n.endTime]),
+    holdHeights: createIntervalIndex(holds, n => [n.height, n.endHeight]),
+    holdOrder: new Map(holds.map((note, index) => [note, index])), groups: [...groups.values()] };
 }
 
 function buildHitEvents(chart: PgrChart): HitEffectEvent[] {
@@ -152,19 +156,6 @@ function buildHitEvents(chart: PgrChart): HitEffectEvent[] {
   return effects;
 }
 
-function tintTexture(image: HTMLImageElement, color: string): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
-  const context = canvas.getContext('2d')!;
-  context.drawImage(image, 0, 0);
-  context.globalCompositeOperation = 'source-in';
-  context.fillStyle = color;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.globalCompositeOperation = 'source-over';
-  return canvas;
-}
-
 function particleAngle(seed: number, index: number): number {
   const mixed = Math.sin((seed * 17.17 + index * 31.73) * 12.9898) * 43758.5453;
   return (mixed - Math.floor(mixed)) * Math.PI * 2;
@@ -178,13 +169,12 @@ export interface NoteAssets {
 
 export class PgrRenderer {
   readonly canvas: HTMLCanvasElement;
-  private readonly context: CanvasRenderingContext2D;
+  private readonly context: StageContext;
   private readonly resizeObserver: ResizeObserver;
   private chart: PgrChart | null = null;
   private blocks: PgrBlockRenderer | null = null;
   private illustration: HTMLImageElement | null = null;
   private noteAssets: NoteAssets | null = null;
-  private hitFxTexture: HTMLCanvasElement | null = null;
   private cursors: LineCursor[] = [];
   private renderCaches: LineRenderCache[] = [];
   private hitEvents: HitEffectEvent[] = [];
@@ -206,7 +196,7 @@ export class PgrRenderer {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.context = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
+    this.context = createStageContext(canvas);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     this.resize();
@@ -215,7 +205,7 @@ export class PgrRenderer {
   setChart(chart: PgrChart): void {
     this.blocks?.dispose();
     this.blocks = null;
-    if (chart.blocks.length) this.blocks = new PgrBlockRenderer(chart.blocks);
+    if (chart.blocks.length) this.blocks = new PgrBlockRenderer(chart.blocks, this.context);
     this.chart = chart;
     this.cursors = chart.lines.map(() => ({ speed: 0, disappear: 0, rotate: 0, move: 0 }));
     this.renderCaches = chart.lines.map(createLineRenderCache);
@@ -227,7 +217,6 @@ export class PgrRenderer {
 
   setNoteAssets(assets: NoteAssets): void {
     this.noteAssets = assets;
-    this.hitFxTexture = assets.fx ? tintTexture(assets.fx, 'rgba(255, 236, 159, 0.8824)') : null;
   }
 
   setSettings(settings: Partial<RendererSettings>): void { this.settings = { ...this.settings, ...settings }; }
@@ -245,9 +234,9 @@ export class PgrRenderer {
     this.blocks?.dispose();
     this.blocks = null;
     this.chart = null;
+    this.context.dispose();
     this.illustration = null;
     this.noteAssets = null;
-    this.hitFxTexture = null;
     this.cursors = [];
     this.renderCaches = [];
     this.hitEvents = [];
@@ -256,15 +245,7 @@ export class PgrRenderer {
   resize(): void {
     if (this.disposed) return;
     const rect = this.canvas.getBoundingClientRect();
-    const rawDpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-    let dpr = rawDpr;
-    if (this.fullscreen) {
-      const area = Math.max(1, rect.width * rect.height);
-      const budgetDpr = Math.sqrt(FULLSCREEN_MAX_PIXELS / area);
-      dpr = Math.min(rawDpr, Math.max(FULLSCREEN_MIN_DPR, budgetDpr));
-    }
-    const width = Math.max(1, Math.round(rect.width * dpr));
-    const height = Math.max(1, Math.round(rect.height * dpr));
+    const { width, height } = stagePixels(rect.width, rect.height, this.context.gl);
     if (this.canvas.width !== width || this.canvas.height !== height) {
       this.canvas.width = width;
       this.canvas.height = height;
@@ -316,6 +297,10 @@ export class PgrRenderer {
     const ratio = pixelWidth / Math.max(1, this.canvas.clientWidth);
     const width = pixelWidth / ratio;
     const height = pixelHeight / ratio;
+    context.beginFrame();
+    const region = this.blocks?.prepare(time, width, height, this.settings.showBlockArea, this.settings.showBlockAreaBounds);
+    const scene = region?.scene;
+    if (scene) context.bindTarget(scene);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.globalAlpha = 1;
     context.fillStyle = '#07060c';
@@ -324,7 +309,7 @@ export class PgrRenderer {
     context.fillStyle = `rgba(4, 3, 8, ${clamp(this.settings.backgroundDim, 0, 1)})`;
     context.fillRect(0, 0, width, height);
 
-    if (!this.chart) return;
+    if (!this.chart) { context.flush(); return; }
     this.lastVisitedNotes = 0;
     this.lastDrawnNotes = 0;
     this.lastMaxFutureLead = 0;
@@ -350,9 +335,18 @@ export class PgrRenderer {
         }
       }
     }
-    this.blocks?.draw(context, time, width, height, pixelWidth, pixelHeight,
-      this.settings.showBlockArea, this.settings.showBlockAreaBounds);
+    if (scene && region) {
+      context.flush();
+      context.bindTarget(null);
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.drawTarget(scene, 0, 0, pixelWidth, pixelHeight);
+      context.restore();
+      context.flush();
+      this.blocks!.draw(scene, region, time, width, height, this.settings.showBlockAreaBounds);
+    }
     this.drawHitEffects(context, time, width, height);
+    context.flush();
     context.globalAlpha = 1;
     this.lastTime = time;
     this.lastRenderedTime = time;
@@ -388,7 +382,10 @@ export class PgrRenderer {
 
   private drawNotes(context: CanvasRenderingContext2D, cache: LineRenderCache, state: LineState, time: number, kind: NoteKindKey): void {
     if (kind === 'hold') {
-      for (const note of cache.holds) {
+      const limit = Math.max(this.visibleDistanceLimit(state, true), this.visibleDistanceLimit(state, false));
+      const visible = new Set(cache.holdHeights(state.lineHeight + MIN_NOTE_DISTANCE * 2 / state.height, state.lineHeight + limit * 2 / state.height));
+      for (const note of cache.activeHolds(time, time)) visible.add(note);
+      for (const note of [...visible].sort((a, b) => cache.holdOrder.get(a)! - cache.holdOrder.get(b)!)) {
         this.lastVisitedNotes += 1;
         if (time >= note.endTime) continue;
         if (this.drawNote(context, note, state, time, this.visibleDistanceLimit(state, note.above))) this.recordDraw(note, state, time);
@@ -397,20 +394,19 @@ export class PgrRenderer {
     }
 
     for (const group of cache.groups) {
-      if (!group.notes.some((note) => note.kind === kind)) continue;
+      if (group.kind !== kind) continue;
       const limit = this.visibleDistanceLimit(state, group.above);
       let first = 0;
       let end = group.notes.length;
-      if (group.speed > 0) {
-        first = lowerBoundBy(group.notes, state.lineHeight, (note) => note.height);
-        end = upperBoundBy(group.notes, state.lineHeight + limit / (state.height / 2 * group.speed), (note) => note.height);
-      } else if (group.speed < 0) {
-        first = lowerBoundBy(group.notes, state.lineHeight + limit / (state.height / 2 * group.speed), (note) => note.height);
-        end = upperBoundBy(group.notes, state.lineHeight, (note) => note.height);
-      }
+      if (group.speed !== 0) {
+        const pixelsPerHeight = group.speed * state.height / 2;
+        const near = state.lineHeight + MIN_NOTE_DISTANCE / pixelsPerHeight;
+        const far = state.lineHeight + limit / pixelsPerHeight;
+        first = lowerBoundBy(group.notes, Math.min(near, far), (note) => note.height);
+        end = upperBoundBy(group.notes, Math.max(near, far), (note) => note.height);
+      } else first = upperBoundBy(group.notes, time, (note) => note.time);
       for (let index = first; index < end; index += 1) {
         const note = group.notes[index]!;
-        if (note.kind !== kind) continue;
         this.lastVisitedNotes += 1;
         if (time >= note.time) continue;
         if (this.drawNote(context, note, state, time, limit)) this.recordDraw(note, state, time);
@@ -433,7 +429,7 @@ export class PgrRenderer {
     const multipleScale = isMulti ? style[note.kind].naturalWidth / this.noteAssets!.normal[note.kind].naturalWidth : 1;
     const noteWidth = scaledNoteWidth(state.width, this.settings.noteScale, multipleScale);
     const distance = (note.height - state.lineHeight) * note.speed * halfHeight;
-    if (note.kind !== 'hold' && (distance < -0.5 || distance > visibleLimit)) return false;
+    if (note.kind !== 'hold' && (distance < MIN_NOTE_DISTANCE || distance > visibleLimit)) return false;
     context.save();
     context.translate(state.x, state.y);
     context.rotate(Math.atan2(state.sin, state.cos));
@@ -443,7 +439,7 @@ export class PgrRenderer {
     if (note.kind === 'hold') {
       const bottom = time >= note.time ? 0 : (note.height - state.lineHeight) * halfHeight;
       const top = (note.endHeight - state.lineHeight) * halfHeight;
-      if (top < -0.5 || bottom > visibleLimit || top <= bottom) {
+      if (top < MIN_NOTE_DISTANCE || bottom > visibleLimit || top <= bottom) {
         context.restore();
         return false;
       }
@@ -502,13 +498,14 @@ export class PgrRenderer {
     );
   }
 
-  private drawHitEffects(context: CanvasRenderingContext2D, time: number, width: number, height: number): void {
+  private drawHitEffects(context: StageContext, time: number, width: number, height: number): void {
     this.lastRenderedEffects = 0;
-    if (!this.hitFxTexture || !this.hitEvents.length) return;
+    const fx = this.noteAssets?.fx;
+    if (!fx || !this.hitEvents.length) return;
     const first = lowerBoundBy(this.hitEvents, time - HIT_FX_DURATION, (effect) => effect.time);
     const end = upperBoundBy(this.hitEvents, time, (effect) => effect.time);
-    const frameWidth = this.hitFxTexture.width / HIT_FX_COLUMNS;
-    const frameHeight = this.hitFxTexture.height / HIT_FX_ROWS;
+    const frameWidth = fx.naturalWidth / HIT_FX_COLUMNS;
+    const frameHeight = fx.naturalHeight / HIT_FX_ROWS;
     const size = scaledHitEffectDiameter(width, this.settings.noteScale);
     this.lastHitEffectDiameter = size;
     for (let index = first; index < end; index += 1) {
@@ -524,8 +521,8 @@ export class PgrRenderer {
       const alpha = progress < 0.5 ? 1 - progress * 0.6 : 1.4 * (1 - progress);
       context.save();
       context.globalAlpha = clamp(alpha, 0, 1);
-      context.drawImage(
-        this.hitFxTexture,
+      context.drawMask(
+        fx, '#ffec9fe1',
         frame % HIT_FX_COLUMNS * frameWidth,
         Math.floor(frame / HIT_FX_COLUMNS) * frameHeight,
         frameWidth,

@@ -1,10 +1,7 @@
 import { memo } from 'react';
-import { View } from 'react-native';
-import { FavoriteSongRow } from '@/components/game-content/FavoriteSongRow';
-import { GameSongCover } from '@/components/game-content/GameSongCover';
+import { GameSongRow, SongRowBadges } from '@/components/game-content/GameSongRow';
 import { SimaiDifficultyBadge } from '@/components/game-content/SimaiDifficultyBadge';
 import { SimaiScoreCard } from '@/components/game-content/SimaiScoreCard';
-import { SIMAI_CATALOG_LIST_STYLES as catalogStyles } from '@/components/game-content/SimaiListStyles';
 import { DIFFICULTY_VISUAL, type DifficultyBadgeDisplay } from '@/components/ScoreVisuals';
 import { BLUE_DIFFICULTY_COLORS } from '@/domain/difficulty-theme';
 import { MAJDATA_DIFFICULTIES, majdataAsset, majdataRank, type MajdataSong } from '@/domain/majdata';
@@ -58,12 +55,10 @@ export const MajdataSongRow = memo(function MajdataSongRow({ song, favorite, fav
   favoritePending: boolean;
   onFavoriteChange: (songId: string, favorite: boolean) => void;
 }) {
-  return <FavoriteSongRow presentation={presentMajdataSong(song)}
+  return <GameSongRow accessibilityLabel={null} presentation={presentMajdataSong(song)}
     subtitleContent={song.artist || '曲师未知'}
-    cover={<GameSongCover source={majdataAsset(song.id, 'image')} gameId="majdata-net" />}
-    badges={<View accessibilityLabel="谱面难度" style={catalogStyles.chartGroups}>
-      <View style={catalogStyles.chartGroup}>{song.levels.map((value, level) => value?.trim()
-        ? <MajdataDifficultyBadge key={level} level={level} value={value} display="constant" compact /> : null)}</View>
-    </View>}
+    coverSource={majdataAsset(song.id, 'image')}
+    badges={<SongRowBadges accessibilityLabel="谱面难度">{song.levels.map((value, level) => value?.trim()
+        ? <MajdataDifficultyBadge key={level} level={level} value={value} display="constant" compact /> : null)}</SongRowBadges>}
     favorite={favorite} favoritePending={favoritePending} onFavoriteChange={onFavoriteChange} />;
 });

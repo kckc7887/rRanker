@@ -8,7 +8,7 @@ import { parsePgrBlocks, type PgrBlock } from './pgr-blocks';
 
 export const PGR_HEIGHT_RATIO = 0.83175;
 
-const NOTE_KINDS: Readonly<Record<number, PgrNoteKind>> = Object.freeze({ 1: 'tap', 2: 'drag', 3: 'hold', 4: 'flick' });
+const NOTE_KINDS: Readonly<Record<number, PgrNoteKind>> = /* @__PURE__ */ Object.freeze({ 1: 'tap', 2: 'drag', 3: 'hold', 4: 'flick' });
 
 export type PgrNoteKind = 'tap' | 'drag' | 'hold' | 'flick';
 

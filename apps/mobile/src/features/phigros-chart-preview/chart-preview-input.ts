@@ -1,3 +1,4 @@
+import { chartJsonFormat } from '../chart-preview-shared/chart-format';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { bytesToBase64 } from '@/utils/crypto-subset';
 import { phigrosChartPreviewLevelLabel, type PhigrosChartPreviewResourceRead } from '@/domain/phigros-chart-preview';
@@ -23,6 +24,9 @@ export async function buildPhigrosChartPreviewInput(
     ...(input.variantIndex === undefined ? {} : { variantIndex: input.variantIndex }),
   }, signal, read);
   const { bundle } = resources;
+  const chartText = new TextDecoder('utf-8', { fatal: true }).decode(resources.chart);
+  const format = chartJsonFormat(JSON.parse(chartText));
+  if (!format) throw new Error('不支持的谱面格式');
   return {
     musicDataBase64: bytesToBase64(resources.music),
     config: {
@@ -36,7 +40,7 @@ export async function buildPhigrosChartPreviewInput(
         text: phigrosLevelColors(input.levelIndex).fg,
         identity: input.variantIndex ? `里谱 ${input.variantIndex}` : undefined,
       },
-      chartText: new TextDecoder('utf-8', { fatal: true }).decode(resources.chart),
+      chartText, format,
       illustrationUrl: `data:${bundle.illustration.contentType};base64,${bytesToBase64(resources.illustration)}`,
       settings,
     },

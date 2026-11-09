@@ -2,8 +2,6 @@ import { useMemo, useRef, useState } from 'react';
 import {
   Animated,
   PanResponder,
-  Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,15 +9,12 @@ import {
   View,
   type LayoutRectangle,
 } from 'react-native';
-import { GestureHandlerRootView, Pressable as GesturePressable } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppModal } from '@/components/AppModal';
+import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
+import { AppSheet } from '@/components/AppSheet';
 import { MAX_TAGS_PER_ITEM, normalizeTagName, normalizeTags } from '@/domain/user-library';
 import { useAppTheme } from '@/theme/app-theme';
 
 type TagCommitResult = { ok: true } | { ok: false; error: string };
-
-const SheetPressable = Platform.OS === 'android' ? Pressable : GesturePressable;
 
 export function TagEditor({
   tags,
@@ -49,8 +44,6 @@ export function TagEditor({
   readState?: { ready: boolean; error: boolean; retry: () => void };
 }) {
   const theme = useAppTheme();
-  const GestureRoot = Platform.OS === 'android' ? View : GestureHandlerRootView;
-  const TagPressable = Platform.OS === 'android' ? Pressable : GesturePressable;
   const [localInput, setLocalInput] = useState('');
   const input = draft ?? localInput;
   const inputRef = useRef(input);
@@ -94,39 +87,39 @@ export function TagEditor({
   };
 
   return <>
-    <GestureRoot testID={testID} style={styles.wrap}>
+    <DetailGestureRoot testID={testID} style={styles.wrap}>
       <Text style={[styles.label, { color: theme.textSecondary }]}>本地标签</Text>
       <View style={styles.tags}>
-        {tags.map((tag) => <TagPressable key={tag} disabled={blocked} accessibilityRole="button"
+        {tags.map((tag) => <DetailPressable key={tag} disabled={blocked} accessibilityRole="button"
           accessibilityLabel={`删除标签 ${tag}`} onPress={() => void commit(tags.filter((item) => item !== tag))}
           style={[styles.tag, { backgroundColor: theme.accentSoft }]}>
           <Text style={[styles.tagText, { color: theme.accent }]}>{tag} ×</Text>
-        </TagPressable>)}
+        </DetailPressable>)}
         {!tags.length && readState?.ready !== false ? <Text style={[styles.empty, { color: theme.textMuted }]}>暂无标签</Text> : null}
       </View>
       <View style={styles.inputRow}>
         <TextInput accessibilityLabel="新标签" editable={!blocked} placeholder="输入标签" placeholderTextColor={theme.textMuted}
           value={input} onChangeText={setInput} onSubmitEditing={() => void add()}
           style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-        <TagPressable accessibilityRole="button" accessibilityLabel="打开标签预设" disabled={blocked}
+        <DetailPressable accessibilityRole="button" accessibilityLabel="打开标签预设" disabled={blocked}
           onPress={() => setPickerOpen(true)} style={[styles.presetButton, { borderColor: theme.accent }]}>
           <Text style={[styles.presetText, { color: theme.accent }]}>预设</Text>
-        </TagPressable>
-        <TagPressable accessibilityRole="button" accessibilityLabel="添加标签" disabled={blocked}
+        </DetailPressable>
+        <DetailPressable accessibilityRole="button" accessibilityLabel="添加标签" disabled={blocked}
           onPress={() => void add()} style={[styles.add, { backgroundColor: theme.accent }]}>
           <Text style={[styles.addText, { color: theme.onAccent }]}>添加</Text>
-        </TagPressable>
+        </DetailPressable>
       </View>
       {readState?.ready === false ? <View style={styles.inputRow}>
         <Text style={[styles.empty, { color: readState.error ? theme.danger : theme.textMuted }]}>
           {readState.error ? '标签读取失败，请重试。' : '正在读取标签…'}
         </Text>
-        {readState.error ? <TagPressable onPress={readState.retry}>
+        {readState.error ? <DetailPressable onPress={readState.retry}>
           <Text style={{ color: theme.accent }}>重试</Text>
-        </TagPressable> : null}
+        </DetailPressable> : null}
       </View> : null}
       {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
-    </GestureRoot>
+    </DetailGestureRoot>
     {pickerVisible ? <TagPresetSheet visible tags={tags} presets={presets} historyTags={visibleHistory}
       presetsEditable={presetsEditable}
       onClose={() => setPickerOpen(false)} onSave={async (values) => {
@@ -156,7 +149,6 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
   onPresetsChange?: (values: string[]) => Promise<unknown>;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState<string[]>(tags);
   const selectedRef = useRef(selected);
   const [draftPresets, setDraftPresets] = useState<string[]>(presets);
@@ -220,95 +212,85 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
     setSaving(false);
   };
 
-  return <AppModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}
+  return <AppSheet visible={visible} onRequestClose={onClose} testID="tag-preset-sheet" title="标签预设"
     onShow={() => {
       selectedRef.current = tags; setSelected(tags); setDraftPresets(presets); setMessage(''); setSaving(false); setTimeout(capturePresetBounds, 0);
-    }}>
-    <View testID="tag-preset-sheet" style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}>
-      <View testID="tag-preset-sheet-grabber" style={[styles.sheetGrabber, { backgroundColor: theme.border }]} />
-      <View style={styles.sheetHeader}>
-        <Text style={[styles.sheetTitle, { color: theme.text }]}>标签预设</Text>
-        <SheetPressable accessibilityRole="button" accessibilityLabel="完成标签选择" hitSlop={12}
-          accessibilityState={{ disabled: saving || presetsSaving }} disabled={saving || presetsSaving} onPress={() => void saveSelection()}
-          style={({ pressed }) => [styles.sheetDoneHit, pressed && styles.softPressed]}>
-          <Text style={[styles.sheetDone, { color: theme.accent }]}>{saving ? '保存中…' : '完成'}</Text>
-        </SheetPressable>
+    }}
+    rightAction={{ label: saving ? '保存中…' : '完成', accessibilityLabel: '完成标签选择', disabled: saving || presetsSaving, onPress: () => void saveSelection() }}>
+    <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled" pointerEvents={saving ? 'none' : 'auto'}
+      showsVerticalScrollIndicator={false}>
+      <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>预设标签</Text>
+      <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
+        {presetsEditable ? '点按选择；可删除或用箭头调整顺序' : '点按选择'}
+      </Text>
+      <View ref={presetZone} onLayout={() => setTimeout(capturePresetBounds, 0)}
+        testID="tag-preset-list" style={[styles.presetList, { backgroundColor: theme.surface }]}>
+        {draftPresets.map((tag, index) => <View key={normalizeTagName(tag).key}
+          style={[styles.presetRow, index > 0 && [styles.presetRowBorder, { borderTopColor: theme.border }]]}>
+          <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)}
+            layout="row" onPress={() => toggle(tag)} />
+          {presetsEditable ? <>
+            <DetailPressable accessibilityRole="button" accessibilityLabel={`上移预设 ${tag}`} disabled={presetsSaving || index === 0}
+              onPress={() => {
+              const next = [...draftPresets]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; void persistPresets(next);
+              }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                index === 0 && styles.disabled, pressed && index > 0 && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, { color: index === 0 ? theme.textMuted : theme.accent }]}>↑</Text>
+            </DetailPressable>
+            <DetailPressable accessibilityRole="button" accessibilityLabel={`下移预设 ${tag}`}
+              disabled={presetsSaving || index === draftPresets.length - 1} onPress={() => {
+              const next = [...draftPresets]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; void persistPresets(next);
+              }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                index === draftPresets.length - 1 && styles.disabled,
+                pressed && index < draftPresets.length - 1 && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, {
+                color: index === draftPresets.length - 1 ? theme.textMuted : theme.accent,
+              }]}>↓</Text>
+            </DetailPressable>
+            <DetailPressable accessibilityRole="button" accessibilityLabel={`删除预设 ${tag}`} disabled={presetsSaving}
+              onPress={() => void persistPresets(draftPresets.filter((item) => item !== tag))}
+              style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                pressed && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, { color: theme.danger }]}>×</Text>
+            </DetailPressable>
+          </> : null}
+        </View>)}
+        {!draftPresets.length ? <Text style={[styles.presetEmptyText, { color: theme.textMuted }]}>
+          {presetsEditable ? '暂无预设，可从下方历史拖入' : '当前谱面暂无可用预设'}
+        </Text> : null}
       </View>
-      <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled" pointerEvents={saving ? 'none' : 'auto'}
-        showsVerticalScrollIndicator={false}>
-        <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>预设标签</Text>
-        <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
-          {presetsEditable ? '点按选择；可删除或用箭头调整顺序' : '点按选择'}
-        </Text>
-        <View ref={presetZone} onLayout={() => setTimeout(capturePresetBounds, 0)}
-          testID="tag-preset-list" style={[styles.presetList, { backgroundColor: theme.surface }]}>
-          {draftPresets.map((tag, index) => <View key={normalizeTagName(tag).key}
-            style={[styles.presetRow, index > 0 && [styles.presetRowBorder, { borderTopColor: theme.border }]]}>
-            <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)}
-              layout="row" onPress={() => toggle(tag)} />
-            {presetsEditable ? <>
-              <SheetPressable accessibilityRole="button" accessibilityLabel={`上移预设 ${tag}`} disabled={presetsSaving || index === 0}
-                onPress={() => {
-                const next = [...draftPresets]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; void persistPresets(next);
-                }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
-                  index === 0 && styles.disabled, pressed && index > 0 && styles.softPressed]}>
-                <Text style={[styles.iconButtonText, { color: index === 0 ? theme.textMuted : theme.accent }]}>↑</Text>
-              </SheetPressable>
-              <SheetPressable accessibilityRole="button" accessibilityLabel={`下移预设 ${tag}`}
-                disabled={presetsSaving || index === draftPresets.length - 1} onPress={() => {
-                const next = [...draftPresets]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; void persistPresets(next);
-                }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
-                  index === draftPresets.length - 1 && styles.disabled,
-                  pressed && index < draftPresets.length - 1 && styles.softPressed]}>
-                <Text style={[styles.iconButtonText, {
-                  color: index === draftPresets.length - 1 ? theme.textMuted : theme.accent,
-                }]}>↓</Text>
-              </SheetPressable>
-              <SheetPressable accessibilityRole="button" accessibilityLabel={`删除预设 ${tag}`} disabled={presetsSaving}
-                onPress={() => void persistPresets(draftPresets.filter((item) => item !== tag))}
-                style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
-                  pressed && styles.softPressed]}>
-                <Text style={[styles.iconButtonText, { color: theme.danger }]}>×</Text>
-              </SheetPressable>
-            </> : null}
-          </View>)}
-          {!draftPresets.length ? <Text style={[styles.presetEmptyText, { color: theme.textMuted }]}>
-            {presetsEditable ? '暂无预设，可从下方历史拖入' : '当前谱面暂无可用预设'}
-          </Text> : null}
-        </View>
-        {presetsEditable ? <View style={styles.inputRow}>
-          <TextInput accessibilityLabel="新预设标签" editable={!saving} placeholder="新增预设" placeholderTextColor={theme.textMuted}
-            value={presetInput} onChangeText={setPresetInput} onSubmitEditing={() => void addPreset(presetInput, true)}
-            style={[styles.input, styles.sheetInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          <SheetPressable accessibilityRole="button" accessibilityLabel="添加预设标签" disabled={presetsSaving}
-            onPress={() => void addPreset(presetInput, true)}
-            style={({ pressed }) => [styles.sheetAdd, { backgroundColor: theme.accent }, pressed && styles.softPressed]}>
-            <Text style={[styles.sheetAddText, { color: theme.onAccent }]}>添加</Text>
-          </SheetPressable>
+      {presetsEditable ? <View style={styles.inputRow}>
+        <TextInput accessibilityLabel="新预设标签" editable={!saving} placeholder="新增预设" placeholderTextColor={theme.textMuted}
+          value={presetInput} onChangeText={setPresetInput} onSubmitEditing={() => void addPreset(presetInput, true)}
+          style={[styles.input, styles.sheetInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+        <DetailPressable accessibilityRole="button" accessibilityLabel="添加预设标签" disabled={presetsSaving}
+          onPress={() => void addPreset(presetInput, true)}
+          style={({ pressed }) => [styles.sheetAdd, { backgroundColor: theme.accent }, pressed && styles.softPressed]}>
+          <Text style={[styles.sheetAddText, { color: theme.onAccent }]}>添加</Text>
+        </DetailPressable>
+      </View> : null}
+      <Text style={[styles.sectionLabel, styles.historyLabel, { color: theme.textMuted }]}>历史标签</Text>
+      <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
+        {presetsEditable ? '点按选择；拖到上方可复制为预设' : '点按选择'}
+      </Text>
+      <View style={styles.historyGrid}>
+        {historyTags.map((tag) => presetsEditable
+          ? <DraggableHistoryTag key={normalizeTagName(tag).key} tag={tag}
+              selected={selectedKeys.has(normalizeTagName(tag).key)} onPress={() => toggle(tag)}
+              onDrop={(pageY) => copyIfDropped(tag, pageY)} onCopy={() => void addPreset(tag)} />
+          : <View key={normalizeTagName(tag).key} style={[styles.historyItem, { backgroundColor: theme.surface }]}>
+              <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)}
+                onPress={() => toggle(tag)} />
+            </View>)}
+        {!historyTags.length ? <View style={[styles.historyEmpty, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.emptyCardText, { color: theme.textMuted }]}>暂无其他歌曲使用过的标签</Text>
         </View> : null}
-        <Text style={[styles.sectionLabel, styles.historyLabel, { color: theme.textMuted }]}>历史标签</Text>
-        <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
-          {presetsEditable ? '点按选择；拖到上方可复制为预设' : '点按选择'}
-        </Text>
-        <View style={styles.historyGrid}>
-          {historyTags.map((tag) => presetsEditable
-            ? <DraggableHistoryTag key={normalizeTagName(tag).key} tag={tag}
-                selected={selectedKeys.has(normalizeTagName(tag).key)} onPress={() => toggle(tag)}
-                onDrop={(pageY) => copyIfDropped(tag, pageY)} onCopy={() => void addPreset(tag)} />
-            : <View key={normalizeTagName(tag).key} style={[styles.historyItem, { backgroundColor: theme.surface }]}>
-                <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)}
-                  onPress={() => toggle(tag)} />
-              </View>)}
-          {!historyTags.length ? <View style={[styles.historyEmpty, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.emptyCardText, { color: theme.textMuted }]}>暂无其他歌曲使用过的标签</Text>
-          </View> : null}
-        </View>
-        {message ? <View testID="tag-preset-message" style={[styles.messageCard, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.messageText, { color: theme.danger }]}>{message}</Text>
-        </View> : null}
-      </ScrollView>
-    </View>
-  </AppModal>;
+      </View>
+      {message ? <View testID="tag-preset-message" style={[styles.messageCard, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.messageText, { color: theme.danger }]}>{message}</Text>
+      </View> : null}
+    </ScrollView>
+  </AppSheet>;
 }
 
 function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
@@ -318,7 +300,7 @@ function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
   onPress: () => void;
 }) {
   const theme = useAppTheme();
-  return <SheetPressable accessibilityRole="checkbox" accessibilityLabel={`选择标签 ${tag}`} accessibilityState={{ checked: selected }}
+  return <DetailPressable accessibilityRole="checkbox" accessibilityLabel={`选择标签 ${tag}`} accessibilityState={{ checked: selected }}
     onPress={onPress} style={({ pressed }) => [
       layout === 'row' ? styles.rowSelection : styles.chipSelection,
       layout === 'chip' && {
@@ -333,7 +315,7 @@ function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
     </View>
     <Text style={[layout === 'row' ? styles.rowSelectionText : styles.chipSelectionText,
       { color: selected ? theme.accent : theme.textSecondary }]}>{tag}</Text>
-  </SheetPressable>;
+  </DetailPressable>;
 }
 
 function DraggableHistoryTag({ tag, selected, onPress, onDrop, onCopy }: {
@@ -354,10 +336,10 @@ function DraggableHistoryTag({ tag, selected, onPress, onDrop, onCopy }: {
     <Animated.View {...pan.panHandlers} style={{ transform: offset.getTranslateTransform(), zIndex: 10 }}>
       <SelectableTag tag={tag} selected={selected} onPress={onPress} />
     </Animated.View>
-    <SheetPressable accessibilityRole="button" accessibilityLabel={`复制到预设 ${tag}`} onPress={onCopy}
+    <DetailPressable accessibilityRole="button" accessibilityLabel={`复制到预设 ${tag}`} onPress={onCopy}
       style={({ pressed }) => [styles.copyButton, pressed && styles.softPressed]}>
       <Text style={[styles.copyText, { color: theme.accent }]}>复制到预设</Text>
-    </SheetPressable>
+    </DetailPressable>
   </View>;
 }
 
@@ -369,25 +351,6 @@ const styles = StyleSheet.create({
   add: { borderRadius: 8, paddingHorizontal: 13, justifyContent: 'center' }, addText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
   presetButton: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, justifyContent: 'center' }, presetText: { fontWeight: '700', fontSize: 12 },
   error: { fontSize: 11 },
-  sheet: { flex: 1 },
-  sheetGrabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 5,
-    borderRadius: 3,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  sheetTitle: { fontSize: 18, fontWeight: '700' },
-  sheetDoneHit: { paddingVertical: 4, paddingHorizontal: 4 },
-  sheetDone: { fontSize: 16, fontWeight: '600' },
   softPressed: { opacity: 0.7 },
   disabled: { opacity: 0.55 },
   sheetContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },

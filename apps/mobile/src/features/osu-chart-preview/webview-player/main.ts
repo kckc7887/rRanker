@@ -1,3 +1,4 @@
+import { bindTimelineDrag } from '../../chart-preview-shared/webview-player/frame-scheduler';
 import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
 import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
@@ -8,7 +9,7 @@ import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-p
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { md5 } from './engine';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen, setPreviewPlayButton } from '../../chart-preview-shared/webview-player/controls';
 import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import {
   applyManiaScrollSpeed, destroyPlayback, pausePlayback, playFrom, presentationTime,
@@ -43,12 +44,9 @@ let settings = normalizeOsuChartPreviewSettings({});
 let handle: PlaybackHandle | null = null;
 let disposed = false;
 const events = new PlayerEventScope(() => disposed);
-let dragging = false;
-let wasPlayingBeforeDrag = false;
 let fullscreen = false;
 let locked = false;
 let controlsVisible = true;
-let uiFrame = 0;
 let lastUiFrame = -Infinity;
 
 function post(type: string, values: Record<string, unknown> = {}): void {
@@ -69,34 +67,33 @@ function syncTransport(): void {
   const playing = handle.session.playing;
   const position = presentationTime(handle.session);
   const pct = Math.min(100, Math.max(0, position / handle.durationMs * 100));
-  element('play-icon').innerHTML = playing
-    ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>' : '<path d="M8 5v14l11-7z"/>';
-  playButton.setAttribute('aria-label', playing ? '暂停' : '播放');
-  element('time-label').textContent = `${formatClock(position)} / ${formatClock(handle.durationMs)}`;
+  setPreviewPlayButton(playButton, playing);
+  const timeLabel = element('time-label');
+  const label = `${formatClock(position)} / ${formatClock(handle.durationMs)}`;
+  if (timeLabel.textContent !== label) timeLabel.textContent = label;
   timelineView.updateProgress(pct, formatClock(position));
   timeline.setAttribute('aria-valuenow', String(Math.round(position)));
-  timeline.setAttribute('aria-valuetext', `${formatClock(position)} / ${formatClock(handle.durationMs)}`);
+  timeline.setAttribute('aria-valuetext', label);
   if (handle.session.ended) status('播放结束');
 }
-function tick(time: number): void {
-  uiFrame = 0;
+function updateTransport(): void {
+  const time = performance.now();
   if (disposed) return;
   if (time - lastUiFrame >= 100 || !handle?.session.playing) { syncTransport(); lastUiFrame = time; }
-  if (handle?.session.playing) uiFrame = requestAnimationFrame(tick);
 }
+let timelineTimes: number[] | undefined;
 function buildTimeline(): void {
   if (disposed || !handle) return;
   const beatmap = handle.session.beatmap;
   const start = handle.session.range.startMs;
   timelineView.build(handle.durationMs, [{
-    times: [...beatmap.hitObjects, ...beatmap.maniaHolds].map(note => note.time - start),
+    times: timelineTimes ??= [...beatmap.hitObjects, ...beatmap.maniaHolds].map(note => note.time - start),
   }], heatTimeLabels(handle.durationMs, formatClock));
   syncTransport();
 }
 const timelineObserver = new ResizeObserver(buildTimeline);
 timelineObserver.observe(timeline);
 events.own(() => timelineObserver.disconnect());
-events.own(() => cancelAnimationFrame(uiFrame));
 events.own(destroyPlayback);
 
 function syncControlsVisibility(): void {
@@ -186,8 +183,6 @@ async function runTransport(action: (session: PlaybackHandle['session']) => void
     status('播放暂时中断，请重试');
   }
   syncTransport();
-  cancelAnimationFrame(uiFrame);
-  if (current.session.playing) uiFrame = requestAnimationFrame(tick);
   showControls();
 }
 function togglePlay(): void {
@@ -196,7 +191,7 @@ function togglePlay(): void {
 /** 宿主暂停只停播并收起浮层，保留全屏。 */
 function pauseForLifecycle(): void {
   if (disposed) return;
-  dragging = false;
+  cancelDrag();
   for (const wheel of wheels) wheel.flush();
   closeActiveWheelPopup();
   if (handle) { pausePlayback(handle.session); status('已暂停'); syncTransport(); }
@@ -230,28 +225,12 @@ events.listen(lockButton, 'click', event => {
 });
 
 events.listen(element('app'), 'scroll', closeActiveWheelPopup, { passive: true });
-function seekFromPointer(event: PointerEvent): void {
-  const rect = timeline.getBoundingClientRect();
-  const percent = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(1, rect.width)));
-  void runTransport(session => seekPlayback(session, percent * session.range.durationMs, false));
-}
-events.listen(timeline, 'pointerdown', event => {
-  if (!handle || locked) return;
-  event.preventDefault();
-  event.stopPropagation();
-  dragging = true;
-  wasPlayingBeforeDrag = handle.session.playing;
-  pausePlayback(handle.session);
-  seekFromPointer(event);
+const cancelDrag = bindTimelineDrag(events, [timeline], {
+  enabled: () => !!handle && !locked, playing: () => !!handle?.session.playing,
+  pause: () => handle?.session.pause(),
+  preview: fraction => handle?.session.audioSync.playback.preview(fraction * handle.durationMs / 1000),
+  resume: () => void runTransport(current => current.seek(current.currentTimeMs, true)),
 });
-events.listen(document, 'pointermove', event => { if (dragging) seekFromPointer(event); });
-events.listen(document, 'pointerup', () => {
-  if (!dragging) return;
-  dragging = false;
-  if (wasPlayingBeforeDrag) void runTransport(session => playFrom(session, presentationTime(session)));
-  else showControls();
-});
-events.listen(document, 'pointercancel', () => { dragging = false; syncTransport(); showControls(); });
 events.listen(window, 'resize', () => { closeActiveWheelPopup(); buildTimeline(); });
 events.listen(window, 'keydown', event => {
   if (event.code === 'Escape' && fullscreen) { event.preventDefault(); setFullscreen(false); return; }
@@ -288,7 +267,7 @@ async function initialize(): Promise<void> {
   const config = window.__OSU_CHART_PREVIEW_CONFIG__;
   if (!config) throw new Error('missing-config');
   document.documentElement.dataset.theme = config.theme;
-  events.own(installPreviewControls({ sections: ['画面设置', '辅助选项'] }));
+  events.own(installPreviewControls());
   settings = normalizeOsuChartPreviewSettings(config.settings);
   post('progress', { value: 0.05, label: '正在准备播放器…' });
   const resources = new Map<string, PreviewResource>();
@@ -297,25 +276,29 @@ async function initialize(): Promise<void> {
     else if (file.uri) resources.set(file.path, { uri: file.uri });
   }
   config.files = [];
+  const audioFiles = new Map<string, Uint8Array>();
   const audio = window.__OSU_PREVIEW_AUDIO__ ?? {};
   for (const path of Object.keys(audio)) {
     const raw = atob(audio[path]);
     delete audio[path];
     const bytes = new Uint8Array(raw.length);
     for (let index = 0; index < raw.length; index++) bytes[index] = raw.charCodeAt(index);
-    resources.set(path, bytes);
+    audioFiles.set(path, bytes);
   }
   delete window.__OSU_PREVIEW_AUDIO__;
   const bytes = resources.get(config.chartPath);
   if (!(bytes instanceof Uint8Array)) throw new Error('missing-chart');
+  resources.delete(config.chartPath);
   post('progress', { value: 0.2, label: '正在准备音画…' });
-  const loaded = await startPlayback(canvas, resources, {
+  const loaded = await startPlayback(canvas, { visuals: resources, audio: audioFiles }, {
     path: config.chartPath, bytes, hash: md5(bytes),
   }, warn, { settings, maniaSkin: settings.maniaSkin, maniaScrollSpeed: settings.maniaScrollSpeed });
   resources.clear();
+  audioFiles.clear();
   delete window.__OSU_CHART_PREVIEW_CONFIG__;
   if (disposed) { loaded.session.destroy(); return; }
   handle = loaded;
+  loaded.session.onTransportFrame = updateTransport;
   const beatmap = loaded.session.beatmap;
   const mode = beatmap.mode;
   const labels = ['osu!standard', 'osu!taiko', 'osu!catch', 'osu!mania'];
@@ -338,11 +321,11 @@ async function initialize(): Promise<void> {
   timeline.setAttribute('aria-disabled', 'false');
   timeline.setAttribute('aria-valuemax', String(loaded.durationMs));
   const loopSession = handle.session;
-  const loopDuration = handle.durationMs;
+  const loopDuration = handle.durationMs / 1000;
   bindPlaybackLoop(events, {
-    loop: loopSession.loop, position: () => loopSession.currentTimeMs,
+    loop: loopSession.loop, position: () => loopSession.currentTimeMs / 1000,
     percent: position => loopDuration > 0 ? position / loopDuration * 100 : 0,
-    format: position => (position / 1000).toFixed(2) + 's',
+    format: position => position.toFixed(2) + 's',
     update: (a, b) => timelineView.updateLoop(a, b),
   });
   buildTimeline();

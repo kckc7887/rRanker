@@ -42,12 +42,13 @@ const tailFixtures = {
 async function seekToMs(page, chartMs, totalMs) {
  await page.locator('#timeline-host').evaluate((element, percent) => {
   const rect = element.getBoundingClientRect();
-  element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: rect.left + rect.width * percent / 100, clientY: rect.top + rect.height / 2 }));
-  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  const point = { bubbles: true, clientX: rect.left + rect.width * percent / 100, clientY: rect.top + rect.height / 2 };
+  element.dispatchEvent(new PointerEvent('pointerdown', point));
+  document.dispatchEvent(new PointerEvent('pointerup', point));
  }, chartMs / totalMs * 100);
 }
 async function chartPositionMs(page, totalMs) {
- return page.locator('#timeline-playhead').evaluate((element, duration) => parseFloat(element.style.left) / 100 * duration, totalMs);
+ return page.locator('#timeline-host').evaluate((element, duration) => Number(element.getAttribute('aria-valuenow')) / 100 * duration, totalMs);
 }
 async function checkTailPlayback(page, mode, fixture) {
  const { totalMs, musicSeconds, endLabel } = fixture;
@@ -55,7 +56,7 @@ async function checkTailPlayback(page, mode, fixture) {
  if (mode === 'audio-tail') {
   await seekToMs(page, 157500, totalMs);
   await page.locator('#play').click();
-  await page.waitForFunction(duration => parseFloat(document.querySelector('#timeline-playhead').style.left) / 100 * duration > 158300, totalMs, { timeout: 3000 });
+  await page.waitForFunction(duration => Number(document.querySelector('#timeline-host').getAttribute('aria-valuenow')) / 100 * duration > 158300, totalMs, { timeout: 3000 });
   assert.equal(await page.locator('#play').getAttribute('aria-label'), '暂停', 'the 161 s song must still play after the 156 s chart tail');
   assert.equal(await page.evaluate(() => window.sources.some(source => source.duration === 161 && source.started && !source.stopped && !source.ended)), true);
   await page.locator('#play').click();
@@ -77,7 +78,7 @@ async function checkTailPlayback(page, mode, fixture) {
   await page.evaluate(duration => {
    window.tailFrames = [];
    const record = timestamp => {
-    const percent = parseFloat(document.querySelector('#timeline-playhead').style.left);
+    const percent = Number(document.querySelector('#timeline-host').getAttribute('aria-valuenow'));
     window.tailFrames.push({ timestamp, chartMs: percent / 100 * duration });
     if (window.tailFrames.length < 180) requestAnimationFrame(record);
    };
@@ -99,17 +100,17 @@ async function checkTailPlayback(page, mode, fixture) {
   }
   const transitionStart = transitionFrames[0], transitionEnd = transitionFrames.at(-1);
   assert.ok(Math.abs((transitionEnd.chartMs - transitionStart.chartMs) - (transitionEnd.timestamp - transitionStart.timestamp)) < 120, 'clock must keep advancing through audio completion');
-  const speedSwitchStart = await page.evaluate(duration => ({ timestamp: performance.now(), chartMs: parseFloat(document.querySelector('#timeline-playhead').style.left) / 100 * duration }), totalMs);
+  const speedSwitchStart = await page.evaluate(duration => ({ timestamp: performance.now(), chartMs: Number(document.querySelector('#timeline-host').getAttribute('aria-valuenow')) / 100 * duration }), totalMs);
   await page.locator('#speed-trigger').focus();
   for (let step = 0; step < 5; step++) await page.locator('#speed-trigger').press('ArrowRight');
   await page.waitForFunction(() => document.querySelector('#speed-val').textContent === '1.5');
   await page.locator('#speed-trigger').click();
-  const speedStart = await page.evaluate(duration => ({ timestamp: performance.now(), chartMs: parseFloat(document.querySelector('#timeline-playhead').style.left) / 100 * duration }), totalMs);
+  const speedStart = await page.evaluate(duration => ({ timestamp: performance.now(), chartMs: Number(document.querySelector('#timeline-host').getAttribute('aria-valuenow')) / 100 * duration }), totalMs);
   const switchElapsed = speedStart.timestamp - speedSwitchStart.timestamp;
   const switchAdvanced = speedStart.chartMs - speedSwitchStart.chartMs;
   assert.ok(switchAdvanced >= switchElapsed - 120 && switchAdvanced <= switchElapsed * 1.5 + 120, 'changing the playback rate must preserve the current position');
   await page.waitForTimeout(250);
-  const speedEnd = await page.evaluate(duration => ({ timestamp: performance.now(), chartMs: parseFloat(document.querySelector('#timeline-playhead').style.left) / 100 * duration }), totalMs);
+  const speedEnd = await page.evaluate(duration => ({ timestamp: performance.now(), chartMs: Number(document.querySelector('#timeline-host').getAttribute('aria-valuenow')) / 100 * duration }), totalMs);
   assert.ok(Math.abs((speedEnd.chartMs - speedStart.chartMs) - (speedEnd.timestamp - speedStart.timestamp) * 1.5) < 120, 'speed changes after audio end must keep the same position and advance at the selected rate');
   assert.ok(speedEnd.chartMs > speedStart.chartMs && speedEnd.chartMs < totalMs - 1000, 'changing speed after audio end must not rewind or jump to the endpoint');
   await page.locator('#play').click();
@@ -140,7 +141,7 @@ async function checkTouchParameters(page) {
   const box = await target.boundingBox();
   assert.ok(box, `touch target must be visible: ${selector}`);
   const x = box.x + box.width / 2, y = box.y + box.height / 2;
-  const scrollBefore = await page.locator('#app').evaluate(element => element.scrollTop);
+  const scrollBefore = await page.locator('.preview-scroll').evaluate(element => element.scrollTop);
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, x, y }] });
   for (let step = 1; step <= 6; step++) {
    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: x + dx * step / 6, y: y + dy * step / 6 }] });
@@ -148,7 +149,7 @@ async function checkTouchParameters(page) {
   }
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(160);
-  return { scrollBefore, scrollAfter: await page.locator('#app').evaluate(element => element.scrollTop) };
+  return { scrollBefore, scrollAfter: await page.locator('.preview-scroll').evaluate(element => element.scrollTop) };
  };
  try {
   for (const part of ['.parameter-value', '.parameter-ticks', '.parameter-cursor']) {

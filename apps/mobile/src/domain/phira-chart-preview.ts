@@ -10,8 +10,6 @@ export type PhiraChartZipFileEntry = {
   dir: boolean;
 };
 
-export type PhiraChartFormat = 'pgr' | 'rpe' | 'pec' | 'pbc';
-
 export type PhiraChartZipMediaPlan = {
   chartEntryName: string | null;
   musicEntryName: string | null;
@@ -38,7 +36,7 @@ export function resolvePhiraChartZipMediaPlan(
 
   const chartEntryName = (chartName && files.some((entry) => entry.name === chartName)
     ? chartName
-    : files.find((entry) => CHART_EXTENSION_PATTERN.test(entry.name))?.name) ?? null;
+    : files.find((entry) => CHART_EXTENSION_PATTERN.test(entry.name) && !/(?:^|\/)extra\.json$/i.test(entry.name))?.name) ?? null;
   const musicEntryName = (musicName && files.some((entry) => entry.name === musicName)
     ? musicName
     : files.find((entry) => MUSIC_EXTENSION_PATTERN.test(entry.name))?.name) ?? null;
@@ -49,19 +47,7 @@ export function resolvePhiraChartZipMediaPlan(
   return { chartEntryName, musicEntryName, illustrationEntryName };
 }
 
-/** PEC/PBC 先按 format/扩展名判断；JSON 的 META 区分 RPE/PGR。 */
-export function classifyPhiraChartFormat(
-  entryName: string,
-  formatHint: string | null,
-  text: string,
-): PhiraChartFormat {
-  const hint = formatHint?.toLowerCase() ?? null;
-  if (hint === 'pbc' || /\.pbc$/i.test(entryName)) return 'pbc';
-  if (hint === 'pec' || /\.pec$/i.test(entryName) || !text.trimStart().startsWith('{')) return 'pec';
-  return hint === 'rpe' || text.includes('"META"') ? 'rpe' : 'pgr';
-}
-
-export const PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE = '暂不支持预览该谱面格式（仅支持 PGR 与 RPE）';
+export const PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE = '暂不支持预览该谱面格式';
 
 const TEXT_BUNDLE_EXTENSION_PATTERN = /\.(glsl|fs|json|ya?ml|txt)$/i;
 

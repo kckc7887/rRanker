@@ -24,184 +24,108 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import type { BeatmapData, HitCircle, Slider, Spinner } from '../../types/index';
+import type { BeatmapData, Slider } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
 import type { AutoFrame } from '../../utils/autoReplay';
-import { sampleSlider } from '../../renderer/SliderGeometry';
+import { sampleSlider, sliderPointAt, sliderProgress } from '../../renderer/SliderGeometry';
 import { slideDurationMs } from '../../utils/sliderDuration';
 
 /** 参考 ppy/osu OsuAutoGenerator；光标按堆叠后的 osu!px 坐标移动。 */
 
 type Point = { x: number; y: number };
+type Motion =
+  | { type: 'point'; time: number; at: Point }
+  | { type: 'move'; time: number; end: number; from: Point; to: Point; spin: boolean }
+  | { type: 'slide'; time: number; duration: number; slider: Slider; shift: number; flip: boolean }
+  | { type: 'spin'; time: number; end: number; angle: number };
+export type StdMotion = Motion[];
+export const SPIN_RATE = 0.05;
 
-const FRAME_STEP = 1000 / 60;
-const REACTION_TIME = 100;
-const KEY_UP_DELAY = 50;
-const MIN_FRAME_SEP_ALTERNATING = 266;
-const SPIN_RADIUS = 50;
-const SPIN_RATE = 0.05;
-const SPINNER_CENTER_X = 256;
-const SPINNER_CENTER_Y = 192;
-
-const LEFT = 0b0101;
-const RIGHT = 0b1010;
-
-function easeOut(t: number): number { return t * (2 - t); }
-function easeIn(t: number): number { return t * t; }
-
-type AutoCursor = { last: AutoFrame };
-function lastFrame(cursor: AutoCursor): AutoFrame { return cursor.last; }
-function emit(cursor: AutoCursor, frame: AutoFrame): AutoFrame { cursor.last = frame; return frame; }
-
-function sliderBallPos(
-  path: Point[], timeMs: number, startTime: number, slideDur: number, slides: number,
-): Point {
-  const slideF   = Math.max(0, Math.min(slides, (timeMs - startTime) / slideDur));
-  const slideIdx = Math.min(Math.floor(slideF), slides - 1);
-  let   frac     = slideF - slideIdx;
-  if (slideIdx % 2 === 1) frac = 1 - frac;
-  const idx = frac * (path.length - 1);
-  const lo  = Math.floor(idx);
-  const hi  = Math.min(lo + 1, path.length - 1);
-  const f   = idx - lo;
-  return {
-    x: path[lo]!.x + (path[hi]!.x - path[lo]!.x) * f,
-    y: path[lo]!.y + (path[hi]!.y - path[lo]!.y) * f,
-  };
+function position(motion: Motion, time: number): Point {
+  switch (motion.type) {
+    case 'point':
+      return motion.at;
+    case 'move': {
+      let t = Math.max(0, Math.min(1, (time - motion.time) / (motion.end - motion.time)));
+      t = motion.spin ? t * t : t * (2 - t);
+      return {
+        x: motion.from.x + (motion.to.x - motion.from.x) * t,
+        y: motion.from.y + (motion.to.y - motion.from.y) * t,
+      };
+    }
+    case 'spin': {
+      const angle = motion.angle + (Math.min(time, motion.end) - motion.time) * SPIN_RATE;
+      return { x: 256 + Math.cos(angle) * 50, y: 192 + Math.sin(angle) * 50 };
+    }
+    case 'slide': {
+      const progress = sliderProgress(time, motion.time, motion.duration, motion.slider.slides);
+      const { x, y } = sliderPointAt(sampleSlider(motion.slider), progress);
+      return { x: x - motion.shift, y: (motion.flip ? 384 - y : y) - motion.shift };
+    }
+  }
 }
 
-function* moveToObject(
-  frames: AutoCursor, targetX: number, targetY: number,
-  startTime: number, preemptMs: number, useIn: boolean, releaseTime: number,
+export function autoCursorAt(motions: StdMotion, time: number): Point {
+  let lo = 0,
+    hi = motions.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (motions[mid]!.time <= time) lo = mid + 1;
+    else hi = mid;
+  }
+  return position(motions[Math.max(0, lo - 1)]!, time);
+}
+
+export function* generateStdAutoReplay(
+  beatmap: BeatmapData,
+  modDiff: ModDifficulty,
+  motions: StdMotion,
 ): Generator<AutoFrame> {
-  const lf = lastFrame(frames);
-  const { x: startX, y: startY } = lf;
-  let holdKeys = lf.keys;
-
-  const waitTime = startTime - Math.max(0, preemptMs - REACTION_TIME);
-  let fromTime = lf.time;
-  if (waitTime > lf.time) {
-
-    if (holdKeys !== 0 && releaseTime <= waitTime) {
-      yield emit(frames, { time: releaseTime, x: startX, y: startY, keys: 0 });
-      holdKeys = 0;
+  const objects = beatmap.hitObjects;
+  if (!objects.length) return;
+  let at = { x: 256, y: 500 },
+    end = objects[0]!.time - 1500,
+    release = end,
+    bits = 0,
+    hand = 0;
+  motions.push({ type: 'point', time: end, at });
+  yield { time: end, ...at, keys: 0 };
+  for (let i = 0; i < objects.length; i++) {
+    const object = objects[i]!,
+      time = object.time;
+    const isSpin = object.type === 'spinner';
+    const angle = Math.atan2(at.y - 192, at.x - 256);
+    const shift = !isSpin ? (object.stackHeight * modDiff.circleRadiusPx) / 10 : 0;
+    const head = isSpin
+      ? { x: 256 + Math.cos(angle) * 50, y: 192 + Math.sin(angle) * 50 }
+      : { x: object.x - shift, y: (modDiff.isHR ? 384 - object.y : object.y) - shift };
+    const from = Math.max(end, time - Math.max(0, modDiff.preemptMs - 100));
+    if (from < time) motions.push({ type: 'move', time: from, end: time, from: at, to: head, spin: isSpin });
+    if (bits && release < time) {
+      const point = from < time && release >= from ? position(motions[motions.length - 1]!, release) : at;
+      yield { time: release, ...point, keys: 0 };
+      bits = 0;
     }
-    yield emit(frames, { time: waitTime, x: startX, y: startY, keys: holdKeys });
-    fromTime = waitTime;
-  }
-
-  const dur = startTime - fromTime;
-  if (dur <= 0) return;
-  const ease = useIn ? easeIn : easeOut;
-  for (let t = fromTime + FRAME_STEP; t < startTime; t += FRAME_STEP) {
-    if (holdKeys !== 0 && t >= releaseTime) holdKeys = 0;
-    const e = ease((t - fromTime) / dur);
-    yield emit(frames, {
-      time: Math.trunc(t),
-      x: startX + (targetX - startX) * e,
-      y: startY + (targetY - startY) * e,
-      keys: holdKeys,
-    });
-  }
-}
-
-function* followSlider(
-  frames: AutoCursor, beatmap: BeatmapData, slider: Slider, bits: number, radius: number,
-  fy: (y: number) => number,
-): Generator<AutoFrame, number> {
-  const path     = sampleSlider(slider);
-  const slideDur = slideDurationMs(beatmap, slider);
-  const endTime  = slider.time + slideDur * slider.slides;
-  const shift    = slider.stackHeight * radius / 10;
-
-  for (let t = slider.time + FRAME_STEP; t < endTime; t += FRAME_STEP) {
-    const p = sliderBallPos(path, t, slider.time, slideDur, slider.slides);
-    yield emit(frames, { time: Math.trunc(t), x: p.x - shift, y: fy(p.y) - shift, keys: bits });
-  }
-  const pEnd = sliderBallPos(path, endTime, slider.time, slideDur, slider.slides);
-  yield emit(frames, { time: endTime, x: pEnd.x - shift, y: fy(pEnd.y) - shift, keys: bits });
-  return endTime + KEY_UP_DELAY;
-}
-
-function* spinSpinner(frames: AutoCursor, spinner: Spinner, bits: number, startAngle: number): Generator<AutoFrame, number> {
-  let angle = startAngle;
-  let prevT = spinner.time;
-  const at = (a: number): Point => ({
-    x: SPINNER_CENTER_X + Math.cos(a) * SPIN_RADIUS,
-    y: SPINNER_CENTER_Y + Math.sin(a) * SPIN_RADIUS,
-  });
-
-  for (let t = spinner.time + FRAME_STEP; t < spinner.endTime; t += FRAME_STEP) {
-    angle += (t - prevT) * SPIN_RATE;
-    prevT = t;
-    const p = at(angle);
-    yield emit(frames, { time: Math.trunc(t), x: p.x, y: p.y, keys: bits });
-  }
-  angle += (spinner.endTime - prevT) * SPIN_RATE;
-  const pEnd = at(angle);
-  yield emit(frames, { time: spinner.endTime, x: pEnd.x, y: pEnd.y, keys: bits });
-  return spinner.endTime + KEY_UP_DELAY + 1;
-}
-
-export function* generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficulty): Generator<AutoFrame> {
-  const objs = beatmap.hitObjects;
-  if (objs.length === 0) return;
-
-  const radius = modDiff.circleRadiusPx;
-  /** HR 先翻转 y，再扣除原始坐标的 stacking 偏移。 */
-
-  const fy = modDiff.isHR ? (y: number) => 384 - y : (y: number) => y;
-
-  const frames: AutoCursor = { last: { time: objs[0]!.time - 1500, x: 256, y: 500, keys: 0 } };
-  yield frames.last;
-
-  let buttonIndex = 0;
-  let prevStartTime = -Infinity;
-
-  let releaseTime = -Infinity;
-
-  for (let i = 0; i < objs.length; i++) {
-    const obj = objs[i]!;
-    const startTime = obj.time;
-
-    if (i > 0 && startTime - prevStartTime < MIN_FRAME_SEP_ALTERNATING) buttonIndex++;
-    else buttonIndex = 0;
-    prevStartTime = startTime;
-
-    let targetX: number;
-    let targetY: number;
-    let spinnerStartAngle = 0;
-    const isSpinner = obj.type === 'spinner';
-    if (isSpinner) {
-
-      const lf = lastFrame(frames);
-      const dx = lf.x - SPINNER_CENTER_X;
-      const dy = lf.y - SPINNER_CENTER_Y;
-      spinnerStartAngle = dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx);
-      targetX = SPINNER_CENTER_X + Math.cos(spinnerStartAngle) * SPIN_RADIUS;
-      targetY = SPINNER_CENTER_Y + Math.sin(spinnerStartAngle) * SPIN_RADIUS;
+    hand = i && time - objects[i - 1]!.time < 266 ? hand + 1 : 0;
+    let next = hand % 2 ? 10 : 5;
+    if (bits & next) next = next === 10 ? 5 : 10;
+    bits = next;
+    yield { time, ...head, keys: bits };
+    let segment: Motion;
+    if (object.type === 'slider') {
+      const duration = slideDurationMs(beatmap, object);
+      segment = { type: 'slide', time, duration, slider: object, shift, flip: modDiff.isHR };
+      end = time + duration * object.slides;
+    } else if (object.type === 'spinner') {
+      segment = { type: 'spin', time, end: object.endTime, angle };
+      end = object.endTime;
     } else {
-      const o = obj as HitCircle | Slider;
-      const shift = o.stackHeight * radius / 10;
-      targetX = o.x - shift;
-      targetY = fy(o.y) - shift;
+      segment = { type: 'point', time, at: head };
+      end = time;
     }
-
-    yield* moveToObject(frames, targetX, targetY, startTime, modDiff.preemptMs, isSpinner, releaseTime);
-
-    let bits = buttonIndex % 2 === 0 ? LEFT : RIGHT;
-    if ((lastFrame(frames).keys & bits) !== 0) bits = bits === LEFT ? RIGHT : LEFT;
-    yield emit(frames, { time: startTime, x: targetX, y: targetY, keys: bits });
-
-    if (obj.type === 'circle') {
-      releaseTime = startTime + KEY_UP_DELAY;
-    } else if (obj.type === 'slider') {
-      releaseTime = yield* followSlider(frames, beatmap, obj, bits, radius, fy);
-    } else {
-      releaseTime = yield* spinSpinner(frames, obj, bits, spinnerStartAngle);
-    }
+    motions.push(segment);
+    at = position(segment, end);
+    release = end + (isSpin ? 51 : 50);
   }
-
-  const lf = lastFrame(frames);
-  yield emit(frames, { time: releaseTime, x: lf.x, y: lf.y, keys: 0 });
+  yield { time: release, ...at, keys: 0 };
 }

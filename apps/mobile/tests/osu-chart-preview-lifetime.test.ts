@@ -25,7 +25,7 @@ function message(type: string): void { window.dispatchEvent(new MessageEvent('me
 
 beforeEach(() => {
   vi.resetModules(); vi.clearAllMocks(); vi.useFakeTimers(); resizeCallbacks.length = 0;
-  const html = readFileSync(resolve(process.cwd(), 'src/features/osu-chart-preview/webview-player/index.html'), 'utf8');
+  const html = readFileSync(resolve(process.cwd(), 'assets/osu-chart-preview/index.html'), 'utf8');
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
   vi.stubGlobal('ResizeObserver', class {
     constructor(callback: ResizeObserverCallback) { resizeCallbacks.push(callback); }

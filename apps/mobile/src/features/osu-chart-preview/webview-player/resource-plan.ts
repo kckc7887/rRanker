@@ -51,12 +51,17 @@ export function selectPreviewResources(input: {
   const addAudio = (name: string, source = input.osuPath): void => { const path = lookup(name, source); if (path) audio.add(path); };
   if (beatmap.audioFilename) addAudio(beatmap.audioFilename);
   for (const sample of visuals.samples) addAudio(sample.file, '');
-  const indices = new Set([0, ...beatmap.timingPoints.map(point => point.sampleIndex)]);
-  for (const object of [...beatmap.hitObjects, ...beatmap.maniaHolds]) {
-    indices.add(object.hitSample.index);
-    if (object.hitSample.filename) {
-      for (const name of sampleLookupNames('normal', 1, 0, object.hitSample.filename, beatmap.mode)) addAudio(name);
+  const indices = new Set([0]);
+  for (const point of beatmap.timingPoints) indices.add(point.sampleIndex);
+  const customFiles = new Set<string>();
+  for (const objects of [beatmap.hitObjects, beatmap.maniaHolds]) {
+    for (const { hitSample } of objects) {
+      indices.add(hitSample.index);
+      if (hitSample.filename) customFiles.add(hitSample.filename);
     }
+  }
+  for (const file of customFiles) {
+    for (const name of sampleLookupNames('normal', 1, 0, file, beatmap.mode)) addAudio(name);
   }
 
   for (const index of indices) for (const bank of [1, 2, 3]) {

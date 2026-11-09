@@ -1,6 +1,7 @@
 /** TypeScript adaptation of MajdataViewX MajGeo, SlideCodeParser, SlideDataBuilder and
  * SlideTableNeo (GPL-3.0). Preserves path units, tangent convention and arrow alignment.
  * See scripts/maimai-reference/ViewX and THIRD_PARTY_NOTICES.md. */
+import { lowerBoundBy } from '../../../../chart-preview-shared/webview-player/sorted-search';
 import { AREA_LOOKUP, SLIDE_TABLE } from './slideTable.generated';
 import type { SlideBranch, SlideSegment } from '../../types';
 export type Pose = { x: number; y: number; angle: number; length: number };
@@ -221,22 +222,19 @@ export function joinGeometries(parts: readonly Geometry[]): Geometry {
   areas.push([arrows.length, arrows.length, lastArea[2], lastArea[3]]);
   return { ...last, length, arrows, areas, slideConst: last.slideConst * last.length / length };
 }
+function arrowAtDistance(geometry: Geometry, distance: number): number {
+  return Math.max(1, Math.min(geometry.arrows.length - 1, lowerBoundBy(geometry.arrows, distance, pose => pose.length)));
+}
 export function consumedArrows(geometry: Geometry, progress: number): number {
-  let index = 1;
-  if (geometry.wifi) index = Math.max(1, Math.floor(progress * (geometry.arrows.length - 1)));
-  else while (index < geometry.arrows.length - 1 && geometry.arrows[index].length < progress * geometry.length) index++;
-  let consumed = 0;
-  for (const area of geometry.areas) {
-    if (index > area[1]) { consumed = area[1]; continue; }
-    if (index > area[0]) consumed = area[0];
-    break;
-  }
-  return consumed;
+  const index = geometry.wifi ? Math.max(1, Math.floor(progress * (geometry.arrows.length - 1))) : arrowAtDistance(geometry, progress * geometry.length);
+  const areaIndex = lowerBoundBy(geometry.areas, index, area => area[1]);
+  const area = geometry.areas[areaIndex];
+  if (area && index > area[0]) return area[0];
+  return geometry.areas[areaIndex - 1]?.[1] ?? 0;
 }
 export function pathPose(geometry: Geometry, progress: number): Pose {
-  const distance = Math.max(0, Math.min(1, progress)) * geometry.length, poses = geometry.arrows;
-  let lo = 1, hi = poses.length - 1;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (poses[mid].length < distance) lo = mid + 1; else hi = mid; }
-  const a = poses[lo - 1], b = poses[lo], t = (distance - a.length) / Math.max(1e-9, b.length - a.length);
+  const distance = Math.max(0, Math.min(1, progress)) * geometry.length;
+  const index = arrowAtDistance(geometry, distance);
+  const a = geometry.arrows[index - 1], b = geometry.arrows[index], t = (distance - a.length) / Math.max(1e-9, b.length - a.length);
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, angle: a.angle + normalAngle(b.angle - a.angle) * t, length: distance };
 }

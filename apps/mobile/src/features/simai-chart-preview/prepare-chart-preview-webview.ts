@@ -1,6 +1,7 @@
 import { Directory, File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import {
   chartPreviewStageDirectory as chartPreviewStageDirectoryBase,
@@ -50,6 +51,7 @@ export const MAIMAI_CHART_PREVIEW_MUSIC_DATA_GLOBAL = '__CHART_PREVIEW_MUSIC_DAT
 export type ChartPreviewWebViewSource = {
   uri: string;
   allowingReadAccessToURL: string;
+  loadBackgroundVideo: () => Promise<string>;
   dispose: () => Promise<void>;
 };
 
@@ -126,7 +128,7 @@ export async function prepareChartPreviewWebViewSource(
     }
     if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
     report(CHART_PREVIEW_PLAYER_LABEL, resourceEnd);
-    return await prepareChartPreviewWebviewFromPlan({
+    const source = await prepareChartPreviewWebviewFromPlan({
       directoryName: 'rranker-chart-preview',
       directory,
       remoteCacheDirectory: await chartPreviewStageDirectoryBase('rranker-chart-preview-remote'),
@@ -178,6 +180,37 @@ export async function prepareChartPreviewWebViewSource(
     }, signal, (progress) => {
       report(progress.label, mapChartPreviewProgress(progress.value, resourceEnd, 1));
     });
+    const videoController = new AbortController();
+    const cancelVideo = () => videoController.abort(signal?.reason);
+    signal?.addEventListener('abort', cancelVideo, { once: true });
+    if (signal?.aborted) cancelVideo();
+    const assertCurrent = captureResourceWrites('shared', videoController.signal);
+    let videoFile: File | undefined;
+    let pendingVideo: Promise<string> | undefined;
+    return {
+      ...source,
+      loadBackgroundVideo: async () => {
+        assertCurrent();
+        if (!config.backgroundVideoUrl) throw new Error('该谱面暂无背景视频');
+        if (videoFile?.exists && videoFile.size > 0) return videoFile.uri;
+        if (!pendingVideo) {
+          pendingVideo = downloadChartResource(directory, 'background.mp4', config.backgroundVideoUrl, videoController.signal)
+            .then(file => {
+              assertCurrent();
+              videoFile = file;
+              return file.uri;
+            })
+            .finally(() => { pendingVideo = undefined; });
+        }
+        return pendingVideo;
+      },
+      dispose: async () => {
+        signal?.removeEventListener('abort', cancelVideo);
+        videoController.abort();
+        await pendingVideo?.catch(() => undefined);
+        await source.dispose();
+      },
+    };
   } catch (error) {
     await disposeChartPreviewSessionDirectory(directory);
     throw error;

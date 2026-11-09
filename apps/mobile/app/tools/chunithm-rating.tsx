@@ -1,6 +1,7 @@
+import { RatingCalculator, RatingFields, RatingMessage, RatingTable } from '@/components/game-content/RatingCalculator';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { Card } from '@/components/Card';
 import { FormField } from '@/components/FormField';
 import {
@@ -48,13 +49,13 @@ type ReverseMinimumRow = {
 };
 
 function reverseMinimumRow(options: {
+  result: ChunithmMinimumScore;
   id: ReverseMinimumRow['id'];
   name: 'Rating' | 'OP';
   targetText: string;
   targetValue: number;
   levelValid: boolean;
   clearLabel: string;
-  result: ChunithmMinimumScore;
   formulaMinimum: number | null;
 }): ReverseMinimumRow {
   const targetValid = Number.isFinite(options.targetValue) && options.targetValue >= 0;
@@ -162,19 +163,14 @@ export default function ChunithmRatingToolScreen() {
   );
 
   return (
-    <ScrollView
-      style={[styles.page, { backgroundColor: theme.background }]}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Stack.Screen options={{ title: 'Rating / OVER POWER 计算器' }} />
+    <RatingCalculator title="Rating / OVER POWER 计算器">
 
       <Card>
         <Text style={[styles.heading, { color: theme.text }]}>单谱面评分</Text>
-        <View style={styles.row}>
+        <RatingFields>
           <FormField label="定数" value={constant} onChangeText={setConstant} placeholder="例如 14.0" />
           <FormField label="分数" value={score} onChangeText={setScore} placeholder="例如 1009000" />
-        </View>
+        </RatingFields>
         <View style={styles.clearRow}>
           <Text style={[styles.clearLabel, { color: theme.textSecondary }]}>CLEAR 加成</Text>
           {CLEAR_TIERS.map((tier) => (
@@ -198,58 +194,45 @@ export default function ChunithmRatingToolScreen() {
             </Pressable>
           ))}
         </View>
-        {constantError ? <Text style={[styles.error, { color: theme.danger }]}>{constantError}</Text> : null}
-        {scoreError ? <Text style={[styles.error, { color: theme.danger }]}>{scoreError}</Text> : null}
-        {lampError ? <Text style={[styles.error, { color: theme.danger }]}>{lampError}</Text> : null}
-        <Text style={[styles.result, { color: theme.text }]}>
+        {constantError ? <RatingMessage kind="error">{constantError}</RatingMessage> : null}
+        {scoreError ? <RatingMessage kind="error">{scoreError}</RatingMessage> : null}
+        {lampError ? <RatingMessage kind="error">{lampError}</RatingMessage> : null}
+        <RatingMessage kind="result">
           Rating：{rating?.toFixed(2) ?? '输入无效'}
-        </Text>
-        <Text style={[styles.result, { color: theme.text }]}>
+        </RatingMessage>
+        <RatingMessage kind="result">
           OVER POWER：{overPower?.toFixed(2) ?? '输入无效'}
-        </Text>
-        <Text style={[styles.note, { color: theme.textMuted }]}>
+        </RatingMessage>
+        <RatingMessage kind="note">
           理论最高 OVER POWER（AJC）：{!constantError ? maxChunithmOverPower(parsedInput.levelValue).toFixed(2) : '—'}
-        </Text>
+        </RatingMessage>
       </Card>
 
       <Card>
         <Text style={[styles.heading, { color: theme.text }]}>反推最低分数</Text>
-        <View style={styles.row}>
+        <RatingFields>
           <FormField label="目标 Rating" value={targetRating} onChangeText={setTargetRating} placeholder="例如 15.00" />
           <FormField label="目标 OVER POWER" value={targetOverPower} onChangeText={setTargetOverPower} placeholder="例如 85" />
-        </View>
-        <Text style={[styles.note, { color: theme.textMuted }]}>
+        </RatingFields>
+        <RatingMessage kind="note">
           反推在所选灯态的合法分数范围内求解，结果一定能通过上方的输入校验。
-        </Text>
+        </RatingMessage>
         {reverseRows.map((row) => (
           <View key={row.id}>
-            <Text style={[styles.result, { color: theme.text }]}>{row.title}</Text>
-            {row.note ? <Text style={[styles.note, { color: theme.textMuted }]}>{row.note}</Text> : null}
+            <RatingMessage kind="result">{row.title}</RatingMessage>
+            {row.note ? <RatingMessage kind="note">{row.note}</RatingMessage> : null}
           </View>
         ))}
       </Card>
 
-      <Card>
-        <Text style={[styles.heading, { color: theme.text }]}>分数档位</Text>
-        <Text style={[styles.note, { color: theme.textMuted, marginTop: 0, marginBottom: 6 }]}>
-          OP 按所选灯的奖励给出各档位的公式值；低于该灯最低分数的档位只是公式参考，实战中不会出现。
-        </Text>
-        {rows.map((row) => (
-          <View key={row.score} style={[styles.tableRow, { borderTopColor: theme.border }]}>
-            <Text style={[styles.cell, { color: theme.textSecondary }]}>{row.score.toLocaleString('en-US')}</Text>
-            <Text style={[styles.cell, { color: theme.textSecondary }]}>Rating {row.rating.toFixed(2)}</Text>
-            <Text style={[styles.cell, { color: theme.textSecondary }]}>OP {row.overPower.toFixed(2)}</Text>
-          </View>
-        ))}
-      </Card>
-    </ScrollView>
+      <RatingTable title="分数档位" rows={rows} rowKey={row => row.score}
+        note="OP 按所选灯的奖励给出各档位的公式值；低于该灯最低分数的档位只是公式参考，实战中不会出现。"
+        cells={row => [row.score.toLocaleString('en-US'), `Rating ${row.rating.toFixed(2)}`, `OP ${row.overPower.toFixed(2)}`]} />
+    </RatingCalculator>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F8FA' },
-  content: { padding: 16, gap: 12 },
-  row: { flexDirection: 'row', gap: 10 },
   heading: { color: '#111827', fontWeight: '700', marginBottom: 8 },
   clearRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' },
   clearLabel: { color: '#4B5563', fontSize: 12 },
@@ -261,15 +244,4 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   clearChipText: { color: '#374151', fontSize: 13, fontWeight: '700' },
-  result: { fontSize: 17, fontWeight: '700', color: '#111827', marginTop: 10 },
-  note: { color: '#6B7280', fontSize: 12, marginTop: 6 },
-  error: { color: '#B91C1C', marginTop: 8 },
-  tableRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
-    paddingVertical: 6,
-  },
-  cell: { color: '#374151', fontSize: 13 },
 });

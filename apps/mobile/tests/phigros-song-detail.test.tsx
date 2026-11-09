@@ -338,7 +338,7 @@ describe('Phigros song detail', () => {
     expect(screen.getAllByText('细').length).toBeGreaterThan(0);
     expect(screen.queryByTestId('phigros-kyou-chart-tags-sheet')).toBeNull();
     await fireEvent.press(screen.getByTestId('phigros-kyou-chart-tags-more'));
-    expect(screen.getByTestId('phigros-kyou-chart-tags-sheet').props.visible).toBe(true);
+    expect(screen.getByText('谱面标签')).toBeTruthy();
     expect(screen.getByText('主要难点')).toBeTruthy();
     expect(screen.getByText('细分配置')).toBeTruthy();
     expect(screen.queryByText('被截断项')).toBeNull();

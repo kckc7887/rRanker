@@ -1,0 +1,25 @@
+import type { ComponentProps } from 'react';
+import { TagEditor } from '@/components/TagEditor';
+import { buildTagHistory } from '@/domain/user-library';
+import type { useUserLibrary } from '@/hooks/use-user-library';
+
+type Library = ReturnType<typeof useUserLibrary>;
+type LibraryTagEditorProps = Pick<ComponentProps<typeof TagEditor>, 'testID' | 'disabled' | 'draft' | 'onDraftChange' | 'onBusyChange'> & {
+  library: Library;
+  target: Parameters<Library['setTags']>[0];
+  fixedPresets?: string[];
+};
+
+export function LibraryTagEditor({ library, target, fixedPresets, disabled, ...props }: LibraryTagEditorProps) {
+  const key = target.kind === 'song'
+    ? library.songKey(target.songId)
+    : library.chartKey(target.songId, target.type, target.levelIndex);
+  const item = library.data?.find(entry => entry.key === key);
+  const presets = fixedPresets ?? library.tagPresets ?? [];
+  return <TagEditor {...props} disabled={disabled ?? library.isUpdating}
+    readState={library.tagReadState} tags={item?.tags ?? []} presets={presets}
+    historyTags={() => buildTagHistory(library.data ?? [], key, presets)}
+    presetsEditable={fixedPresets === undefined}
+    onPresetsChange={fixedPresets === undefined ? library.setTagPresets : undefined}
+    onChange={tags => library.setTags(target, tags)} />;
+}

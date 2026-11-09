@@ -30,7 +30,9 @@ import { useNotification } from '@/components/AppNotification';
 export type ChartPreviewShellSource = {
   uri: string;
   allowingReadAccessToURL: string;
+  fullscreenOrientation?: ChartPreviewFullscreenOrientation;
   dispose?: () => void | Promise<void>;
+  loadBackgroundVideo?: () => Promise<string>;
 };
 
 export type ChartPreviewShellRequest<TPayload> =
@@ -507,7 +509,7 @@ export function ChartPreviewScreenShell<TPayload>({
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS, '谱面确认', fullscreenOrientation)} />
+      <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS, '谱面确认', preparedView?.source.fullscreenOrientation ?? fullscreenOrientation)} />
       {/** 详情页仍挂载，显式覆盖其白字状态栏。 */}
       <StatusBar style={theme.statusBar} />
       {blockingError ? (
@@ -571,6 +573,13 @@ export function ChartPreviewScreenShell<TPayload>({
               if (!isCurrentView()) return;
               const data = parseChartPreviewBridgeMessage(event.nativeEvent.data);
               if (!data) return;
+              if (data.type === 'background-video-load') {
+                void (source.loadBackgroundVideo?.() ?? Promise.resolve(null)).catch(() => null).then(uri => {
+                  if (isCurrentView()) bridge.postMessage({
+                    type: 'background-video-source', requestId: data.requestId, uri,
+                  });
+                });
+              }
               if (data.type === 'progress') {
                 applyLoadProgress(chartPreviewWebViewProgress({
                   label: data.label || CHART_PREVIEW_PLAYER_LABEL,

@@ -1,3 +1,4 @@
+import type { JsonChartFormat } from './chart-format';
 import type { PreviewDifficulty } from './webview-player/heading';
 export type PgrPreviewSettings = {
   playbackSpeed?: number;
@@ -34,10 +35,13 @@ export type PgrPreviewConfig = {
   hitSounds?: { click?: string; drag?: string; flick?: string };
   settings?: PgrPreviewSettings;
 
-  format?: 'pgr' | 'rpe';
+  format?: JsonChartFormat;
   rpeAssets?: PgrPreviewRpeAssets | null;
 
   theme?: 'light' | 'dark';
 };
 
-export type PreparedPgrPreviewInput = { config: PgrPreviewConfig; musicDataBase64?: string | null };
+export type PreparedPgrPreviewInput = {
+  config: PgrPreviewConfig & { format: JsonChartFormat; chartText: string };
+  musicDataBase64?: string | null;
+};

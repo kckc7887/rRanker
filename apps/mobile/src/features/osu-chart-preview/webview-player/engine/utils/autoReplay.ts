@@ -39,18 +39,26 @@ export function synthesizeAutoReplay(
   autoFrames: Iterable<AutoFrame>,
   mods = 0,
 ): ReplayData {
-  /** 同一时间保留插入顺序，使重叠音符先松后按。 */
+  const replay = createReplay(beatmap, beatmapHash, mods);
+  for (const f of autoFrames) replay.frames.push({ timeDelta: f.time, x: f.x, y: f.y, keys: f.keys });
+  finishAutoFrames(replay.frames);
+  return replay;
+}
 
-  const sorted = [...autoFrames].sort((a, b) => a.time - b.time);
-
-  const frames: ReplayFrame[] = new Array(sorted.length);
-  let prevTime = 0;
-  for (let i = 0; i < sorted.length; i++) {
-    const f = sorted[i]!;
-    frames[i] = { timeDelta: f.time - prevTime, x: f.x, y: f.y, keys: f.keys };
-    prevTime = f.time;
+export function finishAutoFrames(frames: ReplayFrame[]): void {
+  /** 重叠音符可能乱序，同刻保留先松后按。 */
+  if (frames.some((frame, i) => i > 0 && frame.timeDelta < frames[i - 1]!.timeDelta)) {
+    frames.sort((a, b) => a.timeDelta - b.timeDelta);
   }
+  let previous = 0;
+  for (const frame of frames) {
+    const time = frame.timeDelta;
+    frame.timeDelta -= previous;
+    previous = time;
+  }
+}
 
+export function createReplay(beatmap: BeatmapData, beatmapHash: string, mods = 0): ReplayData {
   return {
     mode: beatmap.mode,
     gameVersion: 20240101,
@@ -63,7 +71,7 @@ export function synthesizeAutoReplay(
     mods,
     lifebarGraph: '',
     timestamp: 0n,
-    frames,
+    frames: [],
     replayId: 0n,
   };
 }

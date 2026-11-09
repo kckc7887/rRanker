@@ -7,11 +7,15 @@ const mockDirectories = new Set<string>();
 const mockDownloaded: string[] = [];
 const mockCleaned: string[] = [];
 let mockSequence = 0;
-const mockChartJson = '{"fileVersion":0}';
-const mockChartBytes = Uint8Array.from(Buffer.from(mockChartJson));
+const mockChart = { fileVersion: 0, canvasMoves: [], lines: [], themes: [] };
+const mockChartJson = JSON.stringify(mockChart);
+let mockChartBytes = Uint8Array.from(Buffer.from(mockChartJson));
 const mockMusicBytes = new Uint8Array([4, 5, 6, 7]);
 
 jest.mock('../assets/rizline-chart-preview/player.bundle', () => 1);
+jest.mock('../assets/phigros-chart-preview/index.html', () => 3);
+jest.mock('../assets/phigros-chart-preview/player.bundle', () => 4);
+jest.mock('../assets/phigros-chart-preview/rpe.bundle', () => 5);
 jest.mock('../assets/rizline-chart-preview/index.html', () => 2);
 jest.mock('expo-file-system', () => {
   const uri = (base: string | { uri: string }, parts: string[]) =>
@@ -49,6 +53,7 @@ jest.mock('expo-file-system', () => {
   return { Directory, File };
 });
 jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
+  chartPreviewStageDirectory: jest.fn(),
   createChartPreviewSessionDirectory: (name: string) => {
     const { Directory } = jest.requireMock<typeof import('expo-file-system')>('expo-file-system');
     const directory = new Directory('file:///cache', `${name}-session-${++mockSequence}`);
@@ -100,7 +105,8 @@ jest.mock('@/services/rizline-chart-preview-resources', () => ({
 }));
 
 type PreviewPlan = {
-  buildHtml: (template: string) => string;
+  buildHtml: (template: string, dataUrls?: Record<string, string>) => string;
+  stagedAssets?: { fileName: string; moduleId?: number }[];
   directory?: { uri: string };
   writers?: ((directory: { uri: string }, signal?: AbortSignal) => Promise<void>)[];
 };
@@ -118,6 +124,7 @@ describe('Rizline chart preview prepare', () => {
   beforeEach(() => {
     mockFiles.clear(); mockDirectories.clear(); mockDownloaded.length = 0; mockCleaned.length = 0;
     mockSequence = 0; mockPlan.mockClear();
+    mockChartBytes = Uint8Array.from(Buffer.from(mockChartJson));
   });
 
   it('downloads chart JSON and m4a then wraps them as sibling scripts', async () => {
@@ -144,12 +151,29 @@ describe('Rizline chart preview prepare', () => {
     for (const script of htmlWrites[0]!.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gu)) {
       runInNewContext(script[1]!, { window: runtime });
     }
-    expect(runtime.__RIZLINE_CHART_PREVIEW_CHART__).toEqual({ fileVersion: 0 });
+    expect(runtime.__RIZLINE_CHART_PREVIEW_CHART__).toEqual(mockChart);
     expect(Buffer.from(String(runtime.__RIZLINE_CHART_PREVIEW_MUSIC__), 'base64')).toEqual(Buffer.from(mockMusicBytes));
     expect(runtime.__RIZLINE_CHART_PREVIEW_CONFIG__).toMatchObject({ title: 'Song IN', theme: 'dark', settings: { userSpeed: 4 } });
     expect(files.some(([uri]) => uri.endsWith('/preview-chart.json'))).toBe(false);
     expect(files.some(([uri]) => uri.endsWith('/preview-music.m4a'))).toBe(false);
     expect(prepared.uri).toMatch(/^file:/);
+    expect(prepared.fullscreenOrientation).toBe('portrait_up');
+  });
 
+  it.each([
+    ['pgr', { formatVersion: 3, judgeLineList: [] }, 4],
+    ['rpe', { META: { RPEVersion: 150 }, BPMList: [], judgeLineList: [] }, 5],
+  ] as const)('opens %s from a Rizline resource with its own settings and stage', async (format, chart, script) => {
+    mockChartBytes = Uint8Array.from(Buffer.from(JSON.stringify(chart)));
+    const prepared = await prepareRizlineChartPreviewWebViewSource(
+      { songId: 'Song.A.0', levelIndex: 2 }, 'dark', { noteScale: 1.4 }, new AbortController().signal,
+    );
+    const plan = mockPlan.mock.calls[0]![0];
+    expect(plan.stagedAssets).toContainEqual({ fileName: 'player.js', moduleId: script });
+    const html = plan.buildHtml('<!--PHIGROS_CHART_PREVIEW_CONFIG-->', {});
+    const runtime: Record<string, unknown> = {};
+    for (const match of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gu)) runInNewContext(match[1]!, { window: runtime });
+    expect(runtime.__PHIGROS_CHART_PREVIEW__).toMatchObject({ format, chartText: JSON.stringify(chart), settings: { noteScale: 1.4 } });
+    expect(prepared.fullscreenOrientation).toBe('landscape');
   });
 });

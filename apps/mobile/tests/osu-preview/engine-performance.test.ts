@@ -1,7 +1,8 @@
+import { autoCursorAt } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/std/autoGenerator';
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { catchRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
-import { resolveTrackOpacity, taikoLookback, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine-performance';
+import { resolveTrackOpacity, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine-performance';
 import { buildAutoReplay } from '../../src/features/osu-chart-preview/webview-player/autoplay';
 import { computeModDifficulty, parseBeatmap, type HitResult, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
 import { maniaRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
@@ -10,11 +11,11 @@ import type { ManiaHitObject } from '../../src/features/osu-chart-preview/webvie
 import type { TaikoHitObject , TaikoDrumRoll } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/types';
 import type { RenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine/renderer/Renderer';
 import { fixtureOsu } from './fixtures';
-import { computeDrumrollTint } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/Playfield';
+import { computeDrumrollTint, taikoVisibleTime } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/Playfield';
 import { shouldShowHeadArrow, shouldShowTailArrow } from '../../src/features/osu-chart-preview/webview-player/engine/renderer/HitObjectRenderer';
 import { applyStacking } from '../../src/features/osu-chart-preview/webview-player/engine/utils/stacking';
 import { computeHitResults } from '../../src/features/osu-chart-preview/webview-player/engine/utils/hitJudge';
-import { sliderNestedEvents } from '../../src/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
+import { slideDurationMs, sliderNestedEvents } from '../../src/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
 
 describe('indexed render candidates', () => {
   it('does not parse or mutate a pre-cancelled auto preparation', async () => {
@@ -67,6 +68,23 @@ describe('indexed render candidates', () => {
     assert.equal(judged.results.length, 24);
     assert.ok(judged.results.every(result => result.judgement === 300));
   });
+  it('seeks into a reversing slider and spinner with the same head, tail and bonus judgements', () => {
+    const text = fixtureOsu(0,'Motion').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n100,100,1000,2,0,L|240:100,2,140\n256,192,3000,8,0,5000\n');
+    const chart = parseBeatmap(text), replay = buildAutoReplay(chart,'');
+    const slider = chart.hitObjects[0]!;
+    if (slider.type !== 'slider') throw new Error('missing slider');
+    const duration = slideDurationMs(chart,slider);
+    const point = (t: number) => autoCursorAt(replay.motion!,t);
+    assert.ok(Math.hypot(point(1000+duration).x-240,point(1000+duration).y-100) < .000001);
+    assert.ok(Math.hypot(point(1000+duration*2).x-100,point(1000+duration*2).y-100) < .000001);
+    const spin = point(4250);
+    assert.ok(Math.abs(Math.hypot(spin.x-256,spin.y-192)-50) < .000001);
+    assert.ok(Math.abs(point(1000+duration/2).x-170) < .000001);
+    const judged = computeHitResults(chart,replay,computeModDifficulty(chart,replay));
+    assert.ok(judged.results.every(hit => hit.judgement === 300));
+    const bonuses = judged.spinnerAngles.get(1)!.bonusTimes;
+    assert.ok(bonuses.length && bonuses.every(time => time > 3000 && time <= 5000));
+  });
   it('shows reversal arrows until the corresponding repeat, including reverse seeks', () => {
     for (const [time, tail, head] of [[0, true, true], [600, true, true], [750, false, true], [1000, false, false], [500, true, true]] as const) {
       assert.equal(shouldShowTailArrow(3, time, 500, 250), tail);
@@ -112,10 +130,10 @@ describe('indexed render candidates', () => {
     assert.deepEqual(visibleManiaObjects(objects, 100, 100), [objects[0], objects[1]]);
   });
 
-  it('extends taiko lookback to cover rolls and swells', () => {
+  it('finds a swell across a direct seek past the shorter drumroll', () => {
     const objects = [{ kind: 'hit', time: 0 }, { kind: 'drumroll', time: 300, endTime: 900 }, { kind: 'swell', time: 500, endTime: 2000 }] as TaikoHitObject[];
-    assert.equal(taikoLookback(objects), 2000);
-    assert.equal(taikoLookback([]), 1000);
+    assert.deepEqual(taikoVisibleTime(objects, [1, 1, 1], [], []).visibleObjects(1300), [2]);
+    assert.deepEqual(taikoVisibleTime([], [], [], []).visibleObjects(0), []);
   });
 });
 type Bitmap = ImageBitmap & { label: string };

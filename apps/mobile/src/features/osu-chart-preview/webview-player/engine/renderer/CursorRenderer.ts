@@ -24,6 +24,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { autoCursorAt } from '../rulesets/std/autoGenerator';
 import type { ReplayData, ReplayFrame, SkinAssets } from '../types/index';
 
 const _cumTimes = new WeakMap<ReplayFrame[], number[]>();
@@ -140,16 +141,16 @@ export function drawCursor(
   const idx = findFrameIndex(times, timeMs);
   if (idx < 0) return;
 
-  const trailStart = Math.max(0, idx - TRAIL_LENGTH + 1);
+  const trailLength = replay.motion ? Math.min(TRAIL_LENGTH, 1 + Math.floor((timeMs-times[0]!)*60/1000)) : Math.min(TRAIL_LENGTH,idx+1);
   const trail = skin ? resolveCursorSprite(skin.images, 'cursortrail') : undefined;
 
   /** 真实皮肤缺少或隐藏 cursortrail 时，不绘制开发用轨迹。 */
 
   if (trail || !skin) {
-    for (let i = idx; i >= trailStart; i--) {
-      const age = idx - i;
+    for (let age=0; age<trailLength; age++) {
       const alpha = 1 - age / TRAIL_LENGTH;
-      const [tx, ty] = toCanvas(frames[i]!.x, frames[i]!.y);
+      const p = replay.motion ? autoCursorAt(replay.motion,timeMs-age*1000/60) : frames[idx-age]!;
+      const [tx, ty] = toCanvas(p.x,p.y);
 
       ctx.save();
       if (trail) {
@@ -166,7 +167,8 @@ export function drawCursor(
     }
   }
 
-  const [cx, cy] = interpolateCursor(frames, times, timeMs);
+  const auto = replay.motion && autoCursorAt(replay.motion,timeMs);
+  const [cx, cy] = auto ? toCanvas(auto.x,auto.y) : interpolateCursor(frames, times, timeMs);
   const cursor = skin ? resolveCursorSprite(skin.images, 'cursor') : undefined;
   /** cursormiddle 叠于 cursor 之上。 */
   const cursorMiddle = skin ? resolveCursorSprite(skin.images, 'cursormiddle') : undefined;

@@ -40,7 +40,7 @@ jest.mock('@/features/rizline-best-image/rizline-ui-cache', () => ({ prepareRizl
 } }));
 jest.mock('@/components/AppNotification', () => {
   const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
-  return { useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+  return { ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 
 jest.mock('expo-asset', () => {

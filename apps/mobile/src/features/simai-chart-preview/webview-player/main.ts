@@ -1,8 +1,9 @@
+import { bindTimelineDrag } from '../../chart-preview-shared/webview-player/frame-scheduler';
 import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
 import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
 import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen, setPreviewPlayButton } from '../../chart-preview-shared/webview-player/controls';
 import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
 
 import {
@@ -17,6 +18,8 @@ import {
 import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
+import { createStageContext, stagePixels } from '../../chart-preview-shared/webview-player/stage';
+import { EffectRenderer } from '../engine/renderers/effects';
 import { ChartPreviewSkin } from '../engine/renderers/skinAtlas';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
@@ -61,6 +64,8 @@ const startupController = new AbortController();
 let pauseInitialized: (() => void) | undefined;
 let exitFullscreenInitialized: (() => void) | undefined;
 let confirmInitialized: ((accepted: boolean) => void) | undefined;
+let videoRequestId = 0;
+const videoRequests = new Map<number, (uri: string | null) => void>();
 function releasePlayer(): void {
   if (disposed) return;
   closeActiveWheelPopup();
@@ -70,6 +75,8 @@ function releasePlayer(): void {
   pauseInitialized = undefined;
   exitFullscreenInitialized = undefined;
   confirmInitialized = undefined;
+  for (const resolve of videoRequests.values()) resolve(null);
+  videoRequests.clear();
 }
 function receiveHostMessage(event: MessageEvent): void {
   applyChartPreviewHostCommand(event.data, {
@@ -77,6 +84,10 @@ function receiveHostMessage(event: MessageEvent): void {
     exitFullscreen: () => exitFullscreenInitialized?.(),
     dispose: releasePlayer,
     confirm: value => confirmInitialized?.(value),
+    videoSource: (requestId, uri) => {
+      videoRequests.get(requestId)?.(uri);
+      videoRequests.delete(requestId);
+    },
   });
 }
 events.listen(window, 'message', receiveHostMessage);
@@ -160,7 +171,7 @@ async function main(): Promise<void> {
   const fsTimelinePlayhead = $('fs-timeline-playhead');
   const fsTimelineBadge = $('fs-timeline-badge');
   const fsTimeLabel = $('fs-time-label');
-  const fsTransport = $('fs-transport');
+  const fullscreenPlay = $('fs-play');
   const timelineHost = $('timeline-host');
   const timelineBars = $('timeline-bars');
   const timelineRuler = $('timeline-ruler');
@@ -207,7 +218,6 @@ async function main(): Promise<void> {
   const backgroundTrigger = $('background-trigger');
   const backgroundPopup = $('background-popup');
   const backgroundVal = $('background-val');
-  const backgroundImage = $('background-image') as HTMLImageElement;
   const backgroundVideo = $('background-video') as HTMLVideoElement;
   const togglePink = $('toggle-pink') as HTMLButtonElement;
   const toggleStarRot = $('toggle-star-rot') as HTMLButtonElement;
@@ -227,11 +237,8 @@ async function main(): Promise<void> {
   let isFullscreen = false;
   let fsLocked = false;
   let fsControlsVisible = false;
-  let isDragging = false;
-  let wasPlaying = false;
+  let cancelDrag: (() => void) | undefined;
 
-  const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-  const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
 
   let config: ChartPreviewConfig | undefined;
   statusEl.textContent = '正在等待参数…';
@@ -252,12 +259,7 @@ async function main(): Promise<void> {
   }
 
   renderPreviewHeading(config.title?.trim() || `谱面 ${config.chartId}`, config.previewDifficulty);
-  events.own(installPreviewControls({
-    measureNavigation: true,
-    stageAspectRatio: config.buddySide === 'dual' ? 2 : 1,
-    details: [$('info-bar')],
-    sections: ['播放与声音', '画面与判定', '视觉效果'],
-  }));
+  events.own(installPreviewControls(config.buddySide === 'dual' ? 2 : 1));
   postLoadProgress('正在加载谱面…', 0.15, statusEl);
 
   const saved = config.settings ?? {};
@@ -323,15 +325,15 @@ async function main(): Promise<void> {
   const allNotes = notesBySide.flat();
 
   const chartCount = charts.length as 1 | 2;
-  const canvases = [canvas];
   const canvasStages = [canvasStage];
   if (chartCount === 2) {
-    canvases.push($('chart-canvas-2') as HTMLCanvasElement);
     canvasStages.push($('canvas-stage-2'));
     canvasWrap.classList.add('dual');
     document.body.classList.add('dual');
   }
-  const skin = new ChartPreviewSkin();
+  const stage = createStageContext(canvas);
+  events.own(() => stage.dispose());
+  const skin = new ChartPreviewSkin(stage);
   postLoadProgress('正在加载皮肤…', 0.4, statusEl);
   try {
     await skin.load();
@@ -344,7 +346,9 @@ async function main(): Promise<void> {
     postStatus('error', { message: '皮肤加载失败，请返回重试。', diagnostic });
     return;
   }
-  const renderers = canvases.map((c) => new MainRenderer(c, { skin }));
+  const effects = new EffectRenderer(skin);
+  events.own(() => effects.dispose(stage));
+  const renderers = charts.map(() => new MainRenderer(canvas, { skin, stage, effects }));
   const applyRendererSettings = (r: MainRenderer) => {
     r.setJudgmentLineDesign((saved.judgmentLineDesign as string) || 'sensor');
     r.setPlaybackSpeed(saved.playbackSpeed ?? 1);
@@ -378,7 +382,7 @@ async function main(): Promise<void> {
     soundVolume: saved.soundVolume ?? 10,
     musicOffset: SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS,
     host: {
-      render: (beats) => renderAt(beats),
+      render: (beats, seek) => renderAt(beats, seek),
       onPlayStateChange: () => syncPlayButtons(),
       onPlaybackError: () => { statusEl.textContent = '音乐播放失败，请重新加载谱面。'; },
     },
@@ -387,15 +391,8 @@ async function main(): Promise<void> {
   events.own(() => session.dispose());
 
   const syncPlayButtons = () => {
-    const icon = session.playing ? PAUSE_ICON : PLAY_ICON;
-    const label = session.playing ? '暂停' : '播放';
-    playBtn.innerHTML = icon;
-    playBtn.setAttribute('aria-label', label);
-    const fsPlayBtn = document.getElementById('fs-play');
-    if (fsPlayBtn) {
-      fsPlayBtn.innerHTML = icon;
-      fsPlayBtn.setAttribute('aria-label', label);
-    }
+    setPreviewPlayButton(playBtn, session.playing);
+    setPreviewPlayButton(fullscreenPlay, session.playing);
   };
 
   const saveSettings = (partial: Partial<ChartPreviewSettings>) => {
@@ -465,22 +462,27 @@ async function main(): Promise<void> {
   });
 
   const background = new SimaiBackgroundMedia({
-    image: backgroundImage,
+    stage,
     video: backgroundVideo,
     mode: backgroundMode,
     imageUrl: config.backgroundImageUrl,
-    videoUrl: config.backgroundVideoUrl,
     host: {
-      render: () => renderFrameAll(session.positionBeats),
+      render: () => session.playback.invalidate(),
       reportVideo: (result, video) => reportBackgroundVideo(result, video),
+      loadVideo: () => new Promise(resolve => {
+        const requestId = ++videoRequestId;
+        videoRequests.set(requestId, resolve);
+        postStatus('background-video-load', { requestId });
+      }),
       readStatus: () => statusEl.textContent ?? '',
       writeStatus: (message) => { statusEl.textContent = message; },
       setImage: (image) => { for (const renderer of renderers) renderer.setBackgroundImage(image); },
       setVideo: (video) => { for (const renderer of renderers) renderer.setBackgroundVideo(video); },
     },
   });
+  stage.onInvalidate = () => session.playback.invalidate();
 
-  const renderFrameAll = (beats: number) => {
+  const renderFrameAll = (beats: number, seek = false) => {
     background.syncFrame({
       currentBeats: beats,
       totalBeats,
@@ -490,20 +492,23 @@ async function main(): Promise<void> {
       bpm: chart.bpm,
       musicOffset: SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS,
       firstMs: chart.firstMs ?? 0,
+      seek,
     });
+    stage.beginFrame();
+    const position = session.beatsToMs(beats);
     for (let i = 0; i < charts.length; i++) {
-      renderers[i]!.renderAtTime(charts[i]!, session.beatsToMs(beats) + 240000 / charts[i]!.bpm - 240000 / chart.bpm);
+      renderers[i]!.renderAtTime(charts[i]!, position + 240000 / charts[i]!.bpm - 240000 / chart.bpm,
+        i ? canvas.width - canvas.height : 0, canvas.height);
     }
+    stage.flush();
   };
 
   const updateSeekUi = (beats: number) => {
     const ms = session.beatsToMs(beats);
-    if (!isDragging) {
-      const pct = totalDurationMs > 0 ? (ms / totalDurationMs) * 100 : 0;
-      const measure = Math.floor(beats / 4);
-      timelineView.updatePlayhead(pct, measure);
-      if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
-    }
+    const pct = totalDurationMs > 0 ? (ms / totalDurationMs) * 100 : 0;
+    const measure = Math.floor(beats / 4);
+    timelineView.updatePlayhead(pct, measure);
+    if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
     const nextTimeLabel = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
     if (timeLabel.textContent !== nextTimeLabel) timeLabel.textContent = nextTimeLabel;
     if (isFullscreen && fsTimeLabel.textContent !== nextTimeLabel) {
@@ -573,9 +578,9 @@ async function main(): Promise<void> {
     }
   };
 
-  const renderAt = (beats: number) => {
+  const renderAt = (beats: number, seek = false) => {
     if (disposed) return;
-    renderFrameAll(beats);
+    renderFrameAll(beats, seek);
     updateSeekUi(beats);
     updateOverlayDom();
   };
@@ -586,10 +591,10 @@ async function main(): Promise<void> {
   };
 
   const pauseForLifecycle = (): void => {
+    cancelDrag?.();
     if (disposed) return;
     closeActiveWheelPopup();
     session.pause();
-    background.releaseVideo();
   };
 
   confirmInitialized = accepted => applyBackgroundVideoConfirmation(accepted);
@@ -599,23 +604,17 @@ async function main(): Promise<void> {
   events.own(() => { if (isFullscreen) exitFullscreen(); });
 
   const restartMeasure = () => {
-    session.moveTo(Math.floor(session.positionBeats / 4) * 4);
-    if (session.playing) void session.play();
-    else renderAt(session.positionBeats);
+    void session.playback.seek(session.beatsToMs(Math.floor(session.positionBeats / 4) * 4) / 1000);
   };
 
   const skipBeats = (deltaBeats: number) => {
-    session.moveTo(session.positionBeats + deltaBeats);
-    if (session.playing) void session.play();
-    else renderAt(session.positionBeats);
+    void session.playback.seek(session.beatsToMs(session.positionBeats + deltaBeats) / 1000);
   };
 
   const skipToMeasure = (direction: -1 | 1) => {
     const currentMeasure = Math.floor(session.positionBeats / 4);
     const targetMeasure = clamp(currentMeasure + direction, 0, maxMeasure);
-    session.moveTo(targetMeasure * 4);
-    if (session.playing) void session.play();
-    else renderAt(session.positionBeats);
+    void session.playback.seek(session.beatsToMs(targetMeasure * 4) / 1000);
   };
 
   ownedWheelPopup(
@@ -644,6 +643,7 @@ async function main(): Promise<void> {
     (speed) => {
       session.setSpeed(speed);
       for (const r of renderers) r.setPlaybackSpeed(session.speed);
+      if (!session.playing) renderAt(session.positionBeats);
     },
     (speed) => saveSettings({ playbackSpeed: clamp(speed, SPEED_MIN, SPEED_MAX) }),
     SPEED_MIN,
@@ -811,7 +811,12 @@ async function main(): Promise<void> {
       stage.style.height = `${size}px`;
     }
     canvasWrap.style.height = `${size}px`;
-    for (const r of renderers) r.resize(isFullscreen);
+    const width = size * chartCount + CHART_PREVIEW_DUAL_GAP * (chartCount - 1);
+    const pixels = stagePixels(width, size, stage.gl);
+    canvas.style.width = width + 'px';
+    canvas.style.height = size + 'px';
+    if (canvas.width !== pixels.width) canvas.width = pixels.width;
+    if (canvas.height !== pixels.height) canvas.height = pixels.height;
     renderAt(session.positionBeats);
   };
   const resizeScheduler = createLatestFrameScheduler(resize);
@@ -832,60 +837,15 @@ async function main(): Promise<void> {
   timelineObserver.observe(timelineHost);
   events.own(() => timelineObserver.disconnect());
 
-  const seekToPosition = (percent: number) => {
-    const targetMs = (percent / 100) * totalDurationMs;
-    session.moveTo(session.beatsAtMs(targetMs));
-    const beats = session.positionBeats;
-    const ms = session.beatsToMs(beats);
-    const measure = Math.floor(beats / 4);
-    const pct = (ms / totalDurationMs) * 100;
-    timelineView.updatePlayhead(pct, measure);
-    if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
-    timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
-    if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
-    renderFrameAll(beats);
-    updateOverlayDom();
-  };
-  const seekScheduler = createLatestFrameScheduler(seekToPosition);
-  events.own(() => seekScheduler.cancel());
+  const durationSeconds = totalDurationMs / 1000;
   for (const host of [timelineHost, fsTimelineHost]) {
-    bindHeatTimelineKeyboard(events, host,
-      () => session.beatsToMs(session.positionBeats) / totalDurationMs * 100,
-      percent => { if (!fsLocked) seekToPosition(percent); });
+    bindHeatTimelineKeyboard(events, host, () => session.playback.currentTime / durationSeconds * 100,
+      percent => { if (!fsLocked) void session.playback.seek(percent / 100 * durationSeconds); });
   }
-
-  events.listen(timelineHost, 'pointerdown', (e) => {
-    e.preventDefault();
-    isDragging = true;
-    wasPlaying = session.playing;
-    if (session.playing) session.pause();
-    const rect = timelineHost.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekToPosition(pct);
-  });
-
-  events.listen(document, 'pointermove', (e) => {
-    if (!isDragging) return;
-    const host = isFullscreen ? fsTimelineHost : timelineHost;
-    const rect = host.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekScheduler.schedule(pct);
-  });
-
-  events.listen(document, 'pointerup', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    seekScheduler.flush();
-    renderAt(session.positionBeats);
-    if (wasPlaying) void session.play();
-  });
-
-  /** 系统中断拖动不保证 pointerup；停在当前帧。 */
-  events.listen(document, 'pointercancel', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    seekScheduler.flush();
-    renderAt(session.positionBeats);
+  cancelDrag = bindTimelineDrag(events, [timelineHost, fsTimelineHost], {
+    enabled: () => !fsLocked, playing: () => session.playing, pause: () => session.pause(),
+    preview: fraction => session.playback.preview(fraction * durationSeconds),
+    resume: () => void session.playback.seek(session.playback.currentTime, true),
   });
 
   events.listen(playBtn, 'click', togglePlayback);
@@ -956,45 +916,17 @@ async function main(): Promise<void> {
     isFullscreen = true;
     setPreviewFullscreen(true);
     fullscreenTimelineView.build();
-    fsTransport.replaceChildren();
-    const makeBtn = (id: string, label: string, html: string) => {
-      const btn = document.createElement('button');
-      btn.className = 'transport-btn';
-      btn.id = id;
-      btn.setAttribute('aria-label', label);
-      btn.type = 'button';
-      btn.innerHTML = html;
-      return btn;
-    };
-    const left = document.createElement('div');
-    left.className = 'transport-side left';
-    const right = document.createElement('div');
-    right.className = 'transport-side right';
-    const fsPlay = makeBtn(
-      'fs-play',
-      session.playing ? '暂停' : '播放',
-      session.playing ? PAUSE_ICON : PLAY_ICON,
-    );
-    fsPlay.classList.add('play-toggle');
-    left.appendChild(makeBtn('fs-restart', '重播当前小节', btnRestart.innerHTML));
-    left.appendChild(makeBtn('fs-prev-measure', '上一小节', document.getElementById('btn-prev-measure')!.innerHTML));
-    left.appendChild(makeBtn('fs-step-back', '步退', document.getElementById('btn-step-back')!.innerHTML));
-    right.appendChild(makeBtn('fs-step-forward', '步进', document.getElementById('btn-step-forward')!.innerHTML));
-    right.appendChild(makeBtn('fs-next-measure', '下一小节', document.getElementById('btn-next-measure')!.innerHTML));
-    right.appendChild(makeBtn('fs-fullscreen', '退出全屏', document.getElementById('btn-fullscreen')!.innerHTML));
-    fsTransport.appendChild(left);
-    fsTransport.appendChild(fsPlay);
-    fsTransport.appendChild(right);
-    events.listen(document.getElementById('fs-restart')!, 'click', restartMeasure);
-    events.listen(document.getElementById('fs-prev-measure')!, 'click', () => skipToMeasure(-1));
-    events.listen(document.getElementById('fs-step-back')!, 'click', () => skipBeats(-1));
-    events.listen(document.getElementById('fs-step-forward')!, 'click', () => skipBeats(1));
-    events.listen(document.getElementById('fs-next-measure')!, 'click', () => skipToMeasure(1));
-    events.listen(document.getElementById('fs-fullscreen')!, 'click', exitFullscreen);
-    events.listen(fsPlay, 'click', togglePlayback);
     showFsControls();
     postStatus('fullscreen', { active: true });
   }
+
+  events.listen($('fs-restart'), 'click', restartMeasure);
+  events.listen($('fs-prev-measure'), 'click', () => skipToMeasure(-1));
+  events.listen($('fs-step-back'), 'click', () => skipBeats(-1));
+  events.listen($('fs-step-forward'), 'click', () => skipBeats(1));
+  events.listen($('fs-next-measure'), 'click', () => skipToMeasure(1));
+  events.listen($('fs-fullscreen'), 'click', exitFullscreen);
+  events.listen(fullscreenPlay, 'click', togglePlayback);
 
   events.listen(btnFullscreen, 'click', () => {
     if (isFullscreen) exitFullscreen();
@@ -1017,25 +949,14 @@ async function main(): Promise<void> {
 
   bindPlaybackLoop(events, {
     loop: session.loop,
-    position: () => session.positionBeats,
-    percent: beats => session.beatsToMs(beats) / totalDurationMs * 100,
-    format: beats => (session.beatsToMs(beats) / 1000).toFixed(2) + 's',
+    position: () => session.playback.currentTime,
+    percent: seconds => seconds / durationSeconds * 100,
+    format: seconds => seconds.toFixed(2) + 's',
     update: (a, b) => { timelineView.updateLoop(a, b); fullscreenTimelineView.updateLoop(a, b); },
-  });
-  events.listen(fsTimelineHost, 'pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    isDragging = true;
-    wasPlaying = session.playing;
-    if (session.playing) session.pause();
-    const rect = fsTimelineHost.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekToPosition(pct);
-    showFsControls();
   });
 
   events.listen(document, 'visibilitychange', () => {
-    if (document.visibilityState === 'hidden') { closeActiveWheelPopup(); if (session.playing) session.pause(); }
+    if (document.visibilityState === 'hidden') pauseForLifecycle();
   });
 
   renderAt(0);

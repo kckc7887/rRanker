@@ -193,11 +193,14 @@ function makeDrumRoll(
   };
 }
 
+const converted = new WeakMap<BeatmapData, TaikoHitObject[]>();
 export function convertBeatmapToTaiko(
   beatmap: BeatmapData,
 ): TaikoHitObject[] {
   /** 转换使用未加 Mod 的难度；HR/EZ 在转换后影响滚速和判定窗口。 */
 
+  const cached = converted.get(beatmap);
+  if (cached) return cached;
   const effSM = beatmap.sliderMultiplier;
   const effOd = beatmap.overallDifficulty;
   const out: TaikoHitObject[] = [];
@@ -219,5 +222,6 @@ export function convertBeatmapToTaiko(
     const o = out[i]!;
     if (o.kind === 'hit') o.noteId = i;
   }
+  converted.set(beatmap, out);
   return out;
 }

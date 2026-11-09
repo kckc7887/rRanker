@@ -24,13 +24,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { autoCursorAt, SPIN_RATE } from '../rulesets/std/autoGenerator';
 import type { BeatmapData, ReplayData, ReplayFrame, HitResult, Spinner } from '../types/index';
 import type { ModDifficulty } from './modDifficulty';
-import { sampleSlider } from '../renderer/SliderGeometry';
-import {
-  sampleSliderLazer,
-  sliderBallPosLazer,
-} from '../renderer/SliderGeometryLazer';
+import { sampleSlider, sliderPointAt, sliderProgress } from '../renderer/SliderGeometry';
 import { slideDurationMs, sliderNestedEvents } from './sliderDuration';
 
 const SPINNER_CENTER_X = 256;
@@ -52,12 +49,17 @@ export interface SpinnerAngleData {
   absAngles: number[];
 
   bonusTimes: number[];
+  autoRate?: number;
 }
 
 export function getSpinnerStateAt(
   data: SpinnerAngleData,
   timeMs: number,
 ): { cumAngle: number; absAngle: number } {
+  if (data.autoRate !== undefined) {
+    const angle = Math.max(0, Math.min(timeMs, data.times[1]!) - data.times[0]!) * data.autoRate;
+    return { cumAngle: angle, absAngle: angle };
+  }
   if (data.times.length === 0) return { cumAngle: 0, absAngle: 0 };
   if (timeMs <= data.times[0]!) return { cumAngle: 0, absAngle: 0 };
   let lo = 0, hi = data.times.length - 1;
@@ -178,6 +180,17 @@ function makeSpinHistory() {
   };
 }
 
+function autoSpinner(spinner: Spinner, od: number, speed: number): SpinnerAngleData {
+  const duration = spinner.endTime-spinner.time, rate = SPIN_RATE*speed, total = duration*rate;
+  const bonusTimes: number[] = [];
+  const required = stableSpinnerRequirementHalfSpins(od,duration);
+  for (let half = required+5; half*Math.PI <= total; half+=2) {
+    const sample = Math.ceil((half*Math.PI/rate)*60/1000)*1000/60;
+    bonusTimes.push(Math.min(spinner.endTime, Math.trunc(spinner.time+sample)));
+  }
+  return { times:[spinner.time,spinner.endTime], cumAngles:[0,total], absAngles:[0,total], bonusTimes, autoRate:rate };
+}
+
 function buildSpinnerAngles(
   spinner: Spinner,
   frames: ReplayFrame[],
@@ -185,6 +198,7 @@ function buildSpinnerAngles(
   od: number,
   isLazer: boolean,
   speed: number,
+  motion?: ReplayData['motion'],
 ): SpinnerAngleData {
   const times: number[] = [];
   const cumAngles: number[] = [];
@@ -221,19 +235,30 @@ function buildSpinnerAngles(
     absAngles.push(hist.total());
   };
 
-  const start = cursorAt(frames, cumTimes, spinner.time);
-  sample(spinner.time, start.x, start.y);
+  const at = (t: number) => motion ? autoCursorAt(motion, t) : cursorAt(frames, cumTimes, t);
+  const start = at(spinner.time);
+  sample(spinner.time,start.x,start.y);
+  if (motion) {
+    for (let t=spinner.time+1000/60; t<spinner.endTime; t+=1000/60) {
+      const p = at(t);
+      sample(Math.trunc(t), p.x, p.y);
+    }
+  } else {
+    let first = 0, endIndex = cumTimes.length;
+    while (first < endIndex) {
+      const mid = (first + endIndex) >>> 1;
+      if (cumTimes[mid]! <= spinner.time) first = mid + 1; else endIndex = mid;
+    }
+    for (let j = first; j < frames.length; j++) {
+      const t = cumTimes[j]!;
+      if (t >= spinner.endTime) break;
+      const f = frames[j]!;
+      sample(t, f.x, f.y);
+    }
 
-  for (let j = 0; j < frames.length; j++) {
-    const t = cumTimes[j]!;
-    if (t <= spinner.time)    continue;
-    if (t >= spinner.endTime) break;
-    const f = frames[j]!;
-    sample(t, f.x, f.y);
   }
-
-  const end = cursorAt(frames, cumTimes, spinner.endTime);
-  sample(spinner.endTime, end.x, end.y);
+  const end = at(spinner.endTime);
+  sample(spinner.endTime,end.x,end.y);
 
   const bonusTimes = spinnerBonusTickTimes(
     times, absAngles, od, spinner.endTime - spinner.time, isLazer,
@@ -330,38 +355,6 @@ function anyKeyHeld(frames: ReplayFrame[], cumTimes: number[], timeMs: number): 
   return (frames[lo]!.keys & 0b1111) !== 0;
 }
 
-function pointAtFraction(
-  path: { x: number; y: number }[],
-  t: number
-): { x: number; y: number } {
-  if (path.length === 0) return { x: 0, y: 0 };
-  if (t <= 0 || path.length === 1) return { ...path[0]! };
-  if (t >= 1) return { ...path[path.length - 1]! };
-  const idx  = t * (path.length - 1);
-  const lo   = Math.floor(idx);
-  const hi   = Math.min(lo + 1, path.length - 1);
-  const frac = idx - lo;
-  return {
-    x: path[lo]!.x + (path[hi]!.x - path[lo]!.x) * frac,
-    y: path[lo]!.y + (path[hi]!.y - path[lo]!.y) * frac,
-  };
-}
-
-function sliderBallPos(
-  path: { x: number; y: number }[],
-  timeMs: number,
-  sliderStartTime: number,
-  slideDur: number,
-  slides: number
-): { x: number; y: number } {
-  const elapsed  = timeMs - sliderStartTime;
-  const slideF   = Math.max(0, Math.min(slides, elapsed / slideDur));
-  const slideIdx = Math.min(Math.floor(slideF), slides - 1);
-  let   frac     = slideF - slideIdx;
-  if (slideIdx % 2 === 1) frac = 1 - frac;
-  return pointAtFraction(path, frac);
-}
-
 /** stable 的 slider 在结束前仍参与 notelock，spinner 从开始阻塞到结束。 */
 
 interface ObjState {
@@ -405,7 +398,10 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
   for (let i = 0; i < beatmap.hitObjects.length; i++) {
     const obj = beatmap.hitObjects[i]!;
     if (obj.type === 'spinner') {
-      spinnerAngles.set(i, buildSpinnerAngles(obj, replay.frames, cumTimes, modDiff.od, modDiff.isLazer, modDiff.speed));
+      const next = beatmap.hitObjects[i+1];
+      const uninterrupted = replay.motion && (!next || next.time >= obj.endTime);
+      spinnerAngles.set(i, uninterrupted ? autoSpinner(obj, modDiff.od, modDiff.speed)
+        : buildSpinnerAngles(obj,replay.frames,cumTimes,modDiff.od,modDiff.isLazer,modDiff.speed,replay.motion));
       states[i] = {
         type: 'spinner',
         startTime: obj.time,
@@ -610,7 +606,7 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
 
     const slider     = obj;
     const slideDur   = slideDurationMs(beatmap, slider);
-    const path       = modDiff.isLazer ? sampleSliderLazer(slider) : sampleSlider(slider);
+    const path       = sampleSlider(slider);
     const followBase2 = hitRadius * hitRadius;
     const followExp2  = (2.4 * hitRadius) ** 2;
     const tailTime   = slider.time + slideDur * slider.slides;
@@ -627,9 +623,7 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
     let trackingStart: number | null = null;
 
     const ballStackedAt = (t: number): { x: number; y: number } => {
-      const raw = modDiff.isLazer
-        ? sliderBallPosLazer(path, t, slider.time, slideDur, slider.slides)
-        : sliderBallPos(path, t, slider.time, slideDur, slider.slides);
+      const raw = sliderPointAt(path, sliderProgress(t, slider.time, slideDur, slider.slides));
       return { x: raw.x - stackShift, y: fy(raw.y) - stackShift };
     };
     const stepTracking = (t: number, cx: number, cy: number, keysHeld: boolean): void => {
@@ -664,7 +658,7 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
         stepTracking(cumTimes[frameIdx]!, f.x, f.y, (f.keys & 0b1111) !== 0);
         frameIdx++;
       }
-      const cur = cursorAt(replay.frames, cumTimes, ev.t);
+      const cur = replay.motion ? autoCursorAt(replay.motion, ev.t) : cursorAt(replay.frames, cumTimes, ev.t);
       const kh  = anyKeyHeld(replay.frames, cumTimes, ev.t);
       stepTracking(ev.t, cur.x, cur.y, kh);
 
@@ -686,7 +680,7 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       frameIdx++;
     }
     {
-      const cur = cursorAt(replay.frames, cumTimes, tailStart);
+      const cur = replay.motion ? autoCursorAt(replay.motion, tailStart) : cursorAt(replay.frames, cumTimes, tailStart);
       const kh  = anyKeyHeld(replay.frames, cumTimes, tailStart);
       stepTracking(tailStart, cur.x, cur.y, kh);
     }

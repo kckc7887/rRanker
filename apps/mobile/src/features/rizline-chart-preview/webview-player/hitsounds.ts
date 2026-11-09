@@ -1,3 +1,5 @@
+import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
+
 const LOOKAHEAD = 0.12;
 
 export function createHitBuffer(context: AudioContext, frequency: number): AudioBuffer {
@@ -13,7 +15,7 @@ export function createHitBuffer(context: AudioContext, frequency: number): Audio
 
 export class HitSoundScheduler {
   private cursor = 0;
-  private readonly active = new Set<AudioBufferSourceNode>();
+  private readonly active = new Map<AudioBufferSourceNode, number>();
 
   constructor(
     private readonly context: AudioContext,
@@ -25,27 +27,34 @@ export class HitSoundScheduler {
 
   reset(chartSeconds: number, includeRecent = true): void {
     this.stop();
-    this.cursor = 0;
-    while (this.cursor < this.events.length && (includeRecent
-      ? this.events[this.cursor]!.seconds < chartSeconds - 0.02
-      : this.events[this.cursor]!.seconds <= chartSeconds)) {
-      this.cursor += 1;
+    this.cursor = includeRecent
+      ? lowerBoundBy(this.events, chartSeconds - .02, event => event.seconds)
+      : upperBoundBy(this.events, chartSeconds, event => event.seconds);
+  }
+
+  rewind(chartSeconds: number, when: number): void {
+    for (const [source, stop] of this.active) {
+      if (stop <= when) continue;
+      source.stop(when);
+      this.active.set(source, when);
     }
+    this.cursor = lowerBoundBy(this.events, chartSeconds - 1e-7, event => event.seconds);
   }
 
   stop(): void {
-    for (const source of this.active) {
+    for (const source of this.active.keys()) {
       try { source.stop(); } catch {}
     }
     this.active.clear();
   }
 
-  schedule(chartSeconds: number, outputTime: number, enabled: boolean, playbackSpeed = 1): void {
+  schedule(chartSeconds: number, outputTime: number, enabled: boolean, playbackSpeed = 1, end = Infinity): void {
     if (!enabled) return;
     const speed = Math.max(0.001, playbackSpeed);
     const until = chartSeconds + LOOKAHEAD * speed;
     while (this.cursor < this.events.length && this.events[this.cursor]!.seconds <= until) {
       const event = this.events[this.cursor]!;
+      if (event.seconds >= end) break;
       this.cursor += 1;
       const delay = (event.seconds - chartSeconds) / speed;
       if (delay < -0.02) continue;
@@ -54,7 +63,7 @@ export class HitSoundScheduler {
       source.connect(this.gain);
       const startAt = Math.max(this.context.currentTime, outputTime + delay);
       source.start(startAt);
-      this.active.add(source);
+      this.active.set(source, Infinity);
       source.onended = () => this.active.delete(source);
     }
   }

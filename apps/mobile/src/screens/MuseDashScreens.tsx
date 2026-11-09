@@ -1,9 +1,10 @@
+import { MuseDashBadge } from '@/components/musedash/MuseDashBadges';
+import { SongDetailHero } from '@/components/game-content/SongDetailHero';
+import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
 import { useCallback, useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
-import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View,
 } from 'react-native';
@@ -15,24 +16,21 @@ import {
   Svg,
 } from 'react-native-svg';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
-import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
-import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { ChartAction, GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { QueryStateView } from '@/components/QueryStateView';
-import { TagEditor } from '@/components/TagEditor';
+import { LibraryTagEditor } from '@/components/game-content/LibraryTagEditor';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
-import { MuseDashAchievementBadge, MuseDashGradeBadge, MuseDashNeutralBadge } from '@/components/musedash/MuseDashBadges';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
 import { MuseDashScoreCard } from '@/components/musedash/MuseDashScoreCard';
 import { MuseDashSongRow } from '@/components/musedash/MuseDashSongRow';
 import {
-  MuseDashCatalogFilterBar, MuseDashRecordsFilterBar,
+  MuseDashFilterBar,
 } from '@/components/musedash/MuseDashFilterBar';
-import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { museDashUserIdFromAccountId } from '@/domain/bound-account';
 import {
   matchesMuseDashAccRange,
@@ -52,10 +50,8 @@ import {
   type MuseDashSong,
 } from '@/domain/muse-dash';
 import { museDashLevelTheme } from '@/domain/musedash-level-theme';
-import { buildTagHistory } from '@/domain/user-library';
 import { presentMuseDashChart } from '@/features/game-content/adapters';
 import { useLocalSearch } from '@/hooks/use-local-search';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import {
   useMuseDashAlbums,
   useMuseDashCe,
@@ -82,8 +78,6 @@ function useActiveMuseDashUserId() {
 type MuseDashBestSection = { id: string; title: string; data: MuseDashRawScore[] };
 
 export function MuseDashBestScreen() {
-  const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const userId = useActiveMuseDashUserId();
   const gameData = useGameData();
   const player = gameData.data?.payload?.kind === 'musedash'
@@ -106,25 +100,17 @@ export function MuseDashBestScreen() {
   const sections: MuseDashBestSection[] = [{ id: 'best30', title: 'Best 30', data: ordered }];
   const loading = gameData.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
   const error = gameData.error ?? albums.error ?? ce.error ?? diffdiff.error;
-  return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <BestListPage<MuseDashRawScore, MuseDashBestSection>
+  return <BestListPage<MuseDashRawScore, MuseDashBestSection>
       isLoading={loading} isError={!!error} isEmpty={!loading && ordered.length === 0}
       error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
       emptyText={userId === null ? '请先在游戏管理中绑定喵斯快跑玩家' : '当前没有成绩'}
       data={!loading && ordered.length ? sections : undefined}
       sectionListProps={{
-        testID: 'musedash-best-results-list', style: styles.list,
-        contentInsetAdjustmentBehavior: 'automatic', stickySectionHeadersEnabled: false,
-        contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-        scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+        testID: 'musedash-best-results-list',
         keyExtractor: (item) => `${item.play.uid}:${item.play.difficulty}`,
-        renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
-          <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 条</Text>
-        </View>,
+        renderSectionHeader: ({ section }) => <SongListSectionHeader title={section.title} value={`${section.data.length} 条`} />,
         renderItem: ({ item, index }) => <MuseDashScoreCard score={item} position={index + 1} />,
-      }} />
-  </View>;
+      }} />;
 }
 
 function sortRawScores(scores: MuseDashRawScore[]): MuseDashRawScore[] {
@@ -134,7 +120,6 @@ function sortRawScores(scores: MuseDashRawScore[]): MuseDashRawScore[] {
 
 export function MuseDashRecordsScreen() {
   const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const userId = useActiveMuseDashUserId();
   const gameData = useGameData();
   const player = gameData.data?.payload?.kind === 'musedash'
@@ -206,7 +191,7 @@ export function MuseDashRecordsScreen() {
   const controls = <>
     <GameSearchHeader accessibilityLabel="筛选喵斯快跑成绩" placeholder="搜索歌曲、作者或 uid" value={keyword}
       onChangeText={setKeyword} loaded={records.length} />
-    <MuseDashRecordsFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
+    <MuseDashFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
       constantMin={constantMin} constantMax={constantMax} accMin={accMin} accMax={accMax}
       constantBounds={constantBounds}
       achievement={achievement} dlcOptions={dlcOptions}
@@ -224,22 +209,16 @@ export function MuseDashRecordsScreen() {
       </Pressable>
     </View> : null}
   </>;
-  return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <RecordsListPage beforeList={controls} isLoading={loading || (recordsFiltering && records.length === 0)} isError={!!error}
+  return <RecordsListPage beforeList={controls} isLoading={loading || (recordsFiltering && records.length === 0)} isError={!!error}
       isEmpty={!loading && records.length === 0} error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
       emptyText={userId === null ? '请先绑定喵斯快跑玩家' : detailsFailed > 0 ? '成就明细读取失败，可重试' : detailsPending ? '正在核对成就…' : '没有公开成绩'} data={records.length ? records : undefined} flatListProps={{
-        testID: 'musedash-records-results-list', style: styles.list,
-        contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-        scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+        testID: 'musedash-records-results-list',
         keyExtractor: (item) => `${item.play.uid}:${item.play.difficulty}`,
         renderItem: ({ item }) => <MuseDashScoreCard score={item} />,
-      }} />
-  </View>;
+      }} />;
 }
 
 export function MuseDashCatalogScreen() {
-  const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const albums = useMuseDashAlbums();
   const diffdiff = useMuseDashDiffdiff();
   const {
@@ -282,25 +261,21 @@ export function MuseDashCatalogScreen() {
   const search = <>
     <GameSearchHeader accessibilityLabel="搜索喵斯快跑歌曲" placeholder="搜索歌曲或作者" value={keyword}
       onChangeText={setKeyword} loaded={songs.length} />
-    <MuseDashCatalogFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
+    <MuseDashFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
       constantMin={constantMin} constantMax={constantMax} dlcOptions={dlcOptions}
       onCollapsedChange={setCollapsed} onDifficultySlotChange={setDifficultySlot}
       onDlcChange={setDlc} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
       onReset={clearFilters} />
   </>;
-  return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <CatalogListPage beforeList={search} isLoading={albums.isLoading || (isFiltering && songs.length === 0)} isError={albums.isError}
+  return <CatalogListPage beforeList={search} isLoading={albums.isLoading || (isFiltering && songs.length === 0)} isError={albums.isError}
       isEmpty={!albums.isLoading && songs.length === 0} error={albums.error}
       onRetry={() => void albums.refetch()} emptyText="没有找到喵斯快跑歌曲"
       data={songs.length ? songs : undefined} flatListProps={{
-        testID: 'musedash-catalog-results-list', style: styles.list,
-        contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-        scrollIndicatorInsets: { bottom: inset },
+        testID: 'musedash-catalog-results-list',
         keyExtractor: (item) => item.song.uid,
         renderItem: ({ item }) => <MuseDashSongRow song={item.song} albumTitle={item.albumTitle}
           constants={songConstants(item)} />,
-      }} />
-  </View>;
+      }} />;
 }
 
 type MuseDashChartSlot = { difficultyIndex: number; level: string };
@@ -337,47 +312,18 @@ function MuseDashChartCard({
       style={[styles.chartCard, { width, backgroundColor: theme.dark ? theme.surface : visual.tint, borderColor: visual.border }]}
       testID={`musedash-chart-${slot.difficultyIndex}`}
       accessibilityLabel={`${chart.difficulty.label} 难度卡片`}
-    >
-      <View style={styles.chartHeader}>
-        <MuseDashDifficultyBadge display="label" level={slot.level} levelIndex={slot.difficultyIndex} />
-        <View style={styles.levelBlock}>
-          <Text style={[styles.level, { color: theme.text }]}>{slot.level}</Text>
-          <Text style={[styles.constant, { color: theme.textMuted }]}>{chart.difficulty.value ?? '—'}</Text>
-        </View>
-      </View>
-      <View style={styles.resultBlock}>
-        <Text style={[styles.resultLabel, { color: theme.textMuted }]}>ACC</Text>
-        <MuseDashAccValue acc={score?.play.acc} style={styles.chartAcc} />
-        {chart.grade || chart.achievementRows.length ? (
-          <View style={styles.badgeRow}>
-            {chart.grade ? <MuseDashGradeBadge label={chart.grade.label} tone={chart.grade.tone} /> : null}
-            {chart.achievementRows.flat().map((badge) => (
-              badge.key === 'achievement'
-                ? <MuseDashAchievementBadge key={badge.key} label={badge.label} tone={badge.tone} />
-                : <MuseDashNeutralBadge key={badge.key} label={badge.label} />
-            ))}
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.statRow}>
-        <View style={styles.statCell}>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>Rating</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>
-            {chart.secondaryMetrics.find((metric) => metric.key === 'rating')?.text ?? '—'}
-          </Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>排名</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>
-            {chart.secondaryMetrics.find((metric) => metric.key === 'rank')?.text ?? '—'}
-          </Text>
-        </View>
-      </View>
-      <View style={[styles.divider, { backgroundColor: theme.border }]} />
-      <Text style={[styles.charter, { color: theme.textSecondary }]}>谱师：{chart.charter}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
+      summary={{
+        difficulty: <MuseDashDifficultyBadge display="label" level={slot.level} levelIndex={slot.difficultyIndex} />,
+        level: slot.level, constant: chart.difficulty.value ?? '—', label: 'ACC', value: <MuseDashAccValue acc={score?.play.acc} style={styles.chartAcc} />,
+        badges: (chart.grade || chart.achievementRows.length > 0) && <>
+          {chart.grade && <MuseDashBadge label={chart.grade.label} tone={chart.grade.tone} />}
+          {chart.achievementRows.flat().map(badge => <MuseDashBadge key={badge.key} label={badge.label}
+            tone={badge.key === 'achievement' ? badge.tone : undefined} />)}
+        </>,
+        metrics: [{ label: 'Rating', text: chart.secondaryMetrics.find(metric => metric.key === 'rating')?.text ?? '—' },
+          { label: '排名', text: chart.secondaryMetrics.find(metric => metric.key === 'rank')?.text ?? '—' }], charter: chart.charter,
+      }}>
+      <ChartAction native label={practice ? '已加入练习清单' : '加入练习清单'}
         disabled={library.isUpdating}
         onPress={() => void library.setChartPractice(songId, MUSE_DASH_CHART_TYPE, slot.difficultyIndex, !practice)}
         style={({ pressed }) => [
@@ -387,28 +333,15 @@ function MuseDashChartCard({
             : { backgroundColor: 'transparent', borderColor: actionColor },
           pressed && { opacity: 0.8 },
         ]}
-      >
-        <Text style={[styles.actionText, { color: actionFilled ? '#FFFFFF' : actionColor }]}>
-          {practice ? '已加入练习清单' : '加入练习清单'}
-        </Text>
-      </Pressable>
-      <TagEditor readState={library.tagReadState}
-        {...carouselState.tagEditor}
-        tags={chartItem?.tags ?? []}
-        presets={library.tagPresets ?? []}
-        historyTags={() => buildTagHistory(library.data ?? [], library.chartKey(songId, MUSE_DASH_CHART_TYPE, slot.difficultyIndex), library.tagPresets ?? [])}
-        disabled={library.isUpdating}
-        onPresetsChange={library.setTagPresets}
-        testID={`musedash-chart-local-tags-${slot.difficultyIndex}`}
-        onChange={(tags) => library.setTags({ kind: 'chart', songId, type: MUSE_DASH_CHART_TYPE, levelIndex: slot.difficultyIndex }, tags)}
-      />
+        textStyle={{ color: actionFilled ? '#FFFFFF' : actionColor }} />
+      <LibraryTagEditor library={library} target={{ kind: 'chart', songId, type: MUSE_DASH_CHART_TYPE, levelIndex: slot.difficultyIndex }}
+        {...carouselState.tagEditor} testID={`musedash-chart-local-tags-${slot.difficultyIndex}`} />
     </GameChartResultCard>
   );
 }
 
 export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: string; levelIndex?: number }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const albums = useMuseDashAlbums();
   const diffdiff = useMuseDashDiffdiff();
@@ -463,44 +396,18 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
     : undefined;
   return <>
     <StatusBar style="light" />
-    <SongDetailChrome
-      topInset={insets.top}
-      backStyle={(pressed) => [
-        styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 },
-        pressed && { opacity: 0.7 },
-      ]}
-      favorite={joined && onToggleFavorite ? {
-        label: favorite ? `取消收藏 ${museDashSongTitle(joined.song)}` : `收藏 ${museDashSongTitle(joined.song)}`,
-        active: favorite,
-        disabled: favoriteDisabled,
-        onPress: onToggleFavorite,
-      } : undefined}
-      favoriteStyle={(pressed) => [
-        styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
-        pressed && { opacity: 0.7 },
-      ]}
-    />
+    <SongDetailChrome songTitle={joined ? museDashSongTitle(joined.song) : undefined} favorite={favorite} favoriteDisabled={favoriteDisabled}
+      onToggleFavorite={onToggleFavorite} />
     <QueryStateView isLoading={loading} isError={!!error} isEmpty={!joined}
     error={error} onRetry={() => { void albums.refetch(); }}
     emptyText="未找到该喵斯快跑歌曲" data={joined}
     renderData={() => <ScrollView keyboardShouldPersistTaps="handled" style={[styles.page, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.detail}>
-      <View style={[styles.hero, { width, height: width }]}>
-        <MuseDashHeroCover song={joined!.song} width={width} />
-        <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.48)']}
-          locations={[0, 1]} style={StyleSheet.absoluteFill} />
-        <View style={styles.heroCopy}>
-          <Text numberOfLines={1} style={styles.songId}>#{joined!.song.uid}</Text>
-          <AutoScrollText testID="musedash-song-title-scroll" text={museDashSongTitle(joined!.song)}
-            textStyle={styles.title} style={styles.singleLine} contentContainerStyle={styles.singleLineContent} />
-          <Text numberOfLines={1} style={styles.artist}>{museDashSongAuthor(joined!.song)}</Text>
-        </View>
-      </View>
-      <SongMetadataTable accessibilityLabel="喵斯快跑歌曲信息" cellRootStyle={styles.metadataCellRoot}
-        cellStyle={styles.metadataCell} interaction="platform-detail" items={metadata}
-        labelStyle={styles.metadataLabel} measureStyle={styles.metadataMeasure} style={styles.metadata}
-        testIDPrefix="musedash-song-metadata" valueBlockStyle={styles.metadataValueBlock}
-        valueStyle={styles.metadataValue} />
+      <SongDetailHero size={width} fullShade id={`#${joined!.song.uid}`} title={museDashSongTitle(joined!.song)}
+        artist={museDashSongAuthor(joined!.song)} titleTestID="musedash-song-title-scroll" titleStyle={styles.title}
+        cover={<MuseDashHeroCover song={joined!.song} width={width} />} />
+      <SongMetadataTable appearance="centered" accessibilityLabel="喵斯快跑歌曲信息" interaction="platform-detail" items={metadata}
+        testIDPrefix="musedash-song-metadata" />
       <SharedChartCarousel
         accessibilityLabel="难度卡片"
         cardWidth={cardWidth}
@@ -556,10 +463,7 @@ function MuseDashHeroCover({ song, width }: { song: MuseDashSong; width: number 
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 }, list: { flex: 1 }, listContent: { padding: 12, gap: 9 },
-  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  page: { flex: 1 },
   detailNotice: {
     marginHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10,
     borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
@@ -570,33 +474,15 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   detailNoticeButtonText: { fontSize: 12, fontWeight: '800' },
-  sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 },
+
   detail: { paddingBottom: 32 },
-  hero: { position: 'relative', backgroundColor: '#D1D5DB', overflow: 'hidden' },
   heroSvg: { position: 'absolute', top: 0, left: 0 },
   heroPlaceholder: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   heroPlaceholderNote: { color: '#6B7280', fontSize: 60 },
-  heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
-  singleLine: { flexGrow: 0 },
-  singleLineContent: { paddingRight: 18 },
-  songId: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   title: {
     color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900',
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8,
   },
-  artist: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  metadata: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-  },
-  metadataCellRoot: { minWidth: 0 },
-  metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
-  metadataLabel: { fontSize: 10, fontWeight: '800' },
-  metadataValueBlock: { position: 'relative', minWidth: 0, alignSelf: 'stretch' },
-  metadataMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
-  metadataValue: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center' },
   carouselRoot: { flexGrow: 0 },
   carouselScroll: { flexGrow: 0, marginTop: 14 },
   carousel: { paddingHorizontal: 20, gap: CARD_GAP, paddingBottom: 4 },
@@ -607,20 +493,7 @@ const styles = StyleSheet.create({
     padding: 18,
     shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4,
   },
-  chartHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  levelBlock: { alignItems: 'flex-end', paddingTop: 10 },
-  level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
-  constant: { fontSize: 11, fontWeight: '600' },
-  resultBlock: { alignItems: 'flex-start', gap: 2, marginTop: 22 },
-  resultLabel: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
   chartAcc: { fontSize: 34, lineHeight: 42, letterSpacing: -0.5 },
-  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 29, marginTop: 7 },
-  statRow: { flexDirection: 'row', marginTop: 16, gap: 24 },
-  statCell: { gap: 2 },
-  statLabel: { fontSize: 12, fontWeight: '700' },
-  statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
-  charter: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
   action: {
     marginTop: 13,
     marginBottom: 10,
@@ -629,7 +502,6 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: 'center',
   },
-  actionText: { fontWeight: '700' },
   details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
   meta: { color: '#6B7280', fontSize: 12 },
 });

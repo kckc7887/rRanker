@@ -66,6 +66,26 @@ function sliderDimensions(parts: string[]): { slides: number; length: number } {
   return { slides, length };
 }
 
+type BeatmapIds = Pick<BeatmapData, 'beatmapId' | 'beatmapsetId'>;
+
+function setMetadataId(ids: BeatmapIds, key: string, value: string): void {
+  const id = /^\d+$/.test(value) ? Number(value) : NaN;
+  const valid = Number.isSafeInteger(id) && id > 0 ? id : null;
+  if (key === 'BeatmapID') ids.beatmapId = valid;
+  else ids.beatmapsetId = valid;
+}
+
+export function readBeatmapIds(text: string): BeatmapIds {
+  const ids: BeatmapIds = { beatmapId: null, beatmapsetId: null };
+  const fields = /(?:^|\n)[^\S\n]*(?:\[(\w+)\][^\S\n]*|(BeatmapID|BeatmapSetID)[^\S\n]*:([^\n]*))(?=\n|$)/g;
+  let metadata = false;
+  for (const match of text.matchAll(fields)) {
+    if (match[1]) metadata = match[1] === 'Metadata';
+    else if (metadata) setMetadataId(ids, match[2]!, match[3]!.trim());
+  }
+  return ids;
+}
+
 export function parseBeatmap(text: string): BeatmapData {
   const data: BeatmapData = {
     mode: 0,
@@ -143,12 +163,7 @@ export function parseBeatmap(text: string): BeatmapData {
         if (key === 'Title') data.title = val;
         else if (key === 'Artist') data.artist = val;
         else if (key === 'Version') data.version = val;
-        else if (key === 'BeatmapID' || key === 'BeatmapSetID') {
-          const id = /^\d+$/.test(val) ? Number(val) : NaN;
-          const valid = Number.isSafeInteger(id) && id > 0 ? id : null;
-          if (key === 'BeatmapID') data.beatmapId = valid;
-          else data.beatmapsetId = valid;
-        }
+        else if (key === 'BeatmapID' || key === 'BeatmapSetID') setMetadataId(data, key, val);
         break;
       }
       case 'Difficulty': {

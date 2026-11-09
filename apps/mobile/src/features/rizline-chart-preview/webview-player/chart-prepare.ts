@@ -1,18 +1,49 @@
+import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import { applyEase } from './easing';
 import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
 
 type TimedSpan = { startSeconds: number; endSeconds: number };
-const timeIndices = new WeakMap<readonly TimedSpan[], ((min: number, max: number) => number[]) | null>();
+type SpanQuery = (time: number) => readonly TimedSpan[];
+const timeIndices = new WeakMap<readonly TimedSpan[], SpanQuery>();
 
-/** 无序事件保留原顺序，交由求值时提前结束。 */
-export function activeSpans<T extends TimedSpan>(spans: readonly T[], seconds: number): readonly T[] {
-  if (!timeIndices.has(spans)) {
-    const ordered = spans.every((span, index) => !Number.isNaN(span.startSeconds) && !Number.isNaN(span.endSeconds)
-      && (index === 0 || span.startSeconds >= spans[index - 1]!.startSeconds));
-    timeIndices.set(spans, ordered ? createIntervalIndex(spans.map((_, i) => i), i => [spans[i]!.startSeconds, spans[i]!.endSeconds]) : null);
+function trackQuery(spans: readonly TimedSpan[]): SpanQuery {
+  if (!spans.every((span, i) => !Number.isNaN(span.startSeconds) && !Number.isNaN(span.endSeconds)
+    && (!i || spans[i - 1]!.startSeconds <= span.startSeconds))) return () => spans;
+  if (!spans.every((span, i) => span.startSeconds <= span.endSeconds && (!i || spans[i - 1]!.endSeconds <= span.endSeconds))) {
+    const query = createIntervalIndex(spans, span => [span.startSeconds, span.endSeconds]);
+    return time => query(time, time);
   }
-  const query = timeIndices.get(spans);
-  return query && !Number.isNaN(seconds) ? query(seconds, seconds).map(i => spans[i]!) : spans;
+
+  let first = 0, past = 0;
+  let current: readonly TimedSpan[] = [];
+  return time => {
+    let left = first, right = past;
+    /** 顺播通常只跨一个边界。跨多段或反向定位直接二分。 */
+    if (left < spans.length && spans[left]!.endSeconds < time) left++;
+    if (right < spans.length && spans[right]!.startSeconds <= time) right++;
+    if ((left > 0 && spans[left - 1]!.endSeconds >= time) || (left < spans.length && spans[left]!.endSeconds < time)) {
+      left = lowerBoundBy(spans, time, span => span.endSeconds);
+    }
+    if ((right > 0 && spans[right - 1]!.startSeconds > time) || (right < spans.length && spans[right]!.startSeconds <= time)) {
+      right = upperBoundBy(spans, time, span => span.startSeconds);
+    }
+    if (left !== first || right !== past) {
+      first = left;
+      past = right;
+      current = spans.slice(left, right);
+    }
+    return current;
+  };
+}
+
+export function activeSpans<T extends TimedSpan>(spans: readonly T[], seconds: number): readonly T[] {
+  if (Number.isNaN(seconds)) return spans;
+  let query = timeIndices.get(spans);
+  if (!query) {
+    query = trackQuery(spans);
+    timeIndices.set(spans, query);
+  }
+  return query(seconds) as readonly T[];
 }
 
 export type Rgba = { r: number; g: number; b: number; a: number };
@@ -66,6 +97,7 @@ export type PreviewNote = {
 };
 
 export type PreviewTheme = {
+  opaque: boolean;
   fill: string;
   fillTransparent: string;
   fillHalf: string;
@@ -275,6 +307,7 @@ export function prepareOfficialChart(raw: unknown): PreparedChart {
     const note = readRgba(colors[1], 'theme.note');
     const fx = readRgba(colors[2], 'theme.fx');
     return {
+      opaque: background.a >= 255,
       fill: cssRgba(background),
       fillTransparent: cssRgba({ ...background, a: 0 }),
       fillHalf: cssRgba({ ...background, a: 127.5 }),

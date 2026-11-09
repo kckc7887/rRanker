@@ -1,3 +1,4 @@
+import { SONG_DETAIL_METADATA_STYLES as compact, VERTICAL_SONG_DETAIL_STYLES as vertical } from './SongDetailChromeStyles';
 import {
   type ComponentProps,
   type ReactNode,
@@ -227,7 +228,17 @@ function SongMetadataTableContent({
   );
 }
 
-export function SongMetadataTable(props: SongMetadataTableProps) {
+type MetadataAppearance = 'centered' | 'vertical';
+
+export function SongMetadataTable({ appearance = 'vertical', ...props }:
+  Pick<SongMetadataTableProps, 'accessibilityLabel' | 'items' | 'testIDPrefix'> &
+  Partial<Omit<SongMetadataTableProps, 'accessibilityLabel' | 'items' | 'testIDPrefix'>> &
+  { appearance?: MetadataAppearance }) {
+  const style = appearance === 'centered' ? compact : vertical;
   const contentKey = JSON.stringify(props.items.map(({ key, value }) => [key, value]));
-  return <SongMetadataTableContent {...props} key={contentKey} />;
+  return <SongMetadataTableContent style={style.metadataTable} cellStyle={style.metadataCell}
+    cellRootStyle={appearance === 'centered' ? compact.metadataCellRoot : undefined}
+    labelStyle={style.metadataLabel} measureStyle={style.metadataValueMeasure}
+    valueBlockStyle={style.metadataValueBlock} valueStyle={style.metadataValue}
+    {...props} key={contentKey} />;
 }

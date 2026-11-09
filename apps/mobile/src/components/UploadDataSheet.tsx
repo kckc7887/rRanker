@@ -1,14 +1,13 @@
 import { uploadTaskController } from '@/services/upload-task-controller';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, ScrollView, Text } from 'react-native';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { fetchScoreHubStatistics, type ScoreHubDxnetJobStats } from '@/services/score-hub-client';
 import { formatScoreHubStatsSummary, scoreHubSuccessHint, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
-import { AppModal } from '@/components/AppModal';
+import { AppSheet } from '@/components/AppSheet';
 import { UploadFriendCodeFields, UploadProgressStatus, UploadQrFields, UploadResultList, UploadTargetList } from '@/components/upload-data-sheet-fields';
 import { uploadDataSheetStyles as styles } from '@/components/upload-data-sheet-styles';
 import { useAppTheme } from '@/theme/app-theme';
@@ -49,7 +48,6 @@ export function UploadDataSheet({
   externalBusy?: boolean;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const task = useUploadTaskState(catalog, requestCatalog, onPhaseChange, visible);
   const { phase, running, lastResult, cancelUpload } = task;
   const [bindingQr, setBindingQr] = useState(false);
@@ -112,35 +110,11 @@ export function UploadDataSheet({
   const busy = running || decodingQr || externalBusy;
 
   return (
-    <AppModal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={externalBusy ? undefined : close}
-    >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>上传数据</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="关闭上传"
-            disabled={externalBusy}
-            hitSlop={12}
-            onPress={close}
-            style={({ pressed }) => [
-              styles.closeHit,
-              pressed && !externalBusy && styles.softPressed,
-              externalBusy && styles.primaryDisabled,
-            ]}
-          >
-            <Text style={[styles.close, { color: theme.accent }]}>关闭</Text>
-          </Pressable>
-        </View>
-
-        {headerAccessory}
-        {contentOverride ?? (
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <AppSheet visible={visible} onRequestClose={externalBusy ? undefined : close} title="上传数据"
+      rightAction={{ label: '关闭', accessibilityLabel: '关闭上传', disabled: externalBusy, onPress: close }}>
+      {headerAccessory}
+      {contentOverride ?? (
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {uploadMethod === 'friend_code' ? (
             <UploadFriendCodeFields
               theme={theme}
@@ -280,9 +254,8 @@ export function UploadDataSheet({
           />
 
           <UploadResultList theme={theme} lastResult={lastResult} />
-          </ScrollView>
-        )}
-      </View>
-    </AppModal>
+        </ScrollView>
+      )}
+    </AppSheet>
   );
 }

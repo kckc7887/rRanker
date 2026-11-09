@@ -1,3 +1,4 @@
+import type { StageContext, StageImages } from '../../../chart-preview-shared/webview-player/stage';
 import {
   maimaiChartPreviewRuntimeSkinAssets,
   MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL,
@@ -5,8 +6,6 @@ import {
 } from '../../maimai-chart-preview-skin-files';
 import { resolveSkinObject } from './skinSemantics';
 import { EFFECT_SPRITES } from './effectSprites.generated';
-
-const IMAGE_LOAD_CONCURRENCY = 4;
 
 type SkinDataGlobal = Record<string, string>;
 
@@ -19,46 +18,30 @@ function readInjectedSkinDataUrls(): SkinDataGlobal {
 }
 
 export class ChartPreviewSkin {
-  private readonly images = new Map<string, HTMLImageElement>();
+  private readonly images: StageImages;
+  private urls: SkinDataGlobal = {};
   ready = false;
 
+  constructor(stage: StageContext) {
+    this.images = stage.createImages(path => this.urls[path]);
+  }
+
   get(path: string): HTMLImageElement | undefined {
-    const image = this.images.get(resolveSkinObject(path));
-    if (!image || !image.complete || image.naturalWidth === 0) return undefined;
-    return image;
+    return this.images.get(resolveSkinObject(path));
   }
 
   async load(): Promise<void> {
-    const dataUrls = readInjectedSkinDataUrls();
-    const sensor = MAIMAI_CHART_PREVIEW_SENSOR;
-    if (!dataUrls[sensor.path]) throw new Error(`皮肤缺失：${sensor.path}`);
-    await this.loadOne(dataUrls[sensor.path], sensor.path);
-    const assets = maimaiChartPreviewRuntimeSkinAssets();
-    for (let index = 0; index < assets.length; index += IMAGE_LOAD_CONCURRENCY) {
-      const batch = assets.slice(index, index + IMAGE_LOAD_CONCURRENCY);
-      await Promise.all(batch.map((asset) => {
-        const url = dataUrls[asset.path];
-        if (!url) return Promise.reject(new Error(`皮肤缺失：${asset.path}`));
-        return this.loadOne(url, asset.path);
-      }));
-    }
-    await Promise.all(Object.entries(EFFECT_SPRITES).map(([name, sprite]) => this.loadOne(sprite.data, `ViewXEffects/${name}`)));
+    this.ready = false;
+    this.urls = { ...readInjectedSkinDataUrls() };
+    for (const [name, sprite] of Object.entries(EFFECT_SPRITES)) this.urls[`ViewXEffects/${name}`] = sprite.data;
+    const paths = [
+      MAIMAI_CHART_PREVIEW_SENSOR.path,
+      ...maimaiChartPreviewRuntimeSkinAssets().map(asset => asset.path),
+      ...Object.keys(EFFECT_SPRITES).map(name => `ViewXEffects/${name}`),
+    ];
+    await Promise.all(paths.map(async path => {
+      if (!await this.images.load(path)) throw new Error(`皮肤缺失：${path}`);
+    }));
     this.ready = true;
-  }
-
-  private loadOne(url: string, path: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => {
-        if (image.naturalWidth === 0) {
-          reject(new Error(`皮肤缺失：${path}`));
-          return;
-        }
-        this.images.set(path, image);
-        resolve();
-      };
-      image.onerror = () => reject(new Error(`皮肤缺失：${path}`));
-      image.src = url;
-    });
   }
 }

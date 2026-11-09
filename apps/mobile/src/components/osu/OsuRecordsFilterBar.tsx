@@ -1,8 +1,8 @@
+import { MetricFilterRangeRow } from '@/components/game-content/MetricFilterRows';
 import { useState } from 'react';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
-import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
+import { Text, TextInput, View } from 'react-native';
+import { FilterRow, FilterSheetRow, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import type { RangeBounds } from '@/components/game-content/RangeSelector';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import { OSU_MOD_FILTER_NONE } from '@/domain/osu-filters';
 import { useAppTheme } from '@/theme/app-theme';
@@ -95,42 +95,21 @@ export function OsuRecordsFilterBar({
       expandLabelPrefix="展开 osu! 成绩筛选" collapseLabel="收起 osu! 成绩筛选" resetLabel="重置 osu! 成绩筛选"
       onCollapsedChange={onCollapsedChange} onReset={onReset}
       onCollapse={() => { setModsOpen(false); onCollapsedChange(true); }}>
-      <View testID="osu-records-filter-mods" style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>模组</Text>
-        <Pressable
-          accessibilityLabel={`osu! 成绩模组筛选，当前 ${modsLabel}`}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: modsOpen }}
-          disabled={gameId === null}
-          onPress={() => setModsOpen(true)}
-          style={({ pressed }) => [styles.modTrigger, {
-            backgroundColor: theme.input,
-            borderColor: theme.border,
-          }, pressed && styles.pressed]}
-        >
-          <Text numberOfLines={1} style={[styles.modTriggerText, { color: theme.text }]}>{modsLabel}</Text>
-          <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
-        </Pressable>
-      </View>
+      <FilterSheetRow label="模组" value={modsLabel} testID="osu-records-filter-mods"
+        accessibilityLabel={`osu! 成绩模组筛选，当前 ${modsLabel}`}
+        expanded={modsOpen} disabled={gameId === null} onPress={() => setModsOpen(true)} />
 
-      <View testID="osu-records-filter-star-row" style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>难度</Text>
-        <RangeSelector accessibilityLabel="osu! 星数范围" minimum={starBounds.minimum} maximum={starBounds.maximum}
+      <MetricFilterRangeRow label="难度" rowTestID="osu-records-filter-star-row" accessibilityLabel="osu! 星数范围" {...starBounds}
           step={0.01} lowerValue={starMin} upperValue={starMax}
           onLowerValueChange={onStarMinChange} onUpperValueChange={onStarMaxChange}
           formatValue={(value) => `${value.toFixed(2)}★`} testID="osu-records-filter-star" />
-      </View>
 
-      <View testID="osu-records-filter-accuracy-row" style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>达成率</Text>
-        <RangeSelector accessibilityLabel="osu! 达成率范围" minimum={0} maximum={100} step={0.01}
+      <MetricFilterRangeRow label="达成率" wide rowTestID="osu-records-filter-accuracy-row" accessibilityLabel="osu! 达成率范围" minimum={0} maximum={100} step={0.01}
           lowerValue={accuracyMin} upperValue={accuracyMax}
           onLowerValueChange={onAccuracyMinChange} onUpperValueChange={onAccuracyMaxChange}
           formatValue={(value) => `${value.toFixed(2)}%`} testID="osu-records-filter-accuracy" />
-      </View>
 
-      <View testID="osu-records-filter-pp-row" style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>PP</Text>
+      <FilterRow label="PP" testID="osu-records-filter-pp-row">
         <View style={filterShellStyles.rangeRow}>
           <TextInput accessibilityLabel="最低 PP" autoCorrect={false} keyboardType="decimal-pad"
             testID="osu-records-filter-pp-min"
@@ -142,15 +121,9 @@ export function OsuRecordsFilterBar({
             placeholder="上限" placeholderTextColor={theme.textMuted} value={ppMax} onChangeText={onPpMaxChange}
             style={inputStyle} />
         </View>
-      </View>
+      </FilterRow>
       {gameId && modsOpen ? <OsuModFilterSheet visible gameId={gameId} selectedMods={mods}
         onApply={onModsChange} onClose={() => setModsOpen(false)} /> : null}
     </FilterShell>
   );
 }
-
-const styles = StyleSheet.create({
-  modTrigger: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  modTriggerText: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  pressed: { opacity: 0.62 },
-});

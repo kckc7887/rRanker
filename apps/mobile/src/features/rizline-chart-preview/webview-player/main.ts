@@ -1,8 +1,9 @@
+import { bindTimelineDrag } from '../../chart-preview-shared/webview-player/frame-scheduler';
 import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
 import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
 import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen, setPreviewPlayButton } from '../../chart-preview-shared/webview-player/controls';
 import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import type { RizlineChartPreviewConfig, RizlineChartPreviewSettings } from '../configuration';
 import {
@@ -54,12 +55,9 @@ let session: PreviewSession | null = null;
 let renderer: RizlineRenderer | null = null;
 let disposed = false;
 const events = new PlayerEventScope(() => disposed);
-let dragging = false;
-let wasPlayingBeforeDrag = false;
 let fullscreen = false;
 let locked = false;
 let controlsVisible = true;
-let uiFrame = 0;
 let lastUiFrame = -Infinity;
 const STEP_SECONDS = 5;
 
@@ -76,24 +74,24 @@ function syncTransport(): void {
   const playing = session.playing;
   const position = session.currentTime;
   const pct = session.duration > 0 ? Math.min(100, Math.max(0, position / session.duration * 100)) : 0;
-  element('play-icon').innerHTML = playing
-    ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>' : '<path d="M8 5v14l11-7z"/>';
-  playButton.setAttribute('aria-label', playing ? '暂停' : '播放');
-  element('time-label').textContent = `${formatClock(position)} / ${formatClock(session.duration)}`;
+  setPreviewPlayButton(playButton, playing);
+  const timeLabel = element('time-label');
+  const label = `${formatClock(position)} / ${formatClock(session.duration)}`;
+  if (timeLabel.textContent !== label) timeLabel.textContent = label;
   timelineView.updateProgress(pct, formatClock(position));
   if (session.ended) status('播放结束');
 }
-function tick(time: number): void {
-  uiFrame = 0;
+function updateTransport(): void {
+  const time = performance.now();
   if (disposed) return;
   if (time - lastUiFrame >= 100 || !session?.playing) { syncTransport(); lastUiFrame = time; }
-  if (session?.playing) uiFrame = requestAnimationFrame(tick);
 }
+let timelineTimes: number[] | undefined;
 function buildTimeline(): void {
   if (disposed || !session) return;
   const chart = session.chart;
   timelineView.build(session.duration, [{
-    times: chart.lines.flatMap(line => line.notes.map(note => note.seconds + chart.delaySeconds)),
+    times: timelineTimes ??= chart.lines.flatMap(line => line.notes.map(note => note.seconds + chart.delaySeconds)),
   }], heatTimeLabels(session.duration, formatClock));
   syncTransport();
 }
@@ -188,8 +186,6 @@ async function runTransport(action: (current: PreviewSession) => void | Promise<
     status('播放暂时中断，请重试');
   }
   syncTransport();
-  cancelAnimationFrame(uiFrame);
-  if (current.playing) uiFrame = requestAnimationFrame(tick);
   showControls();
 }
 function togglePlay(): void {
@@ -198,7 +194,7 @@ function togglePlay(): void {
 
 function pauseForLifecycle(): void {
   if (disposed) return;
-  dragging = false;
+  cancelDrag();
   closeActiveWheelPopup();
   if (session) { session.pause(); status('已暂停'); syncTransport(); }
 }
@@ -210,9 +206,10 @@ function dispose(): void {
   events.dispose();
   session?.dispose();
   session = null;
+  renderer?.dispose();
+  renderer = null;
   timelineObserver.disconnect();
   for (const wheel of wheels) wheel.dispose();
-  cancelAnimationFrame(uiFrame);
   delete window.__RIZLINE_CHART_PREVIEW_CONFIG__;
 }
 
@@ -232,29 +229,12 @@ events.listen(lockButton, 'click', (event) => {
   if (next.overlayHidden) hideControls(); else showControls();
 });
 
-function seekFromPointer(event: PointerEvent): void {
-  if (!session) return;
-  const rect = timeline.getBoundingClientRect();
-  const percent = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(1, rect.width)));
-  void runTransport((current) => current.seek(percent * current.duration));
-}
-events.listen(timeline, 'pointerdown', (event) => {
-  if (!session || locked) return;
-  event.preventDefault();
-  event.stopPropagation();
-  dragging = true;
-  wasPlayingBeforeDrag = session.playing;
-  session.pause();
-  seekFromPointer(event);
+const cancelDrag = bindTimelineDrag(events, [timeline], {
+  enabled: () => !!session && !locked, playing: () => !!session?.playing,
+  pause: () => session?.pause(),
+  preview: fraction => session?.playback.preview(fraction * session.duration),
+  resume: () => void runTransport(current => current.playback.seek(current.currentTime, true)),
 });
-events.listen(document, 'pointermove', (event) => { if (dragging) seekFromPointer(event); });
-events.listen(document, 'pointerup', () => {
-  if (!dragging) return;
-  dragging = false;
-  if (wasPlayingBeforeDrag) void runTransport((current) => current.playFrom(current.currentTime));
-  else showControls();
-});
-events.listen(document, 'pointercancel', () => { dragging = false; syncTransport(); showControls(); });
 events.listen(window, 'resize', () => {
   closeActiveWheelPopup();
   renderer?.resize();
@@ -314,7 +294,7 @@ async function initialize(): Promise<void> {
   const config = window.__RIZLINE_CHART_PREVIEW_CONFIG__;
   if (!config) throw new Error('missing-config');
   document.documentElement.dataset.theme = config.theme;
-  events.own(installPreviewControls({ sections: ['播放设置', '辅助选项'], stageAspectRatio: 9 / 16 }));
+  events.own(installPreviewControls(9 / 16));
   settings = normalizeRizlineChartPreviewSettings(config.settings);
   renderPreviewHeading(config.title || '谱面确认', config.previewDifficulty);
   setupSettings();
@@ -329,8 +309,7 @@ async function initialize(): Promise<void> {
   const music = await decodeAudio(musicBytes);
   if (disposed) return;
   renderer = new RizlineRenderer(canvas, stage);
-  session = new PreviewSession(prepared, renderer, music, settings);
-  session.draw();
+  session = new PreviewSession(prepared, renderer, music, settings, updateTransport);
   post('progress', { value: 0.95, label: '正在准备播放器…' });
   for (const input of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>('button')) {
     input.disabled = false;
@@ -353,6 +332,8 @@ void initialize().catch((error: unknown) => {
   if (disposed) return;
   session?.dispose();
   session = null;
+  renderer?.dispose();
+  renderer = null;
   status('无法播放这张谱面，请返回重试');
   post('error', {
     message: '无法播放这张谱面，请返回重试',

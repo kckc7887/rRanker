@@ -1,14 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppModal } from '@/components/AppModal';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppSheet } from '@/components/AppSheet';
 import {
   LOCAL_PLAYER_NAME_MAX_LENGTH,
   normalizeLocalPlayerName,
@@ -27,7 +19,6 @@ export function RenameLocalAccountSheet({
   onSave: (displayName: string) => Promise<void>;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   const [draft, setDraft] = useState(initialName);
   const [error, setError] = useState('');
@@ -58,20 +49,12 @@ export function RenameLocalAccountSheet({
   };
 
   return (
-    <AppModal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
+    <AppSheet title="修改本地玩家名称" visible={visible}
       onShow={() => { if (visible) inputRef.current?.focus(); }}
       onRequestClose={saving ? undefined : onClose}
-    >
-      {/* pageSheet already lifts for the keyboard — do not wrap in KeyboardAvoidingView,
-          which can leave inflated safe-area insets and stretch the iOS tab bar after dismiss. */}
-      <View
-        style={[styles.root, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}
-      >
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <Text style={[styles.title, { color: theme.text }]}>修改本地玩家名称</Text>
+      leftAction={{ label: '取消', accessibilityLabel: '取消修改名称', disabled: saving, onPress: onClose }}
+      rightAction={{ label: saving ? '保存中…' : '保存', accessibilityLabel: '保存本地玩家名称', disabled: saving, onPress: () => void save() }}>
+      <View style={styles.root}>
         <TextInput
           ref={inputRef}
           accessibilityLabel="本地玩家名称"
@@ -86,29 +69,9 @@ export function RenameLocalAccountSheet({
           placeholderTextColor={theme.textMuted}
           style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
         />
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <View style={styles.actions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="取消修改名称"
-            disabled={saving}
-            onPress={onClose}
-            style={styles.secondary}
-          >
-            <Text style={[styles.secondaryText, { color: theme.textSecondary }]}>取消</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="保存本地玩家名称"
-            disabled={saving}
-            onPress={() => void save()}
-            style={[styles.primary, { backgroundColor: theme.accent }, saving && styles.disabled]}
-          >
-            {saving ? <ActivityIndicator color={theme.onAccent} /> : <Text style={[styles.primaryText, { color: theme.onAccent }]}>保存</Text>}
-          </Pressable>
-        </View>
+        {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
       </View>
-    </AppModal>
+    </AppSheet>
   );
 }
 
@@ -119,14 +82,6 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     gap: 14,
   },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 5,
-    borderRadius: 999,
-    marginBottom: 8,
-  },
-  title: { color: '#111827', fontSize: 19, fontWeight: '700' },
   input: {
     borderWidth: 1,
     borderColor: '#D1D5DB',
@@ -136,19 +91,5 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 17,
   },
-  error: { color: '#B42318', fontSize: 13 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
-  secondary: { paddingHorizontal: 16, minHeight: 42, alignItems: 'center', justifyContent: 'center' },
-  secondaryText: { color: '#4B5563', fontSize: 15, fontWeight: '600' },
-  primary: {
-    minWidth: 82,
-    minHeight: 42,
-    paddingHorizontal: 18,
-    borderRadius: 11,
-    backgroundColor: '#246BFD',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-  disabled: { opacity: 0.6 },
+  error: { fontSize: 13 },
 });

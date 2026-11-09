@@ -358,7 +358,7 @@ describe('M4 score list cards', () => {
     const screen = await render(<RecordsScreen />);
     await screen.findByTestId('records-results-list');
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
-    expect(screen.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
+    expect(screen.getByLabelText('谱面标签筛选，暂不可用').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(screen.queryByText('DXRating 标签不可用')).toBeNull();
     await waitFor(() => expect(useRecordsFilter.getState().selectedDxRatingTagIds).toEqual([1]));

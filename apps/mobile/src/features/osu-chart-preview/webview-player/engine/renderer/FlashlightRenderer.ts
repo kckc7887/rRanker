@@ -45,7 +45,6 @@ const BREAK_MIN_DURATION   = FL_DURATION_MS * 2;
 const FOLLOW_DELAY_MS      = 120;
 const SLIDER_DIM           = 0.8;
 const DIM_TRANSITION_MS    = 50;
-const MAX_DIM              = 1.0;
 const CURSOR_STEP_MS       = 16;
 
 const TIER1_COMBO_MIN = 100;
@@ -205,27 +204,10 @@ function smoothedAt(sc: SmoothedCursor, timeMs: number): { x: number; y: number 
   };
 }
 
-let _falloffBitmap: OffscreenCanvas | null = null;
-
-/** 擦除权重为 1-(r/R)^5。 */
-function getFalloffBitmap(): OffscreenCanvas {
-  if (_falloffBitmap !== null) return _falloffBitmap;
-  const SIZE = 512;
-  const osc = new OffscreenCanvas(SIZE, SIZE);
-  const ctx = osc.getContext('2d')!;
-  const cx = SIZE / 2;
-  const grad = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx);
-  const N = 40;
-  for (let i = 0; i <= N; i++) {
-    const u = i / N;
-    const a = 1 - Math.pow(u, 5);
-    grad.addColorStop(u, `rgba(0, 0, 0, ${a})`);
-  }
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  _falloffBitmap = osc;
-  return osc;
-}
+const falloff = Array.from({ length: 41 }, (_, i) => {
+  const radius = i / 40;
+  return [radius, `rgba(0,0,0,${radius ** 5})`] as const;
+});
 
 export interface FlashlightTimelines {
   sizeSegments: Segment[];
@@ -309,9 +291,6 @@ function buildDimTimeline(
 
 export class Flashlight {
   private readonly timelines: FlashlightTimelines;
-  private readonly falloff: OffscreenCanvas;
-  private readonly buffer: OffscreenCanvas;
-  private readonly bctx: OffscreenCanvasRenderingContext2D;
 
   constructor(
     beatmap: BeatmapData,
@@ -319,20 +298,12 @@ export class Flashlight {
     modDiff: ModDifficulty,
     hitResults: readonly HitResult[],
     trackingIntervals: readonly { start: number; end: number }[],
-    qualityTotal: number = 1,
   ) {
     this.timelines = {
       sizeSegments: buildSizeTimeline(beatmap, modDiff, hitResults),
       dimSegments:  buildDimTimeline(trackingIntervals),
       smoothed:     buildSmoothedCursor(replay),
     };
-    this.falloff = getFalloffBitmap();
-
-    this.buffer  = new OffscreenCanvas(CANVAS_W * qualityTotal, CANVAS_H * qualityTotal);
-    const bctx = this.buffer.getContext('2d');
-    if (bctx === null) throw new Error('Flashlight: failed to get 2D context on buffer canvas');
-    bctx.scale(qualityTotal, qualityTotal);
-    this.bctx = bctx;
   }
 
   draw(ctx: CanvasRenderingContext2D, timeMs: number): void {
@@ -344,29 +315,18 @@ export class Flashlight {
 
     const cx = OFFSET_X + pos.x * SCALE;
     const cy = OFFSET_Y + pos.y * SCALE;
-    const d  = size * SCALE * 2;
-
-    const bctx = this.bctx;
-
-    bctx.globalCompositeOperation = 'source-over';
-    bctx.globalAlpha = 1;
-    bctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-    bctx.fillStyle = `rgba(0, 0, 0, ${MAX_DIM})`;
-    bctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-    /** 有效擦除权重为 (1-(r/R)^5)×(1-dim)。 */
-    bctx.globalCompositeOperation = 'destination-out';
-    bctx.globalAlpha = 1 - dim;
-    bctx.drawImage(this.falloff, cx - d / 2, cy - d / 2, d, d);
-
-    bctx.globalCompositeOperation = 'source-over';
-    bctx.globalAlpha = 1;
-
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
+    if (dim > 0) {
+      ctx.globalAlpha = dim;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
     ctx.globalAlpha = 1;
-
-    ctx.drawImage(this.buffer, 0, 0, CANVAS_W, CANVAS_H);
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * SCALE);
+    for (const [position, color] of falloff) gradient.addColorStop(position, color);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.restore();
   }
 }

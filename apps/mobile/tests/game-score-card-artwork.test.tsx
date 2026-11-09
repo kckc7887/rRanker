@@ -76,6 +76,8 @@ describe('GameScoreCard 曲绘背景', () => {
     await waitFor(() => expect(screen.queryByTestId('score-card-artwork')).toBeNull());
     await screen.rerender(<Card source={null} />);
     expect(screen.queryByTestId('score-card-artwork-overlay')).toBeNull();
+    await screen.rerender(<Card />);
+    expect(screen.getByTestId('score-card-artwork')).toBeTruthy();
   });
 
   it('缓存原图后断网重新打开仍显示同一曲绘', async () => {

@@ -11,7 +11,6 @@ import { PhiraPlayerPickerSheet } from '@/components/PhiraPlayerPickerSheet';
 import { MuseDashPlayerPickerSheet } from '@/components/MuseDashPlayerPickerSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
-import { OsuRatingTag } from '@/components/osu/OsuRatingTag';
 import { OsuModeSelectSheet } from '@/components/osu/OsuModeSelectSheet';
 import type { BoundAccount } from '@/domain/bound-account';
 import { canBindProvider, isCredentialProvider, isTestProvider, type GameId, type ProviderOption } from '@/domain/game-bind-options';
@@ -219,11 +218,6 @@ export function GameAccountsScreen() {
           isGameExpanded={(gameId) => !collapsedManagedGameIds.has(gameId)}
           activeAccountId={activeAccountId} onToggleGame={toggleGame} onSelectAccount={onSelectAccount}
           renderActions={renderAccountActions}
-          renderRatingTag={(account) => (
-            (account.providerId === 'osu' || account.providerId === 'osu-test') && isOsuGameId(account.gameId)
-              ? <OsuRatingTag display={account.scoreDisplay} />
-              : null
-          )}
           emptyText="暂无已绑定账号。点击右下角添加，展开游戏后选择查分器绑定。" />
       </ScrollView>
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { computeModDifficulty, drawCursor, parseBeatmap, synthesizeAutoReplay, type Renderer, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
-import { PreviewSession, createGameplaySkin } from '../../src/features/osu-chart-preview/webview-player/playback';
+import { computeModDifficulty, parseBeatmap, synthesizeAutoReplay, type Renderer, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
+import { PreviewSession } from '../../src/features/osu-chart-preview/webview-player/playback';
 import type { AudioSync } from '../../src/features/osu-chart-preview/webview-player/engine-audio/AudioSync';
 import type { PreviewMedia } from '../../src/features/osu-chart-preview/webview-player/backdrop';
 import { fixtureOsu } from './fixtures';
@@ -24,24 +24,8 @@ function skin(): SkinAssets {
 }
 
 describe('standard cursor above storyboard Overlay', () => {
-  it('suppresses the original cursor without changing shared skin images or other modes', () => {
-    const original = skin();
-    const gameplay = createGameplaySkin(original, 0);
-    assert.notEqual(gameplay.images, original.images);
-    assert.equal(gameplay.sounds, original.sounds);
-    assert.equal(gameplay.spinnerImages, original.spinnerImages);
-    for (const stem of ['cursor', 'cursormiddle', 'cursortrail']) {
-      assert.equal(gameplay.images.get(`${stem}.png`), original.images.get('hit300.png'));
-      assert.equal(gameplay.images.get(`${stem}@2x.png`), original.images.get('hit300.png'));
-      assert.notEqual(original.images.get(`${stem}@2x.png`), original.images.get('hit300.png'));
-    }
-    for (const mode of [1, 2, 3]) assert.equal(createGameplaySkin(original, mode), original);
-    assert.throws(() => createGameplaySkin({ ...original, images: new Map([['hit300.png', image('too-small', 1, 1)]]) }, 0));
-  });
-
   it('draws the real cursor and translucent trail exactly once after Overlay at engine-adjusted time', async () => {
     const realSkin = skin();
-    const gameplaySkin = createGameplaySkin(realSkin, 0);
     const beatmap = parseBeatmap(fixtureOsu(0, 'Easy'));
     const replay = synthesizeAutoReplay(beatmap, '', [
       { time: 0, x: 10, y: 192, keys: 0 },
@@ -59,16 +43,20 @@ describe('standard cursor above storyboard Overlay', () => {
       options, oldOffsetMs: 24,
       renderFrameAt(timeMs: number) {
         draws.push({ label: 'gameplay' });
-        drawCursor(context, replay, timeMs, gameplaySkin);
         options.hudOverlay?.(context, timeMs);
       },
-      stop() {},
+      dispose() {},
     } as unknown as Renderer;
     const media = {
       sync() {}, dispose() {}, drawUnder() {}, configure() {},
       drawOver(_ctx: CanvasRenderingContext2D, timeMs: number) { draws.push({ label: `Overlay:${timeMs}` }); },
     } as unknown as PreviewMedia;
-    const audio = { pause() {}, destroy() {}, setSpeed() {}, setStoryboardEnabled() {} } as unknown as AudioSync;
+    let position = 0;
+    const audio = {
+      get outputTimeMs() { return position; },
+      playback: { onFrame(_time: number, _jump: boolean) {}, async seek(time: number) { position = time * 1000; this.onFrame(time, true); } },
+      pause() {}, destroy() {}, setSpeed() {}, setStoryboardEnabled() {},
+    } as unknown as AudioSync;
     const session = new PreviewSession({} as HTMLCanvasElement, beatmap, replay, computeModDifficulty(beatmap, replay), renderer, audio, media,
       { startMs: 0, endMs: 2000, durationMs: 2000 }, new AbortController(), realSkin);
     draws.length = 0;

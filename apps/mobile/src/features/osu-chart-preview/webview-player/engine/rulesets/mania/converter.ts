@@ -41,11 +41,11 @@ function columnForX(x: number, totalColumns: number): number {
   return col;
 }
 
-export function convertBeatmapToMania(beatmap: BeatmapData, modDiff?: ModDifficulty): {
-  stages: ManiaStage[];
-  totalColumns: number;
-  objects: ManiaHitObject[];
-} {
+type ManiaObjects = { stages: ManiaStage[]; totalColumns: number; objects: ManiaHitObject[] };
+const converted = new WeakMap<BeatmapData, { mirrored: boolean; data: ManiaObjects }>();
+export function convertBeatmapToMania(beatmap: BeatmapData, modDiff?: ModDifficulty): ManiaObjects {
+  const mirrored = !!modDiff?.isMirror, cached = converted.get(beatmap);
+  if (cached && cached.mirrored === mirrored) return cached.data;
   const totalColumns = maniaColumnCount(beatmap);
   const stages: ManiaStage[] = [{ columns: totalColumns, firstColumnIndex: 0 }];
 
@@ -93,7 +93,9 @@ export function convertBeatmapToMania(beatmap: BeatmapData, modDiff?: ModDifficu
     return a.column - b.column;
   });
 
-  return { stages, totalColumns, objects };
+  const data = { stages, totalColumns, objects };
+  converted.set(beatmap, { mirrored, data });
+  return data;
 }
 
 export function computeManiaBarLines(beatmap: BeatmapData): ManiaBarLine[] {

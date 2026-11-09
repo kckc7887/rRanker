@@ -9,10 +9,10 @@ export function DetailPressable(props: ComponentProps<typeof Pressable>) {
     : <GesturePressable {...props as ComponentProps<typeof GesturePressable>} />;
 }
 
-export function DetailGestureRoot({ children, style }: {
-  children: ReactNode; style?: ComponentProps<typeof View>['style'];
+export function DetailGestureRoot({ children, style, testID }: {
+  children: ReactNode; style?: ComponentProps<typeof View>['style']; testID?: string;
 }) {
   return Platform.OS === 'android'
-    ? <View style={style}>{children}</View>
-    : <GestureHandlerRootView style={style}>{children}</GestureHandlerRootView>;
+    ? <View style={style} testID={testID}>{children}</View>
+    : <GestureHandlerRootView style={style} testID={testID}>{children}</GestureHandlerRootView>;
 }

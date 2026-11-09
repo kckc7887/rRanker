@@ -2,23 +2,22 @@ import { bestImageUiProgress } from '@/features/best-image/best-image-ui-cache';
 import { startTransition, useEffect, useMemo, useState } from 'react';
 import { File } from 'expo-file-system';
 import {
-  Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Image, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { formatPhigrosChallengeBadge } from '@/domain/phigros-challenge-theme';
 import {
-  PHIGROS_LEVELS, PHIGROS_RANK_FILTERS, phigrosLevelLabel, phigrosRankFilterLabel,
-  type PhigrosRankFilter,
+  PHIGROS_LEVELS, PHIGROS_RANK_FILTERS, phigrosRankFilterLabel,
 } from '@/domain/phigros-filters';
-import type { PhigrosLevel } from '@/domain/phigros';
 import type { PhigrosXingKind } from '@/domain/phigros-xing';
-import { phigrosLevelColors } from '@/domain/phigros-level-theme';
+import { MetricFilterChoiceRow } from '@/components/game-content/MetricFilterRows';
+import { LevelChip } from '@/components/phigros/PhigrosFilterBar';
 import { loadPhigrosAvatarCatalog } from '@/services/phigros-avatar-resolver';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   BestImageChoiceChip,
   BestImageStyleSwitch,
-  BestImageScreenShell,
+  BestImageQuantity, BestImageStyleRow, BestImageExtraCount, BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
 import { useBestImageScreenController, usePreparedBestImageSources, type BestImageTemplate } from '@/features/best-image/use-best-image-screen-controller';
@@ -68,26 +67,6 @@ const phigrosPreferencesAdapter = {
   load: (accountId: string) => phigrosBestImagePreferencesStore.load(accountId),
   save: (accountId: string, prefs: PhigrosBestImageStylePreferences) => phigrosBestImagePreferencesStore.save(accountId, prefs),
 };
-
-function LevelFilterChip({ level, selected, onPress }: { level: PhigrosLevel; selected: boolean; onPress: () => void }) {
-  const theme = useAppTheme();
-  const colors = phigrosLevelColors(level);
-  const label = phigrosLevelLabel(level);
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`筛选难度 ${label}`}
-    onPress={onPress} style={[styles.filterChip, { backgroundColor: colors.bg }, selected && { borderColor: theme.accent }]}>
-    <Text style={[styles.filterChipText, { color: colors.fg }]}>{label}</Text>
-  </Pressable>;
-}
-
-function RankFilterChip({ value, selected, onPress }: { value: PhigrosRankFilter; selected: boolean; onPress: () => void }) {
-  const theme = useAppTheme();
-  const badgeRate = value === 'fc' ? 'v' : value;
-  const badgeFc = value === 'fc';
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`筛选评价 ${phigrosRankFilterLabel(value)}`}
-    onPress={onPress} style={[styles.rankChipWrap, selected && { borderColor: theme.accent }]}>
-    <PhigrosRateBadge rate={badgeRate} fc={badgeFc} />
-  </Pressable>;
-}
 
 function formatSyncTime(value: string): string {
   const date = new Date(value);
@@ -362,20 +341,16 @@ export function PhigrosBestImageScreen() {
       startTransition(() => setType(id));
     },
       customPanelBody: type === 'custom' ? <>
-      <View style={styles.textFieldWrap}>
-        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
-        <TextInput accessibilityLabel="自定义数量" autoCorrect={false} keyboardType="number-pad" value={quantityText} onChangeText={(value) => {
+        <BestImageQuantity value={quantityText} error={quantityError} onChange={(value) => {
           setQuantityText(value);
           const parsed = parseBestImageQuantity(value);
           if (parsed !== null) setCustomFilters((current) => ({ ...current, quantity: parsed }));
-        }} placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, quantityError && styles.textInputError]} />
-        {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
-      </View>
+        }} />
       <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>难度</Text>
       <View style={styles.chipRow}>
         <BestImageChoiceChip label="全部" accessibilityLabel="筛选难度 全部" selected={customFilters.level === 'all'} onPress={() => setCustomFilters((current) => ({ ...current, level: 'all' }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />
         {PHIGROS_LEVELS.map((level) => (
-          <LevelFilterChip key={level} level={level} selected={customFilters.level === level} onPress={() => setCustomFilters((current) => ({ ...current, level }))} />
+          <LevelChip key={level} level={level} active={customFilters.level === level} onPress={() => setCustomFilters((current) => ({ ...current, level }))} />
         ))}
       </View>
       <View style={styles.fieldRow}>
@@ -409,13 +384,10 @@ export function PhigrosBestImageScreen() {
             formatValue={(value) => `${value.toFixed(2)}%`} testID="phigros-best-image-accuracy-range" />
         </View>
       </View>
-      <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>评价</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-        <BestImageChoiceChip label="全部" accessibilityLabel="筛选评价 全部" selected={customFilters.rank === null} onPress={() => setCustomFilters((current) => ({ ...current, rank: null }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />
-        {PHIGROS_RANK_FILTERS.map((item) => (
-          <RankFilterChip key={item.value} value={item.value} selected={customFilters.rank === item.value} onPress={() => setCustomFilters((current) => ({ ...current, rank: item.value }))} />
-        ))}
-      </ScrollView>
+      <MetricFilterChoiceRow label="评价" selected={customFilters.rank} emptyLabel="全部" emptyAccessibilityLabel="筛选评价 全部" scrollable
+        onSelect={rank => setCustomFilters(current => ({ ...current, rank }))}
+        options={PHIGROS_RANK_FILTERS.map(({ value }) => ({ value, accessibilityLabel: `筛选评价 ${phigrosRankFilterLabel(value)}`,
+          content: <PhigrosRateBadge rate={value === 'fc' ? 'v' : value} fc={value === 'fc'} /> }))} />
       <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>XING</Text>
       <View style={styles.chipRow}>
         <BestImageChoiceChip
@@ -442,15 +414,10 @@ export function PhigrosBestImageScreen() {
     </> : null,
       styleListHeader: <>
       <BestImageStyleSwitch value={ratingStyle} onChange={ratingStyle => setStylePrefs(current => ({ ...current, ratingStyle }))} />
-      {type === 'best30' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
-        <View style={styles.overflowCopy}><Text style={[styles.styleName, { color: theme.text }]}>OVER FLOW</Text><Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text></View>
-        <View style={styles.overflowChoices}>{OVERFLOW_COUNTS.map((count) => <BestImageChoiceChip key={count} label={`${count} 个`} selected={stylePrefs.overflowCount === count} onPress={() => setStylePrefs((current) => ({ ...current, overflowCount: count }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />)}</View>
-      </View> : null}</>,
-      styleRows: (['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
-      <View style={styles.stylePreview}>{kind === 'avatar' ? (avatarData ? <Image source={{ uri: avatarData }} style={styles.avatarPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>) : (backgroundData ? <Image source={{ uri: backgroundData }} style={styles.backgroundPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>)}</View>
-      <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{kind === 'avatar' ? '头像' : '背景'}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{styleValue(kind)}</Text></View>
-      <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-    </Pressable>),
+      {type === 'best30' ? <BestImageExtraCount label="OVER FLOW" options={OVERFLOW_COUNTS}
+        value={stylePrefs.overflowCount} onChange={count => setStylePrefs(current => ({ ...current, overflowCount: count }))} /> : null}</>,
+      styleRows: (['avatar', 'background'] as const).map((kind) => <BestImageStyleRow key={kind} label={kind === 'avatar' ? '头像' : '背景'} value={styleValue(kind)} onPress={() => setPicker(kind)}
+          preview={kind === 'avatar' ? (avatarData ? <Image source={{ uri: avatarData }} style={styles.avatarPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>) : (backgroundData ? <Image source={{ uri: backgroundData }} style={styles.backgroundPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>)} />),
       widths: WIDTHS,
       activeWidth: width,
       onChooseWidth: setWidth,
@@ -505,9 +472,6 @@ const phigrosStyles = StyleSheet.create({
   rangeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rangeInput: { flex: 1, minHeight: 40, paddingHorizontal: 10, borderWidth: 1, borderRadius: 10, fontSize: 14 },
   rangeSeparator: { fontSize: 13, fontWeight: '700' },
-  filterChip: { minHeight: 28, minWidth: 36, paddingHorizontal: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
-  filterChipText: { fontSize: 12, fontWeight: '800' },
-  rankChipWrap: { borderWidth: 2, borderColor: 'transparent', borderRadius: 10, padding: 2 },
   avatarPreview: { width: 46, height: 46, borderRadius: 10 },
   backgroundPreview: { width: 132, height: 46, borderRadius: 8 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },

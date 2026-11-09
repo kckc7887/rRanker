@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppModal } from '@/components/AppModal';
+import { AppSheet } from '@/components/AppSheet';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -43,53 +42,24 @@ export function LxnsSyncGuideSheet({
   onClose: () => void;
   onSync: () => Promise<boolean>;
 }) {
-  const insets = useSafeAreaInsets();
-  const theme = useAppTheme();
-
   return (
-    <AppModal
-      animationType="slide"
-      onRequestClose={syncing ? undefined : onClose}
-      presentationStyle="pageSheet"
-      visible={visible}
-    >
-      <View
-        style={[
-          styles.root,
-          { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) },
-        ]}
-        testID={testID}
-      >
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>上传{gameName}数据</Text>
-          <Pressable
-            accessibilityLabel={`关闭${shortGameName}同步引导`}
-            accessibilityRole="button"
-            disabled={syncing}
-            onPress={onClose}
-            style={({ pressed }) => [styles.closeHit, pressed && styles.pressed, syncing && styles.disabled]}
-          >
-            <Text style={[styles.close, { color: theme.accent }]}>关闭</Text>
-          </Pressable>
-        </View>
-
-        <LxnsSyncGuideContent
-          syncing={syncing}
-          shortGameName={shortGameName}
-          offlineSyncUrl={offlineSyncUrl}
-          isMaintenanceWindow={isMaintenanceWindow}
-          maintenanceMessage={maintenanceMessage}
-          beforeSteps={beforeSteps}
-          syncDisabled={syncDisabled}
-          syncButtonLabel={syncButtonLabel}
-          syncBusyLabel={syncBusyLabel}
-          syncHint={syncHint}
-          onClose={onClose}
-          onSync={onSync}
-        />
-      </View>
-    </AppModal>
+    <AppSheet visible={visible} onRequestClose={syncing ? undefined : onClose} testID={testID}
+      title={`上传${gameName}数据`} rightAction={{ label: '关闭', accessibilityLabel: `关闭${shortGameName}同步引导`, disabled: syncing, onPress: onClose }}>
+      <LxnsSyncGuideContent
+        syncing={syncing}
+        shortGameName={shortGameName}
+        offlineSyncUrl={offlineSyncUrl}
+        isMaintenanceWindow={isMaintenanceWindow}
+        maintenanceMessage={maintenanceMessage}
+        beforeSteps={beforeSteps}
+        syncDisabled={syncDisabled}
+        syncButtonLabel={syncButtonLabel}
+        syncBusyLabel={syncBusyLabel}
+        syncHint={syncHint}
+        onClose={onClose}
+        onSync={onSync}
+      />
+    </AppSheet>
   );
 }
 
@@ -298,25 +268,6 @@ function CopyRow({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 5,
-    borderRadius: 3,
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  header: {
-    minHeight: 52,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  title: { fontSize: 18, fontWeight: '800' },
-  closeHit: { paddingHorizontal: 4, paddingVertical: 8 },
-  close: { fontSize: 16, fontWeight: '700' },
   content: { paddingHorizontal: 20, gap: 14 },
   intro: { fontSize: 13, lineHeight: 20 },
   step: { borderRadius: 16, padding: 16, gap: 11 },
